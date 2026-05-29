@@ -1,11 +1,10 @@
-# name
-- Polly?
 # facets
 - trailing struct literals `v`
 - strongly & statically typed `rust v go zig`
 - everything is an expression `rust revo`
 - pattern matching `rust haskell`
 - implicit return `rust`
+- implicit `result` `nim`
 - opt-in mutable `rust v`
 - pipes `Nushell revo`
 - keywords `clojure revo`
@@ -28,15 +27,21 @@
 	- `test` (and also `suite` and `test/skip`) `zig revo`
 	- `build` `zig revo`
 	- docgen `rust v go`
+	- units and unit conversion
 # syntax
-- `fn`
+- `fn main() { ... }`
 - `const`
 - free-form / C-like / whitespace insignificant
 - `mut`
 - `:=`
 - no semicolons
 - `.enum_literal`
+- `loop`
 ```
+fn main() {
+	who := "mom"
+	print("hi {who}!")
+}
 ```
 # influences
 - V
@@ -51,6 +56,7 @@
 	- `impl`
 - Nim
 - Lua
+- Odin
 - Haskell
 # decisions
 - methods
@@ -79,3 +85,27 @@
 ## implementation
 - V
 - Zig
+# name
+- vex
+- sys
+- ion
+- kiln
+- wire
+- ~~ice
+## misc
+- noll
+- loom
+- rime
+- Angela Lansbury
+- polly
+- lumen
+- wyrm
+- alloy
+- nova
+- eon / aeon
+- egon
+## animals
+- axolotl
+- ~~koi
+- dog
+- ~~otter
