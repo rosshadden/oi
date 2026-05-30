@@ -149,9 +149,16 @@ fn (user User) can_register() bool {
 - strings
 	- multiline how?
 	- interpolation how?
-		- `"{}, {}"` `rust`
-		- `"$a, $b"` `v bash`
-		- `"%s, %s"` `go python`
+		- `println!("{} {2} {1} {foo}", a, b, c)` `rust`
+		- `"$a $b $c"` `v bash`
+		- `"`
+		- `"%s %s %s" % [ a, b, c ]` `go python gdscript`
+- printing
+	- `println!()`
+	- `println()`
+	- `print()`
+	- `echo()`
+	- `puts()`
 - FFI
 - zeroed values? `v go`
 - async how?
