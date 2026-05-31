@@ -113,6 +113,18 @@ fn main() {
 fn (user User) can_register() bool {
 	user.age > 16
 }
+
+loop {
+  print("are we there yet?")
+}
+
+loop x in [2 4 6 8] {
+  print(x)
+}
+
+loop i in 0..5 {
+  print(i)
+}
 ```
 # influences
 - V
