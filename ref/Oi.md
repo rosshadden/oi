@@ -53,7 +53,7 @@
 	- units and unit conversion (can be an imported stdlib that adds `impl`s)
 	- primitive data type for paths `nu nix`
 - cli
-	- `fmt` `v go`
+	- `fmt` (opinionated) `v go`
 	- `doc` `rust v go gdscript`
 	- `test` `rust v go`
 	- `lsp`
@@ -124,6 +124,20 @@ fn random_user() User {
 fn foo() (int, int) {
 	2, 3
 }
+
+## leading literals
+
+# if there's only one literal arg, the parens may be dropped
+foo "bar"
+print "lol"
+sleep 1_000
+log.group :process
+
+# this can be used in conjunction with trailing closures
+test "foo" { assert(foo == bar) }
+benchmark 1_000_000 { do_work() }
+config :production { ... }
+hook .startup { ... }
 
 ## structs
 
@@ -214,6 +228,34 @@ impl User {
 	}
 }
 user.with_settings()
+
+# access modifiers
+
+struct User {
+	# fields are private and immutable by default
+	name string
+	age int
+	
+	# `pub` and `mut` modifiers can be used per definition, just like in normal declarations
+	a bool
+	mut b bool
+	pub c bool
+	pub mut d bool
+
+	# these modifiers also have block forms for when grouping is desired
+	mut {
+		status Status
+		retries int
+	}
+	pub {
+		email string
+		phone string
+	}
+	pub mut {
+		last_login Time
+		session_id UUID
+	}
+}
 
 # anonymous structs
 
@@ -544,37 +586,75 @@ fn main() {
 		panic("uh oh...")
 	}
 	
-	## closures
-
-	# lambda form
-	nums.map(|x| x * 2)
-	sort_by(|a, b| a.age < b.age)
-	xs.filter(|x| x > 0)
+	## blocks
 	
-	# anonymous functions
-	adder := fn (n int) int { n + n }
-	spawn(fn () { do_work() })
+	# blocks are groups of expressions
+	# the final expression is the result of the block
+	three := {
+		do_thing()
+		3
+	}
 	
-	# trailing closures
+	# normally blocks are eager, but when directly passed to something that expects a callable, they are deferred and treated as callables
+	nums.map({ $in * 2 })
 	
-	# test("registration", { 
+	# trailing blocks
+	
+	# test("registration", {
 	#	 user := make_user()
-	#	 assert(user.can_register()) 
+	#	 assert(user.can_register())
 	# })
 	test "registration" {
 		user := make_user()
 		assert(user.can_register())
 	}
 	
+	# implicit `$in` var refers to the input args
+	db.transaction {
+		$in.insert(user)
+		$in.insert(order)
+	}
+
+	# the input data can be bound to a name when desired
 	# db.transaction({|tx| ...})
 	db.transaction {|tx|
 		tx.insert(user)
 		tx.insert(order)
 	}
+	# this lets you handle nested blocks
 	
 	# mutex.with({ do_work() })
 	mutex.with {
 		do_work()
+	}
+	
+	## closures
+
+	# anonymous functions
+	
+	adder := fn (n int) int { n + n }
+	spawn(fn () { do_work() })
+	
+	# optional capture list, defaulting to [] when not provided
+	mut counter := 0
+	increment := fn [mut counter] (x int) int {
+		counter += x
+		counter
+	}
+	
+	## lambdas
+	# captures immutable bindings, by reference
+
+	# inline form
+	double := |x| x * 2
+	nums.map(|x| x * 2)
+	sort_by(|a, b| a.age < b.age)
+	spawn(|| do_work())
+	
+	# blocks may be used for the body (since blocks are expressions)
+	process := |x| {
+		y := validate(x)!
+		y * 2
 	}
 	
 	## matching
@@ -593,6 +673,13 @@ fn main() {
 			.red, .blue { true }
 			.green { false }
 		}
+	}
+
+	# TODO: not sure whether Oi should support `$in` in match or use binding
+	match user {
+		u @ User { age: 0..18 } => "minor: {u.name}"
+		User { age: 0..18 } => "minor: {$in.name}"
+		_ => "adult"
 	}
 	
 	## misc.
@@ -613,7 +700,7 @@ fn main() {
 	# NOTE: will likely change the var name / syntax
 	fn do_stuff() bool {
 		defer {
-			if !$res() {
+			if !$in {
 				print("uh oh...")
 			}
 		}
@@ -629,6 +716,87 @@ fn main() {
 		defer print("here we go again...")
 		do_stuff()
 	}
+
+	## pipes
+
+	input := "let's do this"
+	result := input |> trim |> upper
+		
+	# if any step returns none, the whole chain is none
+	"optional-aware" |> upper?
+	nickname := find_user(id)
+		|> get_profile?
+		|> get_display_name?
+		or "anonymous"
+	
+	# any error short circuits
+	"result-aware" |> upper!
+	result := input |> trim |> upper |> save!
+	
+	# `$in` is the data flowing into the pipeline step
+	# this lets us do clojure-like threading
+	"threading"
+	  |> wrap("[", $in, "]")
+	  or log_errors("foo", $in)
+	"hello" |> $in + " world"
+	[2 4 6 8] |> if $in.len() > 0 { print(true) }
+	
+	# any errors in the pipeline flow directly to an `or`
+	"error-only pipes"
+		|> upper
+		or handler
+	
+	# pipeline steps can be blocks too
+	result := "error-only pipes with block"
+		|> {
+			idk($in)
+		}
+		|> {
+			log.info("stuff and things: {$in}")
+			true
+		}
+		or {
+			eprint($in)
+			return $in
+		}
+	config := os.env("config_path")
+		|> read_file!
+		|> parse!
+		or {
+			log.warn("Config load failed: {$in}. Using default.")
+			default_config()
+		}
+	"gtfo" |> process or { panic("uh oh...") }
+	"err binding" |> raise_err |> {|err| log.error(err) }
+	
+	# input data can be optionally bound to names when desired
+	# this lets you unambiguously nest
+	"foo" |> {|outer|
+		assert(outer == $in)
+		outer |> {|inner|
+			assert(inner == $in)
+			log.debug("inner: {inner}, outer: {outer}")
+		}
+		assert(outer == $in)
+	}
+	
+	# all together now (all together now!)
+	result := data
+		|> validate
+		|> transform(4, $in.name)?
+		|> filter($in > 0)
+		|> send?
+		|> wrap("[", $in, "]")
+		|> {
+			log.info("saving {$in}...")
+			save($in)!
+		}
+		or log
+	
+	formatted := name
+		|> uppercase
+		|> wrap("[", $in, "]")
+		|> log(level: :info, $in)
 	
 	## metaprogramming
 	
@@ -752,55 +920,14 @@ macro assert!(expr)
 ## lab 
 Things I'm playing with that might not work or make it.
 ```rust
-"foo"
-	|> upper()
-	-> upper()
-	| upper()
-
-"error-only pipes"
-	|> try upper() |> catch upper()
-	|>~ upper()
-	~> upper()
-	|e upper()
-	
-# if any step returns none, the whole chain is none
-"optional-aware"
-	|> upper()?
-	|>? upper()
-	?> upper()
-	->? upper()
-	?| upper()
-	-?> upper()
-	|? upper()
-	|?> upper()
-
-# any error short circuits
-"result-aware"
-	|> upper()@
-	|>! upper()
-	!> upper()
-	!-> upper()
-	!| upper()
-	|!> upper()
-	-!> upper()
-	|! upper()
-	
-result := data
-    |> validate
-    |> transform(opts)
-    |> save
-# desugars to: save(transform(validate(data), opts))
-
-formatted := name
-    |> uppercase
-    |> wrap("[", _, "]")     # _ marks where the threaded value goes
-    |> log(level: :info, _)
 ```
 # TODO
-- [ ] bit flags syntax
-- [ ] channels
 - [ ] interfaces
 - [x] generics
+- [ ] varargs
+	- v vs nim vs ?
+- [ ] bit flags syntax
+- [ ] channels
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [x] methods
@@ -831,11 +958,28 @@ formatted := name
 	- ~~`@[ann] @[ann: "param"]` `v`
 	- ~~`#[ann] #[ann(param)] #[ann(param: "value")]` `rust`
 		- ~~worth noting this actually is compatible with / similar to my comment syntax, dunno if that's good or bad
-- [ ] pipe syntax
-- FFI
-- some sort of `todo`/`unimplemented` macros `rust`
+	- not sure whether Oi should support `$in` in match or use binding or both
+	```rust
+	match user {
+		u @ User { age: 0..18 } => "minor: {u.name}"
+		User { age: 0..18 } => "minor: {$in.name}"
+		_ => "adult"
+	}
+	```
+- [x] pipe syntax
+- [ ] FFI
+- [ ] some sort of `todo`/`unimplemented` macros `rust`
+- [ ] solve the closure dissonance
+	- lambdas vs. anonymous fns
+	- explicit vs implicit captures
 ## consider
 - UCFS? `nim`
+- nu-like arrays and stuff `[1 2 3 4]` `nu`
+- maybe the I _and_ the O are tuples. It's all tuples man
+	- args coming in are tuples
+	- multiple returns are tuples
+	- fn params are just destructuring the tuple
+	- this makes `$in` make a _lot_ of sense
 # stdlib
 - `os`
 - `fs`
