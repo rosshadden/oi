@@ -1,6 +1,8 @@
 # principles
+- general purpose system language
 - everything is an expression
-- 
+- high emphasis on ergonomics
+- hopefully ends up being good for gamedev
 # facets
 - trailing struct literals `v`
 - strongly & statically typed `rust v go zig`
@@ -22,6 +24,8 @@
 - optional types (`?`) `v zig`
 - result types (`!`) `v`
 - structs `c v go rust`
+- ~~tuple structs `rust`~~ (nah, we already have this with short struct literals)
+- tuples `rust zig nim julia janet`
 - comptime `zig revo nim`
 - no parens needed for simple conditionals `v rust go nu`
 - generics `rust v`
@@ -41,6 +45,7 @@
 - `defer` `v go zig`
 - `defer/err` (`errdefer`) `zig`
 - zeroed values `v go`
+- `unsafe` `v rust`
 - first-class
 	- `assert` `rust v zig`
 	- `test` (and also `suite` and `test/skip`) `zig revo`
@@ -122,18 +127,66 @@ fn foo() (int, int) {
 
 ## structs
 
+struct Point {
+	x int
+	y int
+}
+
+point := Point{
+	x: 19
+	y: 90
+}
+
+# one line
+point := Point{ x: 19, y: 88 }
+
+# zero values when unspecified
+origin := Point{}
+
+# support default field values
 struct User {
 	age int
 	name string
-	pos int = -1
+	swag int = 5
 }
 
-# struct method
-impl User {
-	fn can_register() bool {
-		user.age > 16
+# heap structs
+# structs are allocated on the stack, but can be allocated on the heap with the `&` prefix
+# this returns a reference
+u := &User{}
+
+# required fields
+struct Foo {
+	n int @required
+}
+
+# short struct literals
+normal := Point{
+	x: 2
+	y: 1
+}
+short := Point{3, 2}
+
+# struct update
+
+struct User {
+	name string
+	age int
+	is_registered bool
+}
+
+fn register(u User) User {
+	return User{
+		...u
+		is_registered: true
 	}
 }
+
+mut user := User{
+	name: "abc"
+	age: 23
+}
+user = register(user)
 
 # trailing struct literals
 
@@ -149,7 +202,77 @@ impl User {
 user := User{}
 user.with_options(bar: true, foo: 4)
 
-# params
+# annotating with `@params` lets a trailing struct be omitted
+# otherwise you need to specify at least one field or the compiler will error
+@params
+struct Settings {
+	idk int
+}
+impl User {
+	fn with_settings(settings Settings) {
+		print(settings)
+	}
+}
+user.with_settings()
+
+# anonymous structs
+
+struct Food {
+	name string
+	nutrition struct {
+		calories int
+	}
+}
+
+apple := Food{
+	name: "apple"
+	nutrition: struct {
+		calories: 4
+	}
+}
+
+# you can (maybe?) use short struct literals in the assignment
+pear := Food{
+	name: "pear"
+	nutrition: struct { 5 }
+}
+
+# static struct methods
+impl User {
+	fn new() Self {
+		Self {}
+	}
+}
+user := User.new()
+
+# struct methods
+impl User {
+	fn can_register(self) bool {
+		self.age > 16
+	}
+}
+
+# embedded structs
+
+struct Profile {
+	Options
+	name string
+}
+
+profile := Profile{
+	foo: 4
+	name: "one cool dude"
+}
+assert profile.foo == profile.Options.foo
+
+# you can refer to and assign to embedded structs directly
+profile := Profile{
+	Options: Options{
+		foo: 200
+	}
+}
+print(profile.Options)
+profile.Options = Options{}
 
 ## main entrypoint
 
@@ -179,6 +302,33 @@ fn main() {
 	mut typed_map := map[string]int{}
 	typed_map["three"] = 4
 	typed_map.delete["three"]
+	
+	## types
+	
+	# type aliases
+	type Score = int
+	
+	# tuples are defined as type aliases
+	type Speed = (Point, int)
+	
+	# function signatures can be aliased
+	type Operation = fn (int) int
+	fn op(n int, f Operation) int {
+		return f(n)
+	}
+	fn double(n int) int {
+		return 2 * n
+	}
+	# explicit cast
+	print(op(4, Operation(double))) # 8
+	# duck typing
+	print(op(4, double)) # 8
+	# anonymous function
+	print(op(4, fn (n int) int {
+		return 3 * n
+	})) # 12
+	# lambda function
+	print(op(4, |n| 4 * n)) # 16
 	
 	# all types have zeroed values
 	u := User{}
@@ -526,6 +676,9 @@ fn main() {
 	}
 	fn max(comp T type, a T, b T) T where T: Ord { ... }
 	
+	# macros
+	# macro calls end in a !
+	
 	# macro functions run at comptime and operate on ASTs
 	macro derive_debug!(input Ast) Ast {
 		# input is the parsed struct
@@ -551,18 +704,18 @@ fn main() {
 		}
 	}
 	
-	# macro calls end in a !
 	# can be used for decorators
 	
+	# equivalent to `@derive(Equal)` with a common default handler
 	@derive_eq!
 	struct Point { x int, y int }
-
+	# equivalent to `@derive(Debug)` with a common defuault handler
 	@derive_debug!
 	struct User { name string, age int }
 	
 	# and for inline calls
 	vec!(1, 2, 3)
-	
+
 	# reflection in `comp`
 	fn debug_print<T>(value T) {
 		comp for field in type_info(T).fields {
@@ -577,6 +730,11 @@ fn main() {
 		}
 	}
 }
+
+## built-in top-level things (idk what to call them)
+
+# assert takes an expression
+assert foo.bar() == 5
 
 ## stdlib
 
@@ -600,12 +758,14 @@ Things I'm playing with that might not work or make it.
 	| upper()
 
 "error-only pipes"
+	|> try upper() |> catch upper()
 	|>~ upper()
 	~> upper()
 	|e upper()
 	
 # if any step returns none, the whole chain is none
 "optional-aware"
+	|> upper()?
 	|>? upper()
 	?> upper()
 	->? upper()
@@ -616,6 +776,7 @@ Things I'm playing with that might not work or make it.
 
 # any error short circuits
 "result-aware"
+	|> upper()@
 	|>! upper()
 	!> upper()
 	!-> upper()
@@ -638,6 +799,8 @@ formatted := name
 # TODO
 - [ ] bit flags syntax
 - [ ] channels
+- [ ] interfaces
+- [x] generics
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [x] methods
@@ -653,8 +816,8 @@ formatted := name
 	- `#`, `## doc`, `#[ ... ]#` or `#{ ... }#` or similar (nests supported) `nim gdscript`
 	- ~~`//`, `/// doc`, `/* ... */` (nests supported) `rust`
 - strings
-	- multiline syntax
-	- interpolation syntax
+	- [ ] multiline syntax
+	- [ ] interpolation syntax
 		- `println!("{} {2} {1} {foo}", a, b, c)` `rust`
 		- `"$a $b $c"` `v bash`
 		- `"`
@@ -662,9 +825,13 @@ formatted := name
 	- [x] raw syntax
 		- `r"tagged string"` `v rust python`
 		- ~~backtick? `nushell`
-	- [ ] annotation syntax
-		- `@ann` `rust v`
-		- just keywords or can the be passed data? `@ann(data)`
+- [x] annotation / attribute / pragma / directive syntax
+	- `@ann @ann("param")` `python java`
+		- `@app.route("/")` `python`
+	- ~~`@[ann] @[ann: "param"]` `v`
+	- ~~`#[ann] #[ann(param)] #[ann(param: "value")]` `rust`
+		- ~~worth noting this actually is compatible with / similar to my comment syntax, dunno if that's good or bad
+- [ ] pipe syntax
 - FFI
 - some sort of `todo`/`unimplemented` macros `rust`
 ## consider
