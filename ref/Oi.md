@@ -3,69 +3,6 @@
 - everything is an expression
 - high emphasis on ergonomics
 - hopefully ends up being good for gamedev
-# facets
-- trailing struct literals `v`
-- strongly & statically typed `rust v go zig`
-- everything is an expression `rust revo`
-- destructuring / pattern matching `rust haskell`
-- implicit
-	- `return` `rust`
-	- `result` `nim`
-		- should maybe rename because `Result` is going to be a thing
-		- `result`, `value`, `out`, `return`
-	- `self` `lua revo`
-		- I _think_ this is fully covered by the struct method syntax in `v` and `go`
-	- `Self` `rust`
-	- context `odin`
-- opt-in mutable `rust v`
-- pipes `Nushell revo`
-	- error-specific pipes (revo uses `|>~` though I won't) `revo`
-- `:atoms`/keywoards `clojure janet elixir revo`
-- optional types (`?`) `v zig`
-- result types (`!`) `v`
-- structs `c v go rust`
-- ~~tuple structs `rust`~~ (nah, we already have this with short struct literals)
-- tuples `rust zig nim julia janet`
-- comptime `zig revo nim`
-- no parens needed for simple conditionals `v rust go nu`
-- generics `rust v`
-- metaprogramming
-- block expressions `rust`
-- everything is an expression `rust julia revo`
-- compound types `rust`
-- `discard`/`pass` `nim gdscript`
-- macros `rust revo`
-- multiple returns `v lua`
-- enum literals `zig v`
-- doc comments `zig v rust`
-- namespaced variables/functions`clojure revo`
-- operator overloading `lua nim v`
-- `unreachable` `rust zig`
-- `try foo()` `zig`
-- `defer` `v go zig`
-- `defer/err` (`errdefer`) `zig`
-- zeroed values `v go`
-- `unsafe` `v rust`
-- first-class
-	- `assert` `rust v zig`
-	- `test` (and also `suite` and `test/skip`) `zig revo`
-	- `build` `zig revo`
-	- units and unit conversion (can be an imported stdlib that adds `impl`s)
-	- primitive data type for paths `nu nix`
-- cli
-	- `fmt` (opinionated) `v go`
-	- `doc` `rust v go gdscript`
-	- `test` `rust v go`
-	- `lsp`
-# syntax
-- `fn main() { ... }`
-- `const`
-- free-form / C-like / newline-sensitive, indent insensitive
-- `mut`
-- `:=`
-- no semicolons
-- `.enum_literal`
-- `loop`
 ## playground
 ```rust
 ## comments
@@ -108,21 +45,56 @@ import mymod.sha256 as mysha256
 ## functions
 
 # implicit return
+
 fn add(x int, y int) int {
 	x + y
 }
 
-# implicit result
-# (should maybe rename, because `Result` is going to be a thing)
+# resolves to LHS value being assigned to
 fn random_user() User {
-	# this returns `result` because `(a.b = "c") == a`, like in revo
-	result.name = "I Dunno"
+	user := User{}
+	# this implicitly returns `user` because `(a.b = "c") == a`, like in revo
+	user.name = "I Dunno"
 }
 
-# multiple returns
-# NOTE: still deciding between allowing multiple returns, or encouraging tuples
+# `$in` is the data passed to a function
+# that may sound weird until you learn about pipes
+
+# `$in` directly matches the call signature, so it is strongly typed and checked by the compiler
+fn single_val(x int) {
+	assert(x == $in)
+}
+fn one_tuple(x int,) {
+	assert(x == $in.0)
+}
+fn two_tuple(x int, y int) {
+	assert(x == $in.0)
+	assert(y == $in.1)
+}
+
+# multiple returns are sugar for returning a tuple
 fn foo() (int, int) {
-	2, 3
+	return 2, 3 # (2, 3)
+}
+
+# `$out` is initialized as the zero-value of the specified return type
+fn random_user() User {
+	print($out) # User{}
+	$out.name = "I Dunno"
+}
+ru := random_user()
+assert(ru.name == "I Dunno")
+
+# holds true for primitive returns, if less usefully
+fn two() int {
+	$out = 2
+}
+assert(two() == 2)
+
+# especially useful with tuple and struct returns
+fn divmod(a int, b int) (q int, r int) {
+	$out.q = a / b # AKA $out.0
+	$out.r = a % b # AKA $out.1
 }
 
 ## leading literals
@@ -345,12 +317,61 @@ fn main() {
 	typed_map["three"] = 4
 	typed_map.delete["three"]
 	
+	# tuples
+	
+	# tuples are very important in Oi
+	# under the hood many things are tuples, and some if it bleeds through in [hopefully] interesting ways
+	# function input params are treated as tuples in the compiler
+	# in functions with "multiple returns" (which is really just sugar for a tuple) the output is a tuple too
+	
+	# the `$in` var you've seen in other places makes this really clear
+	fn its_all_tuples_man(a bool, b int, c string) (bool, int, string) {
+		$in
+	}
+	result := its_all_tuples_man(true, 2, "lol")
+	print(result) # (true, 2, "lol")
+	
+	# named tuple fields
+	# this should remind the reader of Lua (and Revo <3)
+	
+	# naturally every tuple field has a positional index
+	# but they can also optionally be given aliases
+	# TODO: idk how this should work when comparing tuples with ==
+	t := (a: 1, b: 2)
+	print(t) # (a: 1, b: 2)
+	assert(t.a == t.0)
+	assert(t.b == t.1)
+	
+	# names can just be provided for some positions
+	t := (1, b: 2)
+	print(t) # (1, b: 2)
+	assert(t.b == t.1)
+	
+	# you can do this in function return signature
+	fn divmod(a int, b int) (q int, r int) {
+		(a / b, a % b)
+	}
+	result := divmod(10, 3)
+	print(result) # (q: 3, r: 1)
+	assert(result == (3, 1))
+	assert(result.0 == 3)
+	assert(result.1 == 1)
+	assert(result.q == 3)
+	assert(result.r == 1)
+	
+	fn http_get(url string) (int, body string, []Header) {
+		(200, "the body", [])
+	}
+	result := http_get("/health")
+	print(result) # (200, body: "the body", [])
+	assert(result.body == result.1)
+	
 	## types
 	
 	# type aliases
 	type Score = int
 	
-	# tuples are defined as type aliases
+	# type aliases are defined as tuples
 	type Speed = (Point, int)
 	
 	# function signatures can be aliased
@@ -697,7 +718,6 @@ fn main() {
 	}
 	
 	# defer gets the return values if relevant
-	# NOTE: will likely change the var name / syntax
 	fn do_stuff() bool {
 		defer {
 			if !$in {
@@ -917,6 +937,75 @@ ewrite(value) # stderr, no newline
 macro dbg!(expr) # debug-print, value passthru
 macro assert!(expr)
 ```
+# facets
+- trailing struct literals `v`
+- strongly & statically typed `rust v go zig`
+- everything is an expression `rust revo`
+- destructuring / pattern matching `rust haskell`
+- implicit
+	- `return` `rust`
+	- `result` `nim`
+		- should maybe rename because `Result` is going to be a thing
+		- `result`, `value`, `out`, `return`
+	- `self` `lua revo`
+		- I _think_ this is fully covered by the struct method syntax in `v` and `go`
+	- `Self` `rust`
+	- context `odin`
+- opt-in mutable `rust v`
+- pipes `Nushell revo`
+	- error-specific pipes (revo uses `|>~` though I won't) `revo`
+- `:atoms`/keywoards `clojure janet elixir revo`
+- optional types (`?`) `v zig`
+- result types (`!`) `v`
+- structs `c v go rust`
+- ~~tuple structs `rust`~~ (nah, we already have this with short struct literals)
+- tuples `rust zig nim julia janet`
+- comptime `zig revo nim`
+- no parens needed for simple conditionals `v rust go nu`
+- generics `rust v`
+- metaprogramming
+- block expressions `rust`
+- everything is an expression `rust julia revo`
+- compound types `rust`
+- `discard`/`pass` `nim gdscript`
+- macros `rust revo`
+- multiple returns `v go lua`
+- enum literals `zig v`
+- doc comments `zig v rust`
+- namespaced variables/functions`clojure revo`
+- operator overloading `lua nim v`
+- `unreachable` `rust zig`
+- `try foo()` `zig`
+- `defer` `v go zig`
+- `defer/err` (`errdefer`) `zig`
+- zeroed values `v go`
+- `unsafe` `v rust`
+- it's all tuples man
+	- the I and the O of I/O are tuples
+	- args coming in are tuples
+	- multiple returns are tuples
+	- fn params are just destructuring the tuple
+	- this makes `$in` make a _lot_ of sense
+- first-class
+	- `assert` `rust v zig`
+	- `test` (and also `suite` and `test/skip`) `zig revo`
+	- `build` `zig revo`
+	- units and unit conversion (can be an imported stdlib that adds `impl`s)
+	- primitive data type for paths `nu nix`
+- cli
+	- `fmt` (opinionated) `v go`
+	- `doc` `rust v go gdscript`
+	- `test` `rust v go`
+	- `lsp`
+# syntax
+- `fn main() { ... }`
+- `const`
+- free-form / C-like / newline-sensitive, indent insensitive
+- `mut`
+- `:=`
+- no semicolons
+- `.enum_literal`
+- `loop`
 ## lab 
 Things I'm playing with that might not work or make it.
 ```rust
@@ -926,6 +1015,9 @@ Things I'm playing with that might not work or make it.
 - [x] generics
 - [ ] varargs
 	- v vs nim vs ?
+	- to mesh with "tuples everywhere", a vararg should take up one element in the params tuple
+		- this only matters behind the scenes
+		- `fn print(args ...string) { ... }` -> `([]string,)`
 - [ ] bit flags syntax
 - [ ] channels
 - [ ] async
@@ -975,11 +1067,8 @@ Things I'm playing with that might not work or make it.
 ## consider
 - UCFS? `nim`
 - nu-like arrays and stuff `[1 2 3 4]` `nu`
-- maybe the I _and_ the O are tuples. It's all tuples man
-	- args coming in are tuples
-	- multiple returns are tuples
-	- fn params are just destructuring the tuple
-	- this makes `$in` make a _lot_ of sense
+- named returns `fn divmod(a int, b int) (q int, r int) { (a / b, a % b) }`
+	- overlaps with trailing struct literals; might be nice
 # stdlib
 - `os`
 - `fs`
