@@ -87,6 +87,7 @@ assert(ru.name == "I Dunno")
 
 # holds true for primitive returns, if less usefully
 fn two() int {
+	assert($out == 0)
 	$out = 2
 }
 assert(two() == 2)
