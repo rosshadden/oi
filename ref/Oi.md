@@ -57,10 +57,9 @@ fn random_user() User {
 	user.name = "I Dunno"
 }
 
-# `$in` is the data passed to a function
-# that may sound weird until you learn about pipes
+# implicit `$in` var is the data passed to a function
 
-# `$in` directly matches the call signature, so it is strongly typed and checked by the compiler
+# `$in` directly matches the call signature, so it is strongly typed and enforceable by the compiler
 fn single_val(x int) {
 	assert(x == $in)
 }
@@ -77,7 +76,7 @@ fn foo() (int, int) {
 	return 2, 3 # (2, 3)
 }
 
-# `$out` is initialized as the zero-value of the specified return type
+# implicit `mut $out` var is initialized as the zero-value of the specified return type
 fn random_user() User {
 	print($out) # User{}
 	$out.name = "I Dunno"
@@ -182,7 +181,7 @@ struct Options {
 	bar bool
 }
 impl User {
-	fn with_options(opt Options) {
+	fn with_options(self, opt Options) {
 		print(opt)
 	}
 }
@@ -196,7 +195,7 @@ struct Settings {
 	idk int
 }
 impl User {
-	fn with_settings(settings Settings) {
+	fn with_settings(self, settings Settings) {
 		print(settings)
 	}
 }
@@ -265,6 +264,9 @@ impl User {
 	fn can_register(self) bool {
 		self.age > 16
 	}
+	fn set_age(mut self, age int) {
+		self.age = age
+	}
 }
 
 # embedded structs
@@ -289,6 +291,70 @@ profile := Profile{
 print(profile.Options)
 profile.Options = Options{}
 
+## traits
+
+struct Dog {
+	kind string
+}
+impl Dog {
+	fn speak(self) string { "woof" }
+}
+
+struct Cat {
+	kind string
+}
+impl Dog {
+	fn speak(self) string { "meow" }
+}
+
+trait Animal {
+	kind string
+	speak() string
+}
+impl Animal {
+	# traits can have their own methods that use other defined fields and methods
+	fn shout(self) string {
+		self.speak().upper()
+	}
+}
+
+fn demo_traits() {
+	dog := Dog{"Collie"}
+	cat := Cat{"Egyptian Mau"}
+	animals := []Animal{ dog, cat }
+	
+	loop animal in animals {
+		print "a {animal.kind} says: {animal.speak()}"
+	}
+}
+
+# implementing traits is implicit
+# but you can optionally enforce it with an `impl`
+struct Person {
+	kind string = "Human"
+}
+impl Animal for Person {
+	fn speak(self) string { "Lorem ipsum..." }
+}
+
+# traits may be marked as explicit, requiring manual implementation
+@explicit
+trait Fruit {
+	seeds bool
+	color Color
+}
+# is not a Fruit
+struct Kiwi {
+	seeds bool = true
+	color Color = :green
+}
+# is a Fruit
+struct Apple {
+	seeds bool = true
+	color Color = :green
+}
+impl Fruit for Apple
+
 ## main entrypoint
 
 fn main() {
@@ -301,14 +367,77 @@ fn main() {
 	# primatives
 	bull := true
 	str := "string"
-	raw := r"hi\nmom"
 	integer := 1337
 	flt := 69.420
 	
+	# strings
+	
+	normal := "NORMAL mode"
+	raw := r"there is no\nescape"
+	regex := r"\d+\.\d+"
+	multiline := "
+		strings are multiline
+		by default
+	"
+	# string interpolation
+	who := "mom"
+	print("hi {who}!")
+
+	# any expression works inside braces
+	user := User { name: "alice", age: 30 }
+	print("{user.name} is {user.age}")
+	print("sum: {2 + 2}")
+	print("upper: {who.uppercase()}")
+	
+	# escape braces by doubling
+	print("use {{braces}} like this")
+	
+	# works in multiline strings
+	msg := "
+		dear {who},
+		your balance is {amount}.
+	"
+	# but no interpolation in raw strings
+	path := r"C:\Users\{who}" # {who} is not interpolated
+	
 	# arrays
-	num_array := [1, 2, 3]
+
+	# collection of 0-indexed elements of the same type
+	names := ["john", "jacob", "jingleheimerschmidt"]
+	print(names)
+	# can be accessed with an index expression
+	assert(names[1] == "jacob")
+	i := 1
+	assert(names[i] == names[1])
+	# numbers literals may also be used with dot notation
+	assert(names.0 == "john")
+	assert(names.2 == "jingleheimerschmidt")
+	
+	# append with `<<`
+	mut odd := [1, 3, 5]
+	odd << 7
+	assert(odd.3 == 7)
+	# entire arrays can be appended too
+	odd << [9 11]
+	assert(odd.5 == 11)
+	assert(odd.len == 6)
+	
+	# arrays support dropping the commas in obvious places
+	even := [2 4 6]
+	
+	# `in` operator returns whether array contains element
+	assert(6 in even)
+	
+	# arrays have fields
+	# `len` is the number of initialized elements in the array
+	assert(even.len == 3)
+	
+	# array init
+	mut arr := []int{}
+	arr << 3
 	
 	# maps
+	
 	num_map := {
 		one: 1
 		two: 2
@@ -401,10 +530,6 @@ fn main() {
 	
 	# unpack returns
 	a, b := foo()
-
-	# interpolation
-	who := "mom"
-	print("hi {who}!")
 
 	## loops
 	
@@ -1012,7 +1137,7 @@ Things I'm playing with that might not work or make it.
 ```rust
 ```
 # TODO
-- [ ] interfaces
+- [x] traits / interfaces
 - [x] generics
 - [ ] varargs
 	- v vs nim vs ?
@@ -1062,7 +1187,7 @@ Things I'm playing with that might not work or make it.
 - [x] pipe syntax
 - [ ] FFI
 - [ ] some sort of `todo`/`unimplemented` macros `rust`
-- [ ] solve the closure dissonance
+- [x] solve the closure dissonance
 	- lambdas vs. anonymous fns
 	- explicit vs implicit captures
 ## consider
@@ -1080,7 +1205,7 @@ Things I'm playing with that might not work or make it.
 - `slog`
 - `time`
 - `units`
-# vet
+# vet %% fold %%
 ## targets
 - V
 - C
@@ -1091,7 +1216,8 @@ Things I'm playing with that might not work or make it.
 ## implementation
 - V
 - Zig
-# influences
+# archive %% fold %%
+## influences
 - V
 - [revo](https://github.com/if-not-nil/revo)
 - Nushell
@@ -1110,8 +1236,8 @@ Things I'm playing with that might not work or make it.
 - Elixir
 - Haskell
 - GDScript
-# name
-## shortlist
+## name
+### shortlist
 - vex
 - oi / o7
 - sys
@@ -1119,7 +1245,7 @@ Things I'm playing with that might not work or make it.
 - kiln
 - wire
 - ~~ice
-## misc
+### misc
 - noll
 - loom
 - rime
@@ -1131,7 +1257,7 @@ Things I'm playing with that might not work or make it.
 - nova
 - eon / aeon
 - egon
-## animals
+### animals
 - axolotl
 - ~~koi
 - dog
