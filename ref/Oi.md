@@ -370,6 +370,13 @@ fn main() {
 	integer := 1337
 	flt := 69.420
 	
+	# ranges
+	# TODO: are until/after possible outside array slices?
+	between := 1..3
+	until := ..3
+	after := 1..
+	crossing_over_with_john_edward := -4..4
+	
 	# strings
 	
 	normal := "NORMAL mode"
@@ -436,6 +443,12 @@ fn main() {
 	mut arr := []int{}
 	arr << 3
 	
+	# fixed size arrays
+	mut three := [3]string{}
+	three.0 = "larry"
+	three.1 = "curly"
+	three.2 = "moe"
+	
 	# maps
 	
 	num_map := {
@@ -446,6 +459,14 @@ fn main() {
 	mut typed_map := map[string]int{}
 	typed_map["three"] = 4
 	typed_map.delete["three"]
+	
+	# array slices are array subsets of another array
+	# proper array
+	even := [0 2 4 6 8]
+	# slices of it
+	assert even[1..3] == [2 4]
+	assert even[..3] == [0 2 4]
+	assert even[1..] == [2 4 6 8]
 	
 	# tuples
 	
@@ -1106,6 +1127,8 @@ macro assert!(expr)
 - `defer/err` (`errdefer`) `zig`
 - zeroed values `v go`
 - `unsafe` `v rust`
+- named returns `fn divmod(a int, b int) (q int, r int) { (a / b, a % b) }` `oi`
+- nu-like arrays and stuff `[1 2 3 4]` `nu`
 - it's all tuples man
 	- the I and the O of I/O are tuples
 	- args coming in are tuples
@@ -1161,8 +1184,8 @@ Things I'm playing with that might not work or make it.
 	- `#`, `## doc`, `#[ ... ]#` or `#{ ... }#` or similar (nests supported) `nim gdscript`
 	- ~~`//`, `/// doc`, `/* ... */` (nests supported) `rust`
 - strings
-	- [ ] multiline syntax
-	- [ ] interpolation syntax
+	- [x] multiline syntax
+	- [x] interpolation syntax
 		- `println!("{} {2} {1} {foo}", a, b, c)` `rust`
 		- `"$a $b $c"` `v bash`
 		- `"`
@@ -1192,9 +1215,6 @@ Things I'm playing with that might not work or make it.
 	- explicit vs implicit captures
 ## consider
 - UCFS? `nim`
-- nu-like arrays and stuff `[1 2 3 4]` `nu`
-- named returns `fn divmod(a int, b int) (q int, r int) { (a / b, a % b) }`
-	- overlaps with trailing struct literals; might be nice
 # stdlib
 - `os`
 - `fs`
