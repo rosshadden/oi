@@ -50,6 +50,7 @@
 - zeroed values `v go`
 - `unsafe` `v rust`
 - nu-like arrays and stuff `[1 2 3 4]` `nu`
+- unusual or arbitrary number precision `zig`
 - it's all tuples man
 	- the I and the O of I/O are tuples
 	- args coming in are tuples

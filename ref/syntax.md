@@ -40,6 +40,16 @@ import mymod.sha256 as mysha256
 
 ## functions
 
+# private within module by default
+fn foo() {
+	print("foo")
+}
+
+# use `pub` modifier to make visible to outside modules
+pub fn bar() {
+	print("bar")
+}
+
 # implicit return
 
 fn add(x int, y int) int {
@@ -296,6 +306,19 @@ profile := Profile{
 print(profile.Options)
 profile.Options = Options{}
 
+# operator overloading
+
+struct Point {
+	x int
+	y int
+}
+impl Add for Point {
+	fn add(self, other: Self) Self {
+		Self{self.x + other.x, self.y + other.y}
+	}
+}
+assert(Point{1, 0} + Point{2, 3} == Point{3, 3})
+
 ## traits
 
 struct Dog {
@@ -308,7 +331,7 @@ impl Dog {
 struct Cat {
 	kind string
 }
-impl Dog {
+impl Cat {
 	fn speak(self) string { "meow" }
 }
 
@@ -335,6 +358,7 @@ fn demo_traits() {
 
 # implementing traits is implicit
 # but you can optionally enforce it with an `impl`
+# NOTE: I think I might invert this so they are explicit by default
 struct Person {
 	kind string = "Human"
 }
@@ -343,6 +367,7 @@ impl Animal for Person {
 }
 
 # traits may be marked as explicit, requiring manual implementation
+# NOTE: I think I might invert this so they are explicit by default
 @explicit
 trait Fruit {
 	seeds bool
@@ -391,6 +416,42 @@ fn main() {
 	until := ..3
 	after := 1..
 	crossing_over_with_john_edward := -4..4
+	
+	# paths
+	# TODO: path literal
+	
+	# numbers
+	
+	# number litarals are `int` (`i32`) and `float` (`f64`) unless otherwise indicated
+	i := 55 # int AKA i32
+	f := 55.55 # float AKA f64
+	e_notation_float := 10e2 # 1000.0
+	
+	# can use a prefix to denote common notations
+	# these are all 123
+	a0 := 123
+	a1 := 0x7B
+	a2 := 0b01111011
+	a3 := 0o173
+	
+	# can separate arbitrarily with `_`
+	bil := 1_000_000_000
+	wtf := 1_2_3_4_5
+	floater := 10_000.22
+	binary_mask := 0b1_1111_1111
+	permissions := 0o7_5_5
+	big_addr := 0xFF80_0000_0000_0000
+	
+	# can cast between types
+	big_int := i64(50_000)
+	small_unsigned_int := u8(16)
+	
+	# supports arbitrary bit-width integers, like Zig
+	# use `i<width>` and `u<width>`, where width in [1, 65535]
+	weird_one := i2(1)
+	wat := u7(1000)
+	
+	# supported floating types are: f16 f32 f64 f80 f128
 	
 	# strings
 	
@@ -636,40 +697,118 @@ fn main() {
 	result := assert(check()) |> next
 	
 	# match
+	(i, foo, bar, u, me) := (0, true, true, 2, [0 2 4])
 	n := match true {
-		1 < 3 { "love ya" }
+		i < 3 { "love ya" }
+		foo == bar { "soul mates" }
+		u in me { "🥵" }
 		else { "no dice" }
 	}
 
-	# Option and Result types
-
-	nope := ?int(none)
+	## `Option` and `Result` types
+	
+	# `?T` holds `some(T)` or `none`
+	# `!T` holds `ok(T)` or an `error` (any type implementing the `Error` trait)
+	# bare return values are auto-wrapped
+	# there is no need for an explicit `ok()` or `some()` un/wrapper like there is in Rust
 	
 	struct Repo {
 		users []User
-		some_optional_field ?int
-		some_result_field !int
+		cached_name ?string # zero value is `none`
 	}
 	
 	impl Repo {
-		# result
-		find_user(id int) !User {
-			for user in self.users {
+		# !T returns a value or an error
+		fn find_user(id int) !User {
+			loop user in self.users {
 				if user.id == id { return user }
 			}
 			return error("User {id} not found")
 		}
-
-		# option
-		find_user_if_exists(id int) ?User {
-			for user in self.users {
+	
+		# ?T returns a value or `none`
+		fn find_user_if_exists(id int) ?User {
+			loop user in self.users {
 				if user.id == id { return user }
 			}
 			return none
 		}
 	}
 	
-	user := repo.find_user(7) or { return }
+	# ?T and !T must be handled — the or block is required to unwrap
+	# $in is the Error value (!T) or none (?T)
+	user := repo.find_user(7) or {
+		print($in.message())  # "User 7 not found"
+		return
+	}
+	
+	# or block can yield a fallback value of the same type
+	user := repo.find_user(7) or { User{ name: "guest" } }
+	
+	# check error type in the or block
+	file := fs.open(path) or {
+		if $in is fs.NotFoundError { return create_default() }
+		panic($in.message())
+	}
+	
+	# postfix `!` propagates error up to the caller
+	# caller must return !T, or it panics if used in main()
+	fn load_config(path string) !Config {
+		raw := fs.read(path)!
+		parse(raw)!
+	}
+	
+	# postfix `?` propagates none up to the caller
+	# caller must return ?T
+	fn display_name(id int) ?string {
+		user := repo.find_user_if_exists(id)?
+		user.name
+	}
+	
+	# creating option/result values directly
+	nope   := ?int(none)
+	maybe  := ?int(42)
+	ok	 := !int(7)
+	broken := !int(error("oops"))
+	
+	# ?T / !T wrap the whole tuple in multi-return
+	fn checked_divmod(a int, b int) !(int, int) {
+		if b == 0 { return error("division by zero") }
+		(a / b, a % b)
+	}
+	(q, r) := checked_divmod(10, 3)!
+	
+	# custom error types
+	# embed Error for default impls — only override what you need
+	
+	struct ParseError {
+		Error
+		line int
+		col  int
+	}
+	impl ParseError {
+		fn message(self) string { "parse error at {self.line}:{self.col}" }
+		fn code(self) int { 1 }
+	}
+	
+	fn parse(src string) !Ast {
+		...
+		return ParseError{ line: 4, col: 2 }  # auto-cast to Error
+	}
+	
+	parse(src) or { panic($in.message()) }
+	
+	# error chaining via cause()
+	struct WrappedError {
+		Error
+		msg   string
+		inner Error
+	}
+	impl WrappedError {
+		fn message(self) string { self.msg }
+		fn cause(self) ?Error  { self.inner }
+	}
+
 	
 	## enums
 	
@@ -697,10 +836,10 @@ fn main() {
 	
 	# pattern matching (exhaustive)
 	area := match s {
-		.circle { radius } => PI * radius * radius,
-		.rectangle { width, height } => width * height,
-		.triangle(a, b, c) => heron(a, b, c),
-		.point => 0.0,
+		.circle { radius } => PI * radius * radius
+		.rectangle { width, height } => width * height
+		.triangle(a, b, c) => heron(a, b, c)
+		.point => 0.0
 	}
 	
 	# specified values
@@ -880,6 +1019,9 @@ fn main() {
 		else { print(os) }
 	}
 
+	# can be used as an if-else chain
+	# evaluated in order, first match wins if multiple satisfy the condition
+
 	# comma can be used to test multiple values
 	fn is_red_or_blue(c Color) bool {
 		return match c {
@@ -979,7 +1121,7 @@ fn main() {
 			default_config()
 		}
 	"gtfo" |> process or { panic("uh oh...") }
-	"err binding" |> raise_err |> {|err| log.error(err) }
+	"err binding" |> raise_err |> or {|err| log.error(err) }
 	
 	# input data can be optionally bound to names when desired
 	# this lets you unambiguously nest
