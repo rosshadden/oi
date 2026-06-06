@@ -14,7 +14,7 @@
 ##
 ## # support markdown
 ## ```
-## # code block language defaults to itself
+## # code block language defaults to Oi
 ## ```
 
 ## modules
