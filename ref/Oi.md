@@ -1,6 +1,6 @@
 # principles
 - general purpose system language
-- everything is an expression
+- [almost?] everything is an expression
 - high emphasis on ergonomics
 - hopefully ends up being good for gamedev
 ## [[syntax]]
@@ -51,12 +51,7 @@
 - `unsafe` `v rust`
 - nu-like arrays and stuff `[1 2 3 4]` `nu`
 - unusual or arbitrary number precision `zig`
-- it's all tuples man
-	- the I and the O of I/O are tuples
-	- args coming in are tuples
-	- ~~multiple returns are tuples~~
-	- fn params are just destructuring the tuple
-	- this makes `$in` make a _lot_ of sense
+- many things are tuples
 - first-class
 	- `assert` `rust v zig`
 	- `test` (and also `suite` and `test/skip`) `zig revo`
@@ -71,11 +66,13 @@
 # TODO
 - [ ] implicit context
 - [ ] ptr type (ptr, voidptr, rawptr) `nim v odin`
+- [ ] make another pass on generics. I don't love what I have now
+- [ ] make another pass on metaprogramming. I don't love what I have now
 - [ ] varargs
 	- v vs nim vs ?
 	- to mesh with "tuples everywhere", a vararg should take up one element in the params tuple
 		- this only matters behind the scenes
-		- `fn print(args ...string) { ... }` -> `([]string,)`
+		- `fn print(foo int, args ...string) { ... }` -> `(int, []string,)`
 - [ ] bit flags syntax
 - [ ] channels
 - [ ] units and unit conversion
@@ -93,6 +90,9 @@
 - UCFS? `nim`
 - doing `$in` differently
 	- the concept is cool and work well but it's still a magic var
+	- maybe rename it?: `$ ~ in _ :in`
+- remove nushell-style block bindings `{|vars here| ...}` in favor of just encouraging explicit `orig := $in` var caching
+	- lambdas are fine, leave them alone `|x| x * 2`
 - "it's all expressions" clashes with assignment
 	- could drop assignments being expr
 	- could double down

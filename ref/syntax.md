@@ -120,7 +120,7 @@ print "lol"
 sleep 1_000
 log.group :process
 
-# this can be used in conjunction with trailing closures
+# this can be used in conjunction with trailing blocks
 test "foo" { assert(foo == bar) }
 benchmark 1_000_000 { do_work() }
 config :production { ... }
@@ -623,6 +623,34 @@ fn main() {
 	print(result) # (200, body: "the body", [])
 	assert(result.body == result.1)
 	
+	## atoms
+	
+	# Oi has first-class atoms
+	:foo
+	assert(:foo != :bar)
+	food := :apple
+	assert(food == :apple)
+	
+	# atoms are contextually coerced into Enum values
+	# (this hopefully reminds the reader of the `.value` enum shorthand in Zig and V)
+	enum Stat { str dex int }
+	struct User {
+		mut stat Stat
+	}
+	user1 := User{ Stat:dex } # this is normal enum syntax
+	user2 := User{ :dex } # this is a coerced atom
+	assert(user1.stat == user2.stat)
+	# TODO: should this be expected to fail, or coerce despite no type annotations to hint the compiler?: assert(Stat:dex == :dex)
+	
+	# this might be useful for quick prototyping to organically become finalized
+	
+	# prototype code
+	mut state := :loading
+	state = :ready
+	
+	# on a later pass, despite nothing at the callsites changing, adding this enum definition would add strong typing and copiler checking
+	enum State { loading ready error }
+	
 	## types
 	
 	# type aliases
@@ -682,14 +710,8 @@ fn main() {
 	  print(x)
 	}
 	
-	## everything is an expression
+	## [almost?] everything is an expression
 	
-	# returns the LHS object (`user`)
-	user.age = 30
-	assert((user.age = 30) == user)
-	# this lets you do fun things like method chains on field setting:
-	(user.age = 30).save()
-
 	# ternary (`if` is an expression)
 	foo := if true { "yes" } else { "no" }
 
@@ -919,6 +941,9 @@ fn main() {
 	
 	// convert an enum value to a string
 	print(Cycle.one.str())
+	
+	# the newlines are optional
+	enum Fruit { apple orange grape }
 
 	## errors
 	
@@ -952,16 +977,34 @@ fn main() {
 	
 	# trailing blocks
 	
+	# if a block is the last argument of a function, it may be placed outside the parens
+	spy() {
+		dump($in)
+		$in
+	}
+	
+	# if a leading literal and/or trailing block were the only params of a function, the parens may be omitted entirely
+	spy {
+		dump($in)
+		$in
+	}
+	
+	# all of this intentionally composes with leading literals,
+	# allowing for ordinary functions that look like they are built-in
+	# ```
 	# test("registration", {
 	#	 user := make_user()
 	#	 assert(user.can_register())
 	# })
+	# ```
 	test "registration" {
 		user := make_user()
 		assert(user.can_register())
 	}
+	retry 3 { fetch(url)! }
+	timeout 5.sec { slow_call() }
 	
-	# implicit `$in` var refers to the input args
+	# implicit `$in` var refers to the input args as stated above, which in this case is whatever the function calls such blocks with
 	db.transaction {
 		$in.insert(user)
 		$in.insert(order)
@@ -974,6 +1017,7 @@ fn main() {
 		tx.insert(order)
 	}
 	# this lets you handle nested blocks
+	# TODO: consider removineg this syntax and just encouraging `orig := $in` var caching
 	
 	# mutex.with({ do_work() })
 	mutex.with {
@@ -1071,7 +1115,7 @@ fn main() {
 		do_stuff()
 	}
 
-	## pipes
+	## pipelines
 
 	input := "let's do this"
 	result := input |> trim |> upper
@@ -1151,6 +1195,27 @@ fn main() {
 		|> uppercase
 		|> wrap("[", $in, "]")
 		|> log(level: :info, $in)
+		
+	# pipeline functions
+
+	# there is a shorthand for creating methods that are just made up of a pipeline
+	# the following function:
+	fn slugify(s string) string {
+		s |> trim |> lower |> replace(" ", "-")
+	}
+	# may be written like this:
+	fn slugify = trim |> lower |> replace(" ", "-")
+	# type annotations may be provided for clarity, but are inferred from the pipeline
+	fn slugify(s string) string = trim |> lower |> replace(" ", "-")
+	
+	# this lets any bound values be used directly throughout the pipeline,
+	# rather than each stage only having access to the return of the prior stage
+	fn count_letters(s string) int =
+		lower |> uniq |> replace("[^A-Za-z]", "") |> len |> {
+			log.info("called count_letters with {s}, and it has {$in} unique letters")
+			$in
+		}
+	assert(count_letters("hi, mom!") == 4)
 	
 	## metaprogramming
 	
