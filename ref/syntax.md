@@ -758,7 +758,7 @@ fn main() {
 		}
 	}
 	
-	# ?T and !T must be handled — the or block is required to unwrap
+	# ?T and !T must be handled; the or block is required to unwrap
 	# $ is the Error value (!T) or none (?T)
 	user := repo.find_user(7) or {
 		print($.message())  # "User 7 not found"
@@ -802,7 +802,7 @@ fn main() {
 	(q, r) := checked_divmod(10, 3)!
 	
 	# custom error types
-	# embed Error for default impls — only override what you need
+	# embed Error for default impls, only override what you need
 	
 	struct ParseError {
 		Error
