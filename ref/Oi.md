@@ -93,7 +93,7 @@
 	- Is that _really_ off the table?
 - remove nushell-style block bindings `{|vars here| ...}` in favor of just encouraging explicit `orig := $` var caching
 	- lambdas are fine, leave them alone `|x| x * 2`
-- inverting traits so they are explicit by default
+- mutable `$` by default or opt-in?
 # stdlib
 - `os`
 - `fs`

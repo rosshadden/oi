@@ -87,6 +87,7 @@
 - ~~explicit procedure overloading `odin`
 - ~~`using` statement `odin`
 	- don't need the full thing (because oi has embedded structs) but the "can pass in as if it were the used type" part is nice
+- ~~inverting traits so they are explicit by default~~
 ### on multiple returns
 Multiple returns are weird as they are, with lots of rough edges.
 1. They could stay how they are, as sugary tuples.

@@ -56,14 +56,16 @@ fn add(x int, y int) int {
 	x + y
 }
 
-# resolves to LHS value being assigned to
 fn random_user() User {
 	user := User{}
-	# this implicitly returns `user` because `(a.b = "c") == a`, like in revo
 	user.name = "I Dunno"
+	user
 }
 
-# implicit `$` var is the data passed to a function
+# implicit input data
+
+# `$` is the data passed to a function
+# TODO: mutable `$` by default or opt-in?
 
 # `$` directly matches the call signature, so it is strongly typed and enforceable by the compiler
 fn single_val(x int) {
@@ -356,34 +358,37 @@ fn demo_traits() {
 	}
 }
 
-# implementing traits is implicit
-# but you can optionally enforce it with an `impl`
-# NOTE: I think I might invert this so they are explicit by default
+# implementing traits typically requires explicit `impl` blocks
 struct Person {
 	kind string = "Human"
 }
 impl Animal for Person {
 	fn speak(self) string { "Lorem ipsum..." }
 }
+# TODO: nail down syntax for trait checking. this is english for clarity, not final form
+assert(Person is of Animal)
 
-# traits may be marked as explicit, requiring manual implementation
-# NOTE: I think I might invert this so they are explicit by default
-@explicit
+# you can optionally make traits implicit with @implicit
+@implicit
 trait Fruit {
 	seeds bool
 	color Color
 }
-# is not a Fruit
 struct Kiwi {
 	seeds bool = true
 	color Color = :green
 }
-# is a Fruit
 struct Apple {
 	seeds bool = true
-	color Color = :green
+	color Color = :red
+}
+struct Bike {
+	color Color = :purple
 }
 impl Fruit for Apple
+assert(Kiwi is of Fruit)
+assert(Apple is of Fruit)
+assert(Bike is not of Fruit)
 
 ## main entrypoint
 
@@ -969,9 +974,12 @@ fn main() {
 	# blocks are groups of expressions
 	# the final expression is the result of the block
 	three := {
-		do_thing()
+		light_the_beacons()
 		3
 	}
+	
+	# blocks may use `;` to indicate joined lines
+	long_but_short := { do_thing(); 3 }
 	
 	# normally blocks are eager, but when directly passed to something that expects a callable, they are deferred and treated as callables
 	nums.map({ $ * 2 })
@@ -1005,7 +1013,7 @@ fn main() {
 	retry 3 { fetch(url)! }
 	timeout 5.sec { slow_call() }
 	
-	# implicit `$` var refers to the input args as stated above, which in this case is whatever the function calls such blocks with
+	# `$` refers to the input args as stated above, which in this case is whatever the function calls such blocks with
 	db.transaction {
 		$.insert(user)
 		$.insert(order)
