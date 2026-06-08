@@ -65,7 +65,8 @@
 	- `lsp`
 # TODO
 - [ ] implicit context
-- shore up  enum shorthands (`.value` vs `:value` or both)
+- [ ] a built-in cascade/chain operator (or `with`), as if methods had a `return self` `clojure moonscript dart smalltalk`
+- [ ] shore up  enum shorthands (`.value` vs `:value` or both)
 - [ ] ptr type (ptr, voidptr, rawptr) `nim v odin`
 - [ ] make another pass on generics. I don't love what I have now
 - [ ] make another pass on metaprogramming. I don't love what I have now
@@ -88,16 +89,10 @@
 - [ ] FFI
 - [ ] some sort of `todo`/`unimplemented` macros `rust`
 ## consider
-- UCFS? `nim`
-- a built-in chain operator, as if methods had a `return self` `moonscript`
+- C++20 uses `operator|`, a naked `|` for pipelines
+	- Is that _really_ off the table?
 - remove nushell-style block bindings `{|vars here| ...}` in favor of just encouraging explicit `orig := $` var caching
 	- lambdas are fine, leave them alone `|x| x * 2`
-- "it's all expressions" clashes with assignment
-	- could drop assignments being expr
-	- could double down
-- explicit procedure overloading `odin`
-- `using` statement `odin`
-	- don't need the full thing (because oi has embedded structs) but the "can pass in as if it were the used type" part is nice
 - inverting traits so they are explicit by default
 # stdlib
 - `os`
