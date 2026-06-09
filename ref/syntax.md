@@ -637,7 +637,13 @@ fn main() {
 	assert(food == :apple)
 	
 	# atoms are contextually coerced into Enum values
-	# (this hopefully reminds the reader of the `.value` enum shorthand in Zig and V)
+	# NOTE: atoms by their nature cannot carry payloads
+	enum Color { red blue }
+	mut c := Color.red
+	c = :blue
+	assert(c == Color.blue)
+	assert(Color.blue == :blue)
+	
 	enum Stat { health mana stamina }
 	struct User {
 		mut stat Stat
@@ -645,8 +651,6 @@ fn main() {
 	user1 := User{ Stat:mana } # this is normal enum syntax
 	user2 := User{ :mana } # this is a coerced atom
 	assert(user1.stat == user2.stat)
-	# another context that coerces
-	assert(Stat:stamina == :stamina)
 	
 	# this might be useful for quick prototyping to organically become finalized
 	
@@ -655,6 +659,7 @@ fn main() {
 	state = :ready
 	
 	# on a later pass, despite nothing at the callsites changing, adding this enum definition would add strong typing and copiler checking
+	# STYLE: if an enum exists, prefer `.foo`
 	enum State { loading ready error }
 	
 	## types
@@ -846,9 +851,10 @@ fn main() {
 		green
 		blue
 	}
+	# fully-qualified enum, for when inference can't help
 	mut c := Color.green
+	# shorthand enum when the type is known from context
 	c = .red
-	c = :blue
 	
 	# variants with payloads
 	enum Shape {
@@ -1141,8 +1147,10 @@ fn main() {
 	"result-aware" |> upper!
 	result := input |> trim |> upper |> save!
 	
-	# `$` is the data flowing into the pipeline step
-	# this lets us do clojure-like threading
+	# Each step gets the piped value as `$`.
+	# A bare fn (ex: `trim`) is ran with the input as the first param (`trim` == `trim($)`).
+	# Any other expression (a call using `$`, an `if`, a block) # is evaluated in place with `$` bound.
+	# This lets us do clojure-like threading.
 	"threading"
 	  |> wrap("[", $, "]")
 	  or log_errors("foo", $)
@@ -1154,19 +1162,26 @@ fn main() {
 		|> upper
 		or handler
 	
-	# pipeline steps can be blocks too
+	# any expression can be used as a pipeline step, including blocks
+	# for convenience, in blocks `$` is bound to the passed-in params as if they were a function
 	result := "error-only pipes with block"
 		|> {
 			idk($)
 		}
 		|> {
 			log.info("stuff and things: {$}")
-			true
+			:block_done
+		}
+		|> fn {
+			assert($ == true)
+			log.info("this is an _actual_ function")
+			:fn_done
 		}
 		or {
 			eprint($)
 			return $
 		}
+	assert(result == :fn_done)
 	config := os.env("config_path")
 		|> read_file!
 		|> parse!

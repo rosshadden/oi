@@ -76,6 +76,7 @@
 	- ~~`#[ann] #[ann(param)] #[ann(param: "value")]` `rust`
 		- ~~worth noting this actually is compatible with / similar to my comment syntax, dunno if that's good or bad
 - [x] pipe syntax
+- [x] a built-in cascade/chain operator (or `with`), as if methods had a `return self` `clojure moonscript dart smalltalk`
 - [x] solve the closure dissonance
 	- lambdas vs. anonymous fns
 	- explicit vs implicit captures

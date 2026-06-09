@@ -33,6 +33,7 @@
 - comptime `zig revo nim`
 - no parens needed for simple conditionals `v rust go nu`
 - generics `rust v`
+- `with` for cascading
 - metaprogramming
 - block expressions `rust`
 - compound types `rust`
@@ -65,7 +66,6 @@
 	- `lsp`
 # TODO
 - [ ] implicit context
-- [ ] a built-in cascade/chain operator (or `with`), as if methods had a `return self` `clojure moonscript dart smalltalk`
 - [ ] shore up  enum shorthands (`.value` vs `:value` or both)
 - [ ] ptr type (ptr, voidptr, rawptr) `nim v odin`
 - [ ] make another pass on generics. I don't love what I have now
@@ -88,9 +88,11 @@
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [ ] FFI
 - [ ] some sort of `todo`/`unimplemented` macros `rust`
+- [ ] a way to type a var without declaring it, like `var` in Go `go`
 ## consider
 - C++20 uses `operator|`, a naked `|` for pipelines
 	- back on the table now that `|x|` lambda fences are gone
+	- that said, `|>` has grown on me
 - mutable `$` by default or opt-in?
 - adding colon before return type sig `fn foo(x int, y int): z int { ... }`
 - make the presence of `[]` in anon fns (empty or populated) turn off implicit captures, meaning `[]` would force a pure fn that could be passed around freely
