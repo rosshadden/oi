@@ -66,7 +66,7 @@
 	- `lsp`
 # TODO
 - [ ] implicit context
-- [ ] shore up  enum shorthands (`.value` vs `:value` or both)
+- [x] shore up enum shorthands: `.foo` is enum syntax (payloads, patterns), `:foo` is atom coercion (prototyping, payload-less). both kept, non-overlapping roles. prefer `.foo` when enum exists.
 - [ ] ptr type (ptr, voidptr, rawptr) `nim v odin`
 - [ ] make another pass on generics. I don't love what I have now
 - [ ] make another pass on metaprogramming. I don't love what I have now
@@ -95,7 +95,7 @@
 	- that said, `|>` has grown on me
 - mutable `$` by default or opt-in?
 - adding colon before return type sig `fn foo(x int, y int): z int { ... }`
-- make the presence of `[]` in anon fns (empty or populated) turn off implicit captures, meaning `[]` would force a pure fn that could be passed around freely
+- [x] `[]` in anon fns turns off implicit capture (non-capturing, not pure). `@pure` is the separate purity annotation; compiler-verified no IO/globals/impure calls. `@pure` implies non-capturing so [] is redundant alongside it.
 # stdlib
 - `os`
 - `fs`

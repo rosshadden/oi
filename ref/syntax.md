@@ -114,6 +114,36 @@ fn divmod(a int, b int) out (int, int) {
 	return
 }
 
+## pure functions
+
+# `@pure` is a compiler-verified contract for deterministic functions with no side effects.
+# A @pure fn may not perform IO, read/write globals or module-level state, or call non-pure functions.
+# @pure implies non-capturing (no enclosing locals), so [] is redundant alongside it.
+# Can be applied to both named and anonymous functions.
+
+@pure
+fn add(x int, y int) int { x + y }
+
+@pure
+fn clamp(value f64, low f64, high f64) f64 {
+	match true {
+		value < low { low }
+		value > high { high }
+		else { value }
+	}
+}
+
+# @pure fns may call other @pure fns
+@pure
+fn sum_of_squares(a int, b int) int {
+	add(square(a), square(b))
+}
+
+# anon @pure
+# useful when passing to a higher-order fn that requires a purity guarantee
+# (or for theoretically possible optimization from the theoreticl compiler)
+result := data.map(@pure fn (x int) int { x * x })
+
 ## leading literals
 
 # if there's only one literal arg, the parens may be dropped
@@ -636,11 +666,12 @@ fn main() {
 	food := :apple
 	assert(food == :apple)
 	
-	# atoms are contextually coerced into Enum values
-	# NOTE: atoms by their nature cannot carry payloads
+	# atoms coerce to enum variants when the type is known from context
+	# NOTE: atoms by definition cannot carry payloads
 	enum Color { red blue }
-	mut c := Color.red
-	c = :blue
+	mut c := Color.red # fully qualified
+	c = .red # type inferred from declaration
+	c = :blue # type inferred from declaration and coerced
 	assert(c == Color.blue)
 	assert(Color.blue == :blue)
 	
@@ -648,11 +679,13 @@ fn main() {
 	struct User {
 		mut stat Stat
 	}
-	user1 := User{ Stat:mana } # this is normal enum syntax
-	user2 := User{ :mana } # this is a coerced atom
+	user1 := User{ stat: .mana }
+	user2 := User{ stat: :mana }
 	assert(user1.stat == user2.stat)
-	
-	# this might be useful for quick prototyping to organically become finalized
+
+	# this might be useful for quick prototyping?
+	# nothing at the callsites needs to change when you later add the definition
+	# NOTE: TBH I might remove this feature or make it a compiler warning when a typed enum exists.
 	
 	# prototype code
 	mut state := :loading
@@ -994,36 +1027,46 @@ fn main() {
 	
 	#{
 		Anonymous functions may be created with `fn`.
-		The syntax scales from tiny pure functions to fully typed closures with explicit captures.
-		All of these parts behave just as they do in normal, named functions (except captures which are unique to anon fns).
-		Implicit captures are read-only by reference.
+		The syntax scales from tiny closures to fully typed, explicitly captured functions.
+		All parts behave just as they do in named functions (except captures, which are unique to anon fns).
 		```
-		# NOTE: `ret` takes precedence over `name`, by which I mean if only one identifier is present Oi treats it as the return spec (since that's far more common than naming anon fns).
+		# NOTE: `ret` takes precedence over `name`: if only one identifier is present Oi treats it as the return spec, which is far more common than naming an anon fn.
 		fn name? [captures]? (params)? ret? { body }
 		```
 		- name: optional name declaration
 		- captures: optional capture spec
-			- [] no explict captures (this is the default when omitted)
-			- [mut x] to mutate an outer binding
-			- [move x] to own/escape it
+			- omitted: fn implicitly captures any enclosing locals it references, read-only by reference
+			- []: non-capturing. holds no closure environment, so it coerces to a plain function-pointer type and can be stored freely.
+			  can still call named functions and read module-level consts/types
+			- [x]: captures `x` read-only (by reference), and nothing else
+			- [mut x, y]: captures `x` mutably, `y` read-only, and nothing else
+			- [move x]: moves/owns `x` so it can escape the enclosing scope, and nothing else
+			- any bracket (empty or populated) turns implicit capture off, and all referenced locals must then be listed explicitly
 		- params: optional param spec
 		- ret: optional return spec
 	}#
 
-	double := fn (x int) int { x * 2 }
-	# pure: captures nothing
-	mul := fn (x int, y int) int { x * y }
-	# no defined params
-	nums.map(fn { $ * 2 })
-	nums.sort_by(fn (a, b) { a.age < b.age })
-	spawn(fn { do_work() })
-	
-	# explicit captures
+	# implicit capture
+	n := 10
+	scale := fn (x int) int { x * n }
+
+	# non-capturing
+	# NOTE: This does not mean pure. See [pure functions](#pure-functions)).
+	mul := fn [] (x int, y int) int { x * y }
+	nums.map(fn [] { $ * 2 })
+
+	# explicit read-only capture
+	factor := 3
+	triple := fn [factor] (x int) int { x * factor }
+
+	# explicit mutable capture
 	mut counter := 0
 	increment := fn [mut counter] (x int) int {
 		counter += x
 		counter
 	}
+	
+	# move capture
 	spawn(fn [move data] { process(data) })
 	
 	## trailing functions
