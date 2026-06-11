@@ -30,6 +30,10 @@ impl std::fmt::Display for Token {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		match self {
 			Token::Int(n) => write!(f, "{n}"),
+			// Token::Float(x) => write!(f, "{x}"),
+			// Token::Str(s) => write!(f, "\"{s}\""),
+			// Token::Ident(s) => write!(f, "{s}"),
+			// Token::Assign => write!(f, ":="),
 			Token::Plus => write!(f, "+"),
 			Token::Minus => write!(f, "-"),
 			Token::Asterisk => write!(f, "*"),
@@ -76,16 +80,22 @@ where
 		}
 		.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)));
 
-		// fold a chain of operators into a left-leaning tree
-		// TODO: PEMDAS
-		atom.clone().foldl(
+		let product = atom.clone().foldl(
 			choice((
-				just(Token::Plus).to(Expr::Add as fn(_, _) -> _),
-				just(Token::Minus).to(Expr::Sub as fn(_, _) -> _),
 				just(Token::Asterisk).to(Expr::Mul as fn(_, _) -> _),
 				just(Token::Slash).to(Expr::Div as fn(_, _) -> _),
 			))
 			.then(atom)
+			.repeated(),
+			|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)),
+		);
+
+		product.clone().foldl(
+			choice((
+				just(Token::Plus).to(Expr::Add as fn(_, _) -> _),
+				just(Token::Minus).to(Expr::Sub as fn(_, _) -> _),
+			))
+			.then(product)
 			.repeated(),
 			|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)),
 		)
