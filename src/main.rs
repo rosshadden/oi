@@ -3,12 +3,12 @@ use chumsky::{
 	pratt::{infix, left, prefix},
 	prelude::*,
 };
-use logos::{Logos, Span};
+use logos::{Lexer, Logos, Span};
 
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 enum Token {
-	#[regex(r"[0-9]+", |lex| lex.slice().parse().ok())]
+	#[regex(r"[0-9]+", num_cb)]
 	Int(i64),
 
 	// binary operators
@@ -43,6 +43,11 @@ impl std::fmt::Display for Token {
 			Token::RParen => write!(f, ")"),
 		}
 	}
+}
+
+/// Parse slice as an i64.
+fn num_cb(lex: &mut Lexer<Token>) -> i64 {
+	lex.slice().parse().unwrap()
 }
 
 #[allow(dead_code)]
