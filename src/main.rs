@@ -8,8 +8,10 @@ use logos::{Lexer, Logos, Span};
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 enum Token {
-	#[regex(r"[0-9]+", num_cb)]
-	Int(i64),
+	#[regex(r"[0-9]+", |lex| lex.slice().parse().ok())]
+	Int(i32),
+	#[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse().ok())]
+	Float(f64),
 
 	// binary operators
 	#[token("+")]
@@ -31,7 +33,7 @@ impl std::fmt::Display for Token {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		match self {
 			Token::Int(n) => write!(f, "{n}"),
-			// Token::Float(x) => write!(f, "{x}"),
+			Token::Float(x) => write!(f, "{x}"),
 			// Token::Str(s) => write!(f, "\"{s}\""),
 			// Token::Ident(s) => write!(f, "{s}"),
 			// Token::Assign => write!(f, ":="),
@@ -45,15 +47,11 @@ impl std::fmt::Display for Token {
 	}
 }
 
-/// Parse slice as an i64.
-fn num_cb(lex: &mut Lexer<Token>) -> i64 {
-	lex.slice().parse().unwrap()
-}
-
 #[allow(dead_code)]
 #[derive(Debug)]
 enum Expr {
-	Int(i64),
+	Int(i32),
+	Float(f64),
 
 	// unary operators
 	Negative(Box<Expr>),
@@ -83,7 +81,8 @@ where
 {
 	recursive(|expr| {
 		let atom = select! {
-			Token::Int(n) => Expr::Int(n)
+			Token::Int(n) => Expr::Int(n),
+			Token::Float(n) => Expr::Float(n),
 		}
 		.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)));
 
