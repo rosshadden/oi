@@ -1,5 +1,8 @@
+use chumsky::{
+	input::{Stream, ValueInput},
+	prelude::*,
+};
 use logos::{Logos, Span};
-use chumsky::{input::{Stream, ValueInput}, prelude::*};
 
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
@@ -9,9 +12,13 @@ enum Token {
 
 	// binary operators
 	#[token("+")]
-	Add,
+	Plus,
 	#[token("-")]
 	Minus,
+	#[token("*")]
+	Asterisk,
+	#[token("/")]
+	Slash,
 
 	#[token("(")]
 	LParen,
@@ -45,7 +52,6 @@ fn lex(src: &str) -> Vec<(Token, Span)> {
 	tokens
 }
 
-// fn parser<I>(tokens: Vec<(Token, Span)>) {
 fn parser<'token, I>() -> impl Parser<'token, I, Expr, extra::Err<Rich<'token, Token>>>
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -54,11 +60,14 @@ where
 		let atom = select! { Token::Int => Expr::Int }
 			.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)));
 
-		// fold a chain of `+`/`-` into a left-leaning tree
+		// fold a chain of operators into a left-leaning tree
+		// TODO: PEMDAS
 		atom.clone().foldl(
 			choice((
-				just(Token::Add).to(Expr::Add as fn(_, _) -> _),
+				just(Token::Plus).to(Expr::Add as fn(_, _) -> _),
 				just(Token::Minus).to(Expr::Sub as fn(_, _) -> _),
+				just(Token::Asterisk).to(Expr::Mul as fn(_, _) -> _),
+				just(Token::Slash).to(Expr::Div as fn(_, _) -> _),
 			))
 			.then(atom)
 			.repeated(),
