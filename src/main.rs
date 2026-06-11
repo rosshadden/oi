@@ -7,8 +7,8 @@ use logos::{Logos, Span};
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 enum Token {
-	#[regex(r"-?[0-9]+")]
-	Int,
+	#[regex(r"-?[0-9]+", |lex| lex.slice().parse().ok())]
+	Int(i64),
 
 	// binary operators
 	#[token("+")]
@@ -26,9 +26,23 @@ enum Token {
 	RParen,
 }
 
+impl std::fmt::Display for Token {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		match self {
+			Token::Int(n) => write!(f, "{n}"),
+			Token::Plus => write!(f, "+"),
+			Token::Minus => write!(f, "-"),
+			Token::Asterisk => write!(f, "*"),
+			Token::Slash => write!(f, "/"),
+			Token::LParen => write!(f, "("),
+			Token::RParen => write!(f, ")"),
+		}
+	}
+}
+
 #[derive(Debug)]
 enum Expr {
-	Int,
+	Int(i64),
 
 	// unary operators
 	Negative(Box<Expr>),
@@ -57,8 +71,10 @@ where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
 {
 	recursive(|expr| {
-		let atom = select! { Token::Int => Expr::Int }
-			.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)));
+		let atom = select! {
+			Token::Int(n) => Expr::Int(n)
+		}
+		.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)));
 
 		// fold a chain of operators into a left-leaning tree
 		// TODO: PEMDAS
@@ -85,8 +101,6 @@ fn main() {
 	let src = std::fs::read_to_string(file).unwrap();
 
 	let lexed = lex(&src);
-	println!("{:?}", lexed);
-
 	let stream = Stream::from_iter(lexed.into_iter().map(|(t, s)| (t, s.into())))
 		.map((src.len()..src.len()).into(), |(t, s)| (t, s));
 	let ast = parser().parse(stream).into_result().unwrap();
