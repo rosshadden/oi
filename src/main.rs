@@ -1,5 +1,6 @@
 use chumsky::{
 	input::{Stream, ValueInput},
+	pratt::{infix, left, prefix},
 	prelude::*,
 };
 use logos::{Logos, Span};
@@ -80,25 +81,13 @@ where
 		}
 		.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)));
 
-		let product = atom.clone().foldl(
-			choice((
-				just(Token::Asterisk).to(Expr::Mul as fn(_, _) -> _),
-				just(Token::Slash).to(Expr::Div as fn(_, _) -> _),
-			))
-			.then(atom)
-			.repeated(),
-			|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)),
-		);
-
-		product.clone().foldl(
-			choice((
-				just(Token::Plus).to(Expr::Add as fn(_, _) -> _),
-				just(Token::Minus).to(Expr::Sub as fn(_, _) -> _),
-			))
-			.then(product)
-			.repeated(),
-			|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)),
-		)
+		atom.pratt((
+			prefix(3, just(Token::Minus), |_, rhs, _| Expr::Negative(Box::new(rhs))),
+			infix(left(2), just(Token::Asterisk), |l, _, r, _| Expr::Mul(Box::new(l), Box::new(r))),
+			infix(left(2), just(Token::Slash),    |l, _, r, _| Expr::Div(Box::new(l), Box::new(r))),
+			infix(left(1), just(Token::Plus),     |l, _, r, _| Expr::Add(Box::new(l), Box::new(r))),
+			infix(left(1), just(Token::Minus),    |l, _, r, _| Expr::Sub(Box::new(l), Box::new(r))),
+		))
 	})
 	.then_ignore(end())
 }
