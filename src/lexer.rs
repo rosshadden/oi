@@ -3,7 +3,12 @@ use logos::Logos;
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 pub enum Token {
-	// primitive literals
+	#[regex(r"#.*", logos::skip, allow_greedy = true)]
+	Comment,
+
+	// literals
+	#[regex(r"(true|false)", |lex| lex.slice().parse().ok())]
+	Bool(bool),
 	#[regex(r"[0-9]+", |lex| lex.slice().parse().ok())]
 	Int(i32),
 	#[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse().ok())]
@@ -33,23 +38,4 @@ pub enum Token {
 	LParen,
 	#[token(")")]
 	RParen,
-}
-
-impl std::fmt::Display for Token {
-	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		match self {
-			Token::Int(n) => write!(f, "{n}"),
-			Token::Float(x) => write!(f, "{x}"),
-			Token::String(s) => write!(f, "\"{s}\""),
-			Token::Mut => write!(f, "mut"),
-			Token::Ident(name) => write!(f, "{name}"),
-			Token::Assign => write!(f, ":="),
-			Token::Plus => write!(f, "+"),
-			Token::Minus => write!(f, "-"),
-			Token::Asterisk => write!(f, "*"),
-			Token::Slash => write!(f, "/"),
-			Token::LParen => write!(f, "("),
-			Token::RParen => write!(f, ")"),
-		}
-	}
 }

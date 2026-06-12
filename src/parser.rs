@@ -13,6 +13,7 @@ where
 {
 	let expr = recursive(|expr| {
 		let atom = select! {
+			Token::Bool(b) => Expr::Bool(b),
 			Token::Int(n) => Expr::Int(n),
 			Token::Float(x) => Expr::Float(x),
 			Token::String(s) => Expr::String(s),

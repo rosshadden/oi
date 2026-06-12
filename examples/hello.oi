@@ -1,2 +1,8 @@
+# this is a comment
+bull := true
 mut foo := ("ciea" + 2 * 3)
 2 / (4 + 1)
+
+# fn main() {
+# 	print("hello world")
+# }

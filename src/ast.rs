@@ -1,6 +1,7 @@
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum Expr {
+	Bool(bool),
 	Int(i32),
 	Float(f64),
 	String(String),
