@@ -8,17 +8,19 @@ use logos::{Logos, Span};
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 enum Token {
+	// primitive literals
 	#[regex(r"[0-9]+", |lex| lex.slice().parse().ok())]
 	Int(i32),
 	#[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse().ok())]
 	Float(f64),
-
 	#[regex(r#""[^"]*""#, |lex| { let s = lex.slice(); s[1..s.len() - 1].to_string() })]
 	String(String),
 
+	// identifiers
+	#[token("mut")]
+	Mut,
 	#[regex(r"[A-Za-z_][A-Za-z0-9_]*", |lex| lex.slice().to_string())]
 	Ident(String),
-
 	#[token(":=")]
 	Assign,
 
@@ -44,7 +46,9 @@ impl std::fmt::Display for Token {
 			Token::Int(n) => write!(f, "{n}"),
 			Token::Float(x) => write!(f, "{x}"),
 			Token::String(s) => write!(f, "\"{s}\""),
+			Token::Mut => write!(f, "mut"),
 			Token::Ident(name) => write!(f, "{name}"),
+			Token::Assign => write!(f, ":="),
 			Token::Plus => write!(f, "+"),
 			Token::Minus => write!(f, "-"),
 			Token::Asterisk => write!(f, "*"),
@@ -63,6 +67,12 @@ enum Expr {
 	Float(f64),
 	String(String),
 	Ident(String),
+
+	Assign {
+		mutable: bool,
+		name: String,
+		value: Box<Expr>,
+	},
 
 	// unary operators
 	Negative(Box<Expr>),
@@ -86,11 +96,11 @@ fn lex(src: &str) -> Vec<(Token, Span)> {
 	tokens
 }
 
-fn parser<'token, I>() -> impl Parser<'token, I, Expr, extra::Err<Rich<'token, Token>>>
+fn parser<'token, I>() -> impl Parser<'token, I, Vec<Expr>, extra::Err<Rich<'token, Token>>>
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
 {
-	recursive(|expr| {
+	let expr = recursive(|expr| {
 		let atom = select! {
 			Token::Int(n) => Expr::Int(n),
 			Token::Float(x) => Expr::Float(x),
@@ -116,8 +126,22 @@ where
 				Expr::Sub(Box::new(l), Box::new(r))
 			}),
 		))
-	})
-	.then_ignore(end())
+	});
+
+	let assign = just(Token::Mut)
+		.or_not()
+		.then(select! {
+			Token::Ident(name) => name,
+		})
+		.then_ignore(just(Token::Assign))
+		.then(expr.clone())
+		.map(|((mutable, name), value)| Expr::Assign {
+			mutable: mutable.is_some(),
+			name,
+			value: Box::new(value),
+		});
+
+	assign.or(expr).repeated().collect().then_ignore(end())
 }
 
 fn main() {
