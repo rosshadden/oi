@@ -65,6 +65,7 @@ impl Compiler {
 			b,
 			vars,
 			module: &mut self.module,
+			string_idx: 0,
 		};
 
 		let mut last = trans.b.ins().iconst(int, 0);
@@ -90,6 +91,7 @@ struct Translator<'a> {
 	b: FunctionBuilder<'a>,
 	vars: HashMap<String, Variable>,
 	module: &'a mut JITModule,
+	string_idx: usize,
 }
 
 impl<'a> Translator<'a> {
@@ -98,7 +100,22 @@ impl<'a> Translator<'a> {
 			Expr::Int(n) => self.b.ins().iconst(self.int, *n as i64),
 			Expr::Bool(v) => self.b.ins().iconst(self.int, *v as i64),
 			Expr::Float(_) => todo!("float"),
-			Expr::String(_) => todo!("string"),
+
+			Expr::String(s) => {
+				let mut bytes = s.as_bytes().to_vec();
+				bytes.push(0);
+				let name = format!("__str_{}", self.string_idx);
+				self.string_idx += 1;
+				let id = self
+					.module
+					.declare_data(&name, Linkage::Local, false, false)
+					.unwrap();
+				let mut desc = DataDescription::new();
+				desc.define(bytes.into_boxed_slice());
+				self.module.define_data(id, &desc).unwrap();
+				let gv = self.module.declare_data_in_func(id, &mut self.b.func);
+				self.b.ins().symbol_value(self.int, gv)
+			}
 
 			Expr::Ident(name) => self.b.use_var(
 				*self
