@@ -6,7 +6,6 @@ use indoc::indoc;
 
 static ID: AtomicUsize = AtomicUsize::new(0);
 
-// Run an Oi script.
 fn run(src: &str) -> String {
 	let n = ID.fetch_add(1, Ordering::Relaxed);
 	let path = std::env::temp_dir().join(format!("oi_test_{n}.oi"));
@@ -16,7 +15,6 @@ fn run(src: &str) -> String {
 	out
 }
 
-// Run an Oi file.
 #[allow(dead_code)]
 fn run_file(name: &str) -> String {
 	let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -39,111 +37,133 @@ fn exec(path: &Path) -> String {
 	s.strip_suffix('\n').unwrap_or(&s).to_string()
 }
 
-// tests
+fn check(src: &str, expected: &str) {
+	assert_eq!(run(src), expected, "\nsrc:\n{src}");
+}
+
+// literals
 
 #[test]
 fn int_literal() {
-	assert_eq!(run("42"), "42");
+	check("42", "42");
 }
 
 #[test]
 fn float_literal() {
-	assert_eq!(run("3.14"), "3.14");
+	check("3.14", "3.14");
 }
 
 #[test]
-fn bool_literal() {
-	assert_eq!(run("true"), "true");
-	assert_eq!(run("false"), "false");
+fn bool_true() {
+	check("true", "true");
+}
+
+#[test]
+fn bool_false() {
+	check("false", "false");
 }
 
 #[test]
 fn string_literal() {
-	assert_eq!(run(r#""hello""#), "hello");
+	check(r#""hello""#, "hello");
+}
+
+// arithmetic
+
+#[test]
+fn int_add() {
+	check("2 + 3", "5");
 }
 
 #[test]
-fn int_arithmetic() {
-	assert_eq!(run("2 + 3"), "5");
-	assert_eq!(run("10 - 4"), "6");
-	assert_eq!(run("3 * 4"), "12");
-	assert_eq!(run("10 / 3"), "3");
+fn int_sub() {
+	check("10 - 4", "6");
 }
 
 #[test]
-fn float_arithmetic() {
-	assert_eq!(run("1.5 + 2.0"), "3.5");
+fn int_mul() {
+	check("3 * 4", "12");
+}
+
+#[test]
+fn int_div() {
+	check("10 / 3", "3");
+}
+
+#[test]
+fn float_add() {
+	check("1.5 + 2.0", "3.5");
 }
 
 #[test]
 fn negation() {
-	assert_eq!(run("-5"), "-5");
+	check("-5", "-5");
 }
+
+// strings
 
 #[test]
 fn string_concat() {
-	assert_eq!(run(r#""foo" + "bar""#), "foobar");
+	check(r#""foo" + "bar""#, "foobar");
 }
+
+// variables
 
 #[test]
 fn variable() {
-	assert_eq!(run("x := 42\nx"), "42");
+	check("x := 42\nx", "42");
 }
+
+// functions
 
 #[test]
 fn fn_call() {
-	assert_eq!(
-		run(indoc! {"
-			fn double() { 21 * 2 }
-			double()
-		"}),
-		"42"
-	);
+	let src = indoc! {"
+		fn double() { 21 * 2 }
+		double()
+	"};
+	check(src, "42");
 }
 
 #[test]
 fn multi_fn() {
-	assert_eq!(
-		run(indoc! {"
-			fn base() {
-				6
-			}
+	let src = indoc! {"
+		fn base() {
+			6
+		}
 
-			fn triple() {
-				base() + base() + base()
-			}
+		fn triple() {
+			base() + base() + base()
+		}
 
-			triple()
-		"}),
-		"18"
-	);
+		triple()
+	"};
+	check(src, "18");
 }
 
 #[test]
 fn fn_vars() {
-	assert_eq!(
-		run(indoc! {"
-			fn area() {
-				width := 12
-				height := 5
-				width * height
-			}
+	let src = indoc! {"
+		fn area() {
+			width := 12
+			height := 5
+			width * height
+		}
 
-			area()
-		"}),
-		"60"
-	);
+		area()
+	"};
+	check(src, "60");
 }
+
+// statements
 
 #[test]
 fn stmts() {
-	assert_eq!(
-		run(indoc! {"
-			x := 3
-			y := x * x
-			z := y + x
-			z
-		"}),
-		"12"
-	);
+	let src = indoc! {"
+		x := 3
+		y := x * x
+		z := y + x
+		z
+	"};
+	check(src, "12");
 }
