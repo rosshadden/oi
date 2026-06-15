@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use cranelift::codegen;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, Linkage, Module};
+use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 
 use crate::ast::Expr;
 use crate::runtime;
@@ -13,6 +13,8 @@ pub struct Compiler {
 	ctx: codegen::Context,
 	data_description: DataDescription,
 	module: JITModule,
+	// counter for unique string data labels across all functions
+	string_idx: usize,
 }
 
 impl Default for Compiler {
@@ -37,6 +39,7 @@ impl Default for Compiler {
 			ctx: module.make_context(),
 			data_description: DataDescription::new(),
 			module,
+			string_idx: 0,
 		}
 	}
 }
@@ -44,25 +47,64 @@ impl Default for Compiler {
 impl Compiler {
 	pub fn compile(&mut self, program: &[Expr]) -> Result<*const u8, String> {
 		let int = self.module.target_config().pointer_type();
-		self.translate(int, program)?;
 
+		// split the top level into fn defs and loose statements
+		let mut main_body: Option<&[Expr]> = None;
+		let mut others: Vec<(&str, &[Expr])> = vec![];
+		let mut loose: Vec<&Expr> = vec![];
+		for item in program {
+			match item {
+				Expr::Fn { name, body } if name == "main" => main_body = Some(body),
+				Expr::Fn { name, body } => others.push((name.as_str(), body)),
+				other => loose.push(other),
+			}
+		}
+
+		// every named function is compiled
+		// only the entrypoint prints its result
+		for &(name, body) in &others {
+			let stmts: Vec<&Expr> = body.iter().collect();
+			self.compile_fn(int, &format!("oi_{name}"), &stmts, false)?;
+		}
+
+		// `main` is the entrypoint if present
+		// otherwise top-level statements run as if wrapped in an implicit `main`
+		let entry: Vec<&Expr> = match main_body {
+			Some(body) => {
+				if !loose.is_empty() {
+					return Err("top-level statements are not allowed alongside `fn main`".into());
+				}
+				body.iter().collect()
+			}
+			None => loose,
+		};
+		let id = self.compile_fn(int, "__oi_main", &entry, true)?;
+
+		self.module.finalize_definitions().unwrap();
+		Ok(self.module.get_finalized_function(id))
+	}
+
+	// Declare and define a function from a list of statements.
+	fn compile_fn(
+		&mut self,
+		int: types::Type,
+		name: &str,
+		stmts: &[&Expr],
+		print_last: bool,
+	) -> Result<FuncId, String> {
+		self.translate(int, stmts, print_last);
 		let id = self
 			.module
-			.declare_function("__oi_main", Linkage::Local, &self.ctx.func.signature)
+			.declare_function(name, Linkage::Local, &self.ctx.func.signature)
 			.map_err(|e| e.to_string())?;
-
 		self.module
 			.define_function(id, &mut self.ctx)
 			.map_err(|e| e.to_string())?;
-
 		self.module.clear_context(&mut self.ctx);
-		self.module.finalize_definitions().unwrap();
-
-		let code = self.module.get_finalized_function(id);
-		Ok(code)
+		Ok(id)
 	}
 
-	fn translate(&mut self, int: types::Type, program: &[Expr]) -> Result<(), String> {
+	fn translate(&mut self, int: types::Type, stmts: &[&Expr], print_last: bool) {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		let block = b.create_block();
 		b.switch_to_block(block);
@@ -73,11 +115,11 @@ impl Compiler {
 			b,
 			vars: HashMap::new(),
 			module: &mut self.module,
-			string_idx: 0,
+			string_idx: &mut self.string_idx,
 		};
 
 		let mut last = (trans.b.ins().iconst(int, 0), Typ::Int);
-		for stmt in program {
+		for &stmt in stmts {
 			match stmt {
 				Expr::Assign { name, value, .. } => {
 					let (val, typ) = trans.expr(value);
@@ -97,11 +139,12 @@ impl Compiler {
 			}
 		}
 
-		let (val, typ) = last;
-		trans.emit_print(val, typ);
+		if print_last {
+			let (val, typ) = last;
+			trans.emit_print(val, typ);
+		}
 		trans.b.ins().return_(&[]);
 		trans.b.finalize();
-		Ok(())
 	}
 }
 
@@ -128,7 +171,7 @@ struct Translator<'a> {
 	b: FunctionBuilder<'a>,
 	vars: HashMap<String, (Variable, Typ)>,
 	module: &'a mut JITModule,
-	string_idx: usize,
+	string_idx: &'a mut usize,
 }
 
 impl<'a> Translator<'a> {
@@ -141,8 +184,8 @@ impl<'a> Translator<'a> {
 			Expr::String(s) => {
 				let mut bytes = s.as_bytes().to_vec();
 				bytes.push(0);
-				let name = format!("__str_{}", self.string_idx);
-				self.string_idx += 1;
+				let name = format!("__str_{}", *self.string_idx);
+				*self.string_idx += 1;
 				let id = self
 					.module
 					.declare_data(&name, Linkage::Local, false, false)
@@ -178,6 +221,7 @@ impl<'a> Translator<'a> {
 			Expr::Div(l, r) => self.binop(Op::Div, l, r),
 
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
+			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 		}
 	}
 

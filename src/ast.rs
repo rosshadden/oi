@@ -13,6 +13,11 @@ pub enum Expr {
 		value: Box<Expr>,
 	},
 
+	Fn {
+		name: String,
+		body: Vec<Expr>,
+	},
+
 	// unary operators
 	Negative(Box<Expr>),
 

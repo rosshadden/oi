@@ -1,0 +1,11 @@
+# helper fn
+fn double() {
+	21 * 2
+}
+
+# `main` is the entrypoint
+# its last value is printed
+fn main() {
+	x := 40
+	x + 2
+}

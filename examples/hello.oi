@@ -1,9 +1,12 @@
-# this is a comment
-bull := true
-mut foo := (2 * 3)
-2 / (4 + 1)
-bull
+fn foo() {
+	true
+}
 
-# fn main() {
-# 	print("hello world")
-# }
+# this is a comment
+fn main() {
+	bull := true
+	mut foo := (2 * 3)
+	2 / (4 + 1)
+	bull
+	# print("hello world")
+}

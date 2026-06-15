@@ -25,7 +25,7 @@ fn lex(src: &str) -> Vec<(Token, Span)> {
 fn main() {
 	let file = match std::env::args().nth(1) {
 		Some(file) => file,
-		None => "examples/tiny.oi".into(),
+		None => "examples/hello.oi".into(),
 	};
 	let src = std::fs::read_to_string(file).unwrap();
 

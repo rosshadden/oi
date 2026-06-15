@@ -18,6 +18,10 @@ pub enum Token {
 	#[regex(r#""[^"]*""#, |lex| { let s = lex.slice(); s[1..s.len() - 1].to_string() })]
 	String(String),
 
+	// keywords
+	#[token("fn")]
+	Fn,
+
 	// identifiers
 	#[token("mut")]
 	Mut,
@@ -40,4 +44,8 @@ pub enum Token {
 	LParen,
 	#[token(")")]
 	RParen,
+	#[token("{")]
+	LBrace,
+	#[token("}")]
+	RBrace,
 }

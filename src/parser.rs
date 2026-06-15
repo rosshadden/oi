@@ -53,5 +53,21 @@ where
 			value: Box::new(value),
 		});
 
-	assign.or(expr).repeated().collect().then_ignore(end())
+	// a statement is an assignment or a bare expression
+	let stmt = assign.or(expr);
+
+	// `fn name() { ... }`
+	let func = just(Token::Fn)
+		.ignore_then(select! { Token::Ident(name) => name })
+		.then_ignore(just(Token::LParen))
+		.then_ignore(just(Token::RParen))
+		.then(
+			stmt.clone()
+				.repeated()
+				.collect::<Vec<_>>()
+				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
+		)
+		.map(|(name, body)| Expr::Fn { name, body });
+
+	func.or(stmt).repeated().collect().then_ignore(end())
 }
