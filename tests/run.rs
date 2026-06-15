@@ -1,17 +1,33 @@
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static ID: AtomicUsize = AtomicUsize::new(0);
 
+// Run an inline Oi snippet and return its stdout.
 fn run(src: &str) -> String {
 	let n = ID.fetch_add(1, Ordering::Relaxed);
 	let path = std::env::temp_dir().join(format!("oi_test_{n}.oi"));
 	std::fs::write(&path, src).unwrap();
+	let out = exec(&path);
+	std::fs::remove_file(&path).ok();
+	out
+}
+
+// Run a file from tests/cases/ and return its stdout.
+fn run_file(name: &str) -> String {
+	let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.join("tests/cases")
+		.join(name);
+	exec(&path)
+}
+
+// Test runner.
+fn exec(path: &Path) -> String {
 	let out = Command::new(env!("CARGO_BIN_EXE_oi"))
-		.arg(&path)
+		.arg(path)
 		.output()
 		.unwrap();
-	std::fs::remove_file(&path).ok();
 	assert!(
 		out.status.success(),
 		"compiler failed:\n{}",
@@ -19,6 +35,8 @@ fn run(src: &str) -> String {
 	);
 	String::from_utf8(out.stdout).unwrap()
 }
+
+// tests
 
 #[test]
 fn int_literal() {
@@ -71,8 +89,23 @@ fn variable() {
 
 #[test]
 fn fn_call() {
-	assert_eq!(
-		run("fn double() { 21 * 2 }\ndouble()"),
-		"42\n"
-	);
+	assert_eq!(run("fn double() { 21 * 2 }\ndouble()"), "42\n");
+}
+
+#[test]
+fn multi_fn() {
+	// base() = 6; triple() calls base three times
+	assert_eq!(run_file("multi_fn.oi"), "18\n");
+}
+
+#[test]
+fn fn_vars() {
+	// area() = 12 * 5
+	assert_eq!(run_file("fn_vars.oi"), "60\n");
+}
+
+#[test]
+fn stmts() {
+	// x=3, y=x*x=9, z=y+x=12
+	assert_eq!(run_file("stmts.oi"), "12\n");
 }
