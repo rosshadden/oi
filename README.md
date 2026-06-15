@@ -2,4 +2,4 @@
 
 Oi programming language.
 
-See [./docs/](./docs/).
+No real docs or literature yet, so, uh... enjoy?
