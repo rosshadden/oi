@@ -1,9 +1,0 @@
-fn base() {
-	6
-}
-
-fn triple() {
-	base() + base() + base()
-}
-
-triple()

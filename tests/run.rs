@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -94,18 +94,42 @@ fn fn_call() {
 
 #[test]
 fn multi_fn() {
-	// base() = 6; triple() calls base three times
-	assert_eq!(run_file("multi_fn.oi"), "18\n");
+	assert_eq!(
+		run(r#"
+fn base() {
+	6
+}
+
+fn triple() {
+	base() + base() + base()
+}
+
+triple()
+		"#),
+		"18\n"
+	);
 }
 
 #[test]
 fn fn_vars() {
-	// area() = 12 * 5
-	assert_eq!(run_file("fn_vars.oi"), "60\n");
+	assert_eq!(
+		run(r#"
+fn area() {
+	width := 12
+	height := 5
+	width * height
+}
+
+area()
+		"#),
+		"60\n"
+	);
 }
 
 #[test]
 fn stmts() {
-	// x=3, y=x*x=9, z=y+x=12
-	assert_eq!(run_file("stmts.oi"), "12\n");
+	assert_eq!(
+		run("x := 3\ny := x * x\nz := y + x\nz"),
+		"12\n"
+	);
 }

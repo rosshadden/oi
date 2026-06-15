@@ -1,7 +1,0 @@
-fn area() {
-	width := 12
-	height := 5
-	width * height
-}
-
-area()
