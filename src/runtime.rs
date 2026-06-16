@@ -1,7 +1,7 @@
 //! Functions a compiled Oi program calls at runtime. Backend-agnostic: the JIT
 //! registers them as symbols, an object backend would link them in.
 
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 
 pub const PRINT_BOOL: &str = "oi_print_bool";
 pub const PRINT_INT: &str = "oi_print_int";

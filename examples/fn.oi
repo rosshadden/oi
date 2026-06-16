@@ -1,8 +1,0 @@
-# a fn returns its final value
-fn double() {
-	21 * 2
-}
-
-# no `main`, so the loose statements run as an implicit `main`
-# a bare script prints its final value
-double()

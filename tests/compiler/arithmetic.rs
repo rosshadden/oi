@@ -36,4 +36,3 @@ fn negation() {
 fn variable() {
 	check("x := 42\nx", "42");
 }
-
