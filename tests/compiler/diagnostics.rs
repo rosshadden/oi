@@ -23,8 +23,8 @@ fn unexpected_token() {
 
 #[test]
 fn invalid_token() {
-	// a stray char becomes `Token::Error`, surfaced by the parser
-	assert!(fail("@").contains("invalid token"));
+	// a stray char becomes `Token::Error`, surfaced by the parser with its text
+	assert!(fail("@").contains("unexpected character `@`"));
 }
 
 #[test]

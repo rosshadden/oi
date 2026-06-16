@@ -9,7 +9,7 @@ pub enum Operator {}
 #[logos(skip r"[ \t\r\n\f]+")]
 pub enum Token {
 	// An unrecognized lexeme, kept as a token so lexing never fails and the parser reports it.
-	Error,
+	Error(String),
 
 	#[regex(r"#.*", logos::skip, allow_greedy = true)]
 	Comment,
@@ -59,7 +59,7 @@ pub enum Token {
 impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Token::Error => write!(f, "invalid token"),
+			Token::Error(s) => write!(f, "{s}"),
 			Token::Comment => write!(f, "comment"),
 			Token::Bool(b) => write!(f, "{b}"),
 			Token::Int(n) => write!(f, "{n}"),
@@ -88,7 +88,7 @@ pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
 		.spanned()
 		.map(|(token, span)| match token {
 			Ok(token) => (token, span.into()),
-			Err(()) => (Token::Error, span.into()),
+			Err(()) => (Token::Error(src[span.clone()].to_string()), span.into()),
 		})
 		.collect()
 }

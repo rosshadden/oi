@@ -35,7 +35,14 @@ where
 		// leaf atoms pair themselves with their span
 		let leaf = literal.or(var_or_call).map_with(|e, ex| (e, ex.span()));
 
-		let atom = leaf.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)));
+		// a lexer error token
+		let bad = select! { Token::Error(text) => text }.try_map(|text, span| {
+			Err(Rich::custom(span, format!("unexpected character `{text}`")))
+		});
+
+		let atom = leaf
+			.or(expr.delimited_by(just(Token::LParen), just(Token::RParen)))
+			.or(bad);
 
 		atom.pratt((
 			prefix(3, just(Token::Minus), |_, rhs, ex| {

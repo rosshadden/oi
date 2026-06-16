@@ -2,7 +2,7 @@ use std::io::IsTerminal;
 use std::ops::Range;
 
 use ariadne::{Color, Config, IndexType, Label, Report, ReportKind, Source};
-use chumsky::error::Rich;
+use chumsky::error::{Rich, RichReason};
 
 use crate::lexer::Token;
 
@@ -36,10 +36,12 @@ impl Diagnostic {
 
 	// Build a diagnostic from a chumsky parse error.
 	pub fn from_rich(err: &Rich<'_, Token>) -> Self {
-		Self::new(err.reason().to_string(), err.span().into_range()).with_label(match err.found() {
-			Some(_) => "unexpected token",
-			None => "unexpected end of input",
-		})
+		let label = match err.reason() {
+			RichReason::Custom(_) => "here",
+			RichReason::ExpectedFound { found: None, .. } => "unexpected end of input",
+			RichReason::ExpectedFound { .. } => "unexpected token",
+		};
+		Self::new(err.reason().to_string(), err.span().into_range()).with_label(label)
 	}
 
 	// Render span to stderr.
