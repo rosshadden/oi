@@ -1,12 +1,10 @@
-fn foo() {
-	true
-}
-
-# this is a comment
 fn main() {
+	## primatives
+
 	bull := true
-	mut foo := (2 * 3)
-	2 / (4 + 1)
-	bull
-	# print("hello world")
+	str := "string"
+	integer := 1337
+	float := 69.420
+
+	2.0 + 1.2
 }

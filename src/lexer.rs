@@ -1,3 +1,5 @@
+use std::fmt;
+
 use logos::Logos;
 
 pub enum Operator {}
@@ -48,4 +50,28 @@ pub enum Token {
 	LBrace,
 	#[token("}")]
 	RBrace,
+}
+
+impl fmt::Display for Token {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			Token::Comment => write!(f, "comment"),
+			Token::Bool(b) => write!(f, "{b}"),
+			Token::Int(n) => write!(f, "{n}"),
+			Token::Float(x) => write!(f, "{x}"),
+			Token::String(s) => write!(f, "\"{s}\""),
+			Token::Fn => write!(f, "fn"),
+			Token::Mut => write!(f, "mut"),
+			Token::Ident(name) => write!(f, "{name}"),
+			Token::Assign => write!(f, ":="),
+			Token::Plus => write!(f, "+"),
+			Token::Minus => write!(f, "-"),
+			Token::Asterisk => write!(f, "*"),
+			Token::Slash => write!(f, "/"),
+			Token::LParen => write!(f, "("),
+			Token::RParen => write!(f, ")"),
+			Token::LBrace => write!(f, "{{"),
+			Token::RBrace => write!(f, "}}"),
+		}
+	}
 }
