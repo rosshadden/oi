@@ -736,6 +736,45 @@ fn main() {
 	
 	# unpack returns
 	a, b := foo()
+	
+	## control flow
+	
+	i := 2
+	if i == 0 {
+		print("zero")
+	} else if i == 1 {
+		print("one")
+	} else {
+		print("idk")
+	}
+	
+	## matching
+	
+	# else for catch-all
+	os := "linux"
+	match os {
+		"darwin" { print("I used to hate macOS but now I realize it's at least better than Windows.") }
+		"linux" { print("I use Artix Linux btw") }
+		else { print(os) }
+	}
+
+	# can be used as an if-else chain
+	# evaluated in order, first match wins if multiple satisfy the condition
+
+	# comma can be used to test multiple values
+	fn is_red_or_blue(c Color) bool {
+		return match c {
+			.red, .blue { true }
+			.green { false }
+		}
+	}
+
+	# TODO: not sure whether Oi should support `$` in match or use binding
+	match user {
+		u @ User { age: 0..18 } => "minor: {u.name}"
+		User { age: 0..18 } => "minor: {$.name}"
+		_ => "adult"
+	}
 
 	## loops
 	
@@ -765,6 +804,12 @@ fn main() {
 	
 	# ternary (`if` is an expression)
 	foo := if true { "yes" } else { "no" }
+	
+	# if no else, uses default value from the if body
+	str := if false { "idk" }
+	num := if false { 42 }
+	assert(str == "")
+	assert(num == 0)
 
 	# built-in functions
 	result := assert(check()) |> next
@@ -1117,34 +1162,6 @@ fn main() {
 	db.transaction fn (tx) {
 		tx.insert(user)
 		tx.insert(order)
-	}
-	
-	## matching
-	
-	# else for catch-all
-	os := "linux"
-	match os {
-		"darwin" { print("I used to hate macOS but now I realize it's at least better than Windows.") }
-		"linux" { print("I use Artix Linux btw") }
-		else { print(os) }
-	}
-
-	# can be used as an if-else chain
-	# evaluated in order, first match wins if multiple satisfy the condition
-
-	# comma can be used to test multiple values
-	fn is_red_or_blue(c Color) bool {
-		return match c {
-			.red, .blue { true }
-			.green { false }
-		}
-	}
-
-	# TODO: not sure whether Oi should support `$` in match or use binding
-	match user {
-		u @ User { age: 0..18 } => "minor: {u.name}"
-		User { age: 0..18 } => "minor: {$.name}"
-		_ => "adult"
 	}
 	
 	## misc.
