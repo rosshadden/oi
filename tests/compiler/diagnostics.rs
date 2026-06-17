@@ -73,6 +73,21 @@ fn invalid_token() {
 }
 
 #[test]
+fn assign_to_immutable() {
+	assert!(fail("x := 1\nx = 2").contains("cannot assign to immutable"));
+}
+
+#[test]
+fn assign_to_undefined() {
+	assert!(fail("x = 5").contains("cannot assign to undefined variable"));
+}
+
+#[test]
+fn assign_wrong_type() {
+	assert!(fail("mut x := 1\nx = 2.0").contains("cannot assign Float"));
+}
+
+#[test]
 fn top_level_stmt_with_main() {
 	let src = indoc! {"
 		fn main() {

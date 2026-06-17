@@ -238,7 +238,7 @@ impl Compiler {
 		let mut last_span: Option<Span> = None;
 		for &stmt in stmts {
 			match &stmt.0 {
-				Expr::Assign {
+				Expr::Bind {
 					mutable,
 					name,
 					value,
@@ -258,7 +258,7 @@ impl Compiler {
 					);
 				}
 
-				Expr::Reassign { name, value } => {
+				Expr::Assign { name, value } => {
 					let (val, typ) = trans.expr(value)?;
 					let local = trans.vars.get(name).copied().ok_or_else(|| {
 						Diagnostic::new(
@@ -274,7 +274,7 @@ impl Compiler {
 							stmt.1.into_range(),
 						)
 						.with_label("declared without `mut`")
-						.with_note(format!("use `mut {name} := ...` to allow reassignment")));
+						.with_note(format!("use `mut {name} := ...` to allow assignment")));
 					}
 					// a binding keeps the type it was declared with
 					if typ != local.typ {
@@ -470,8 +470,8 @@ impl<'a> Translator<'a> {
 				Ok((self.b.inst_results(call)[0], sig.ret))
 			}
 
+			Expr::Bind { .. } => unreachable!("bind in expression position"),
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
-			Expr::Reassign { .. } => unreachable!("reassign in expression position"),
 			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
 		}

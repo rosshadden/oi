@@ -33,9 +33,9 @@ pub enum Token {
 	#[regex(r"[A-Za-z_][A-Za-z0-9_]*", |lex| lex.slice().to_string())]
 	Ident(String),
 	#[token(":=")]
-	Assign,
+	Bind,
 	#[token("=")]
-	Eq,
+	Assign,
 
 	// binary operators
 	#[token("+")]
@@ -80,8 +80,8 @@ impl fmt::Display for Token {
 			Token::Return => write!(f, "return"),
 			Token::Mut => write!(f, "mut"),
 			Token::Ident(name) => write!(f, "{name}"),
-			Token::Assign => write!(f, ":="),
-			Token::Eq => write!(f, "="),
+			Token::Bind => write!(f, ":="),
+			Token::Assign => write!(f, "="),
 			Token::Plus => write!(f, "+"),
 			Token::Minus => write!(f, "-"),
 			Token::Asterisk => write!(f, "*"),

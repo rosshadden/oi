@@ -66,16 +66,16 @@ where
 	});
 
 	// bindings
-	let assign = just(Token::Mut)
+	let bind = just(Token::Mut)
 		.or_not()
 		.then(select! {
 			Token::Ident(name) => name,
 		})
-		.then_ignore(just(Token::Assign))
+		.then_ignore(just(Token::Bind))
 		.then(expr.clone())
 		.map_with(|((mutable, name), value), ex| {
 			(
-				Expr::Assign {
+				Expr::Bind {
 					mutable: mutable.is_some(),
 					name,
 					value: Box::new(value),
@@ -85,12 +85,12 @@ where
 		});
 
 	// assignment
-	let reassign = select! { Token::Ident(name) => name }
-		.then_ignore(just(Token::Eq))
+	let assign = select! { Token::Ident(name) => name }
+		.then_ignore(just(Token::Assign))
 		.then(expr.clone())
 		.map_with(|(name, value), ex| {
 			(
-				Expr::Reassign {
+				Expr::Assign {
 					name,
 					value: Box::new(value),
 				},
@@ -104,7 +104,7 @@ where
 		.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
 
 	// statements
-	let stmt = ret_stmt.or(assign).or(reassign).or(expr);
+	let stmt = ret_stmt.or(bind).or(assign).or(expr);
 
 	// param type is kept for the compiler to resolve
 	let param = select! { Token::Ident(name) => name }
