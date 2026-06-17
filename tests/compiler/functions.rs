@@ -115,3 +115,36 @@ fn fn_return_type_float() {
 	"};
 	check(src, "5.0");
 }
+
+#[test]
+fn fn_return_keyword() {
+	let src = indoc! {"
+		fn add(x int, y int) int {
+			return x + y
+		}
+		add(3, 4)
+	"};
+	check(src, "7");
+}
+
+#[test]
+fn fn_return_short_circuits() {
+	let src = indoc! {"
+		fn five() int {
+			return 5
+			10
+		}
+		five()
+	"};
+	check(src, "5");
+}
+
+#[test]
+fn fn_return_bare() {
+	// a bare `return` yields the zero value of the return type
+	let src = indoc! {"
+		fn z() int { return }
+		z()
+	"};
+	check(src, "0");
+}

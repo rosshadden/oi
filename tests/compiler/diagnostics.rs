@@ -47,6 +47,15 @@ fn unknown_return_type() {
 }
 
 #[test]
+fn return_keyword_wrong_type() {
+	let src = indoc! {"
+		fn bad() int { return 2.0 }
+		bad()
+	"};
+	assert!(fail(src).contains("expected Int return value"));
+}
+
+#[test]
 fn type_mismatch() {
 	assert!(fail(r#"1 + "x""#).contains("cannot Add"));
 }
