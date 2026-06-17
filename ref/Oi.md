@@ -53,6 +53,7 @@
 - nu-like arrays and stuff `[1 2 3 4]` `nu`
 - unusual or arbitrary number precision `zig`
 - many things are tuples
+- documantation tests `rust`
 - first-class
 	- `assert` `rust v zig`
 	- `test` (and also `suite` and `test/skip`) `zig revo`
@@ -60,10 +61,16 @@
 	- units and unit conversion (can be an imported stdlib that adds `impl`s)
 	- primitive data type for paths `nu nix`
 - cli
-	- `fmt` (opinionated) `v go`
-	- `doc` `rust v go gdscript`
-	- `test` `rust v go`
-	- `lsp`
+	- `oi build`
+	- `oi run`
+		- `oi run .` should behave like [`v run .`](https://docs.vlang.io/running-a-project-folder-with-several-files.html)
+	- `oi init`
+	- `oi fmt` (opinionated) `v go`
+	- `oi doc` `rust v go gdscript`
+	- `oi test` `rust v go`
+	- `oi watch`
+	- `oi repl`
+	- `oi lsp`
 # TODO
 - [ ] implicit context
 - [x] shore up enum shorthands: `.foo` is enum syntax (payloads, patterns), `:foo` is atom coercion (prototyping, payload-less). both kept, non-overlapping roles. prefer `.foo` when enum exists.
@@ -96,6 +103,9 @@
 - mutable `$` by default or opt-in?
 - adding colon before return type sig `fn foo(x int, y int): z int { ... }`
 - [x] `[]` in anon fns turns off implicit capture (non-capturing, not pure). `@pure` is the separate purity annotation; compiler-verified no IO/globals/impure calls. `@pure` implies non-capturing so [] is redundant alongside it.
+- I kind of like Rust's `pub(crate)` concept where you specify what it's public for
+- nushell's easy working with var parts in pipelines
+	- `("hi", "mom") |> "{$in.0}, {$in.1}!"`
 # stdlib
 - `os`
 - `fs`
@@ -106,4 +116,24 @@
 - `slog`
 - `time`
 - `units`
+# influences
+- V
+- [revo](https://github.com/if-not-nil/revo)
+- Nushell
+	- structured data pipelines
+- Rust
+	- `impl`
+- Nim
+- Zig
+- Clojure
+	- metaprogramming
+	- homoiconicity
+- Janet
+- Lua
+- Jai
+- Odin
+- Julia
+- Elixir
+- Haskell
+- GDScript
 # [[archive]]

@@ -481,6 +481,9 @@ fn main() {
 	big_int := i64(50_000)
 	small_unsigned_int := u8(16)
 	
+	# ints can be automatically promoted to f64 or larger-width ints
+	assert(2 + 1.0 == 3.0)
+	
 	# supports arbitrary bit-width integers, like Zig
 	# use `i<width>` and `u<width>`, where width in [1, 65535]
 	weird_one := i2(1)
@@ -497,6 +500,10 @@ fn main() {
 		strings are multiline
 		by default
 	"
+	
+	# concatenation
+	assert("foo" + "bar", "foobar")
+	
 	# string interpolation
 	who := "mom"
 	print("hi {who}!")
@@ -801,7 +808,7 @@ fn main() {
 		}
 	}
 	
-	# ?T and !T must be handled; the or block is required to unwrap
+	# ?T and !T must be handled, and the or block is required to unwrap
 	# $ is the Error value (!T) or none (?T)
 	user := repo.find_user(7) or {
 		print($.message())  # "User 7 not found"

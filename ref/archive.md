@@ -1,23 +1,3 @@
-# influences
-- V
-- [revo](https://github.com/if-not-nil/revo)
-- Nushell
-	- structured data pipelines
-- Rust
-	- `impl`
-- Nim
-- Zig
-- Clojure
-	- metaprogramming
-	- homoiconicity
-- Janet
-- Lua
-- Jai
-- Odin
-- Julia
-- Elixir
-- Haskell
-- GDScript
 # name
 ## shortlist
 - vex
