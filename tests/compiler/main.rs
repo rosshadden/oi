@@ -4,6 +4,7 @@ mod support;
 mod helpers;
 
 mod arithmetic;
+mod comparisons;
 mod diagnostics;
 mod functions;
 mod literals;
