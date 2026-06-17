@@ -95,3 +95,23 @@ fn fn_arg_wrong_type() {
 	"};
 	assert!(fail(src).contains("wrong argument type"));
 }
+
+#[test]
+fn fn_return_type() {
+	let src = indoc! {"
+		fn add(x int, y int) int {
+			x + y
+		}
+		add(3, 4)
+	"};
+	check(src, "7");
+}
+
+#[test]
+fn fn_return_type_float() {
+	let src = indoc! {"
+		fn scale(x f64) f64 { x * 2.0 }
+		scale(2.5)
+	"};
+	check(src, "5.0");
+}

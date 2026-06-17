@@ -29,6 +29,24 @@ fn wrong_arg_type() {
 }
 
 #[test]
+fn wrong_return_type() {
+	let src = indoc! {r#"
+		fn bad() int { "nope" }
+		bad()
+	"#};
+	assert!(fail(src).contains("expected Int return value"));
+}
+
+#[test]
+fn unknown_return_type() {
+	let src = indoc! {"
+		fn bad() blob { 1 }
+		bad()
+	"};
+	assert!(fail(src).contains("unknown type `blob`"));
+}
+
+#[test]
 fn type_mismatch() {
 	assert!(fail(r#"1 + "x""#).contains("cannot Add"));
 }
