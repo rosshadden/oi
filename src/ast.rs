@@ -13,8 +13,15 @@ pub enum Expr {
 	String(String),
 	Ident(String),
 
+	// `[mods] name := value`: declares a new binding
 	Assign {
 		mutable: bool,
+		name: String,
+		value: Box<Spanned<Expr>>,
+	},
+
+	// `name = value`: reassigns an existing mutable binding
+	Reassign {
 		name: String,
 		value: Box<Spanned<Expr>>,
 	},

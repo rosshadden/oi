@@ -34,6 +34,8 @@ pub enum Token {
 	Ident(String),
 	#[token(":=")]
 	Assign,
+	#[token("=")]
+	Eq,
 
 	// binary operators
 	#[token("+")]
@@ -79,6 +81,7 @@ impl fmt::Display for Token {
 			Token::Mut => write!(f, "mut"),
 			Token::Ident(name) => write!(f, "{name}"),
 			Token::Assign => write!(f, ":="),
+			Token::Eq => write!(f, "="),
 			Token::Plus => write!(f, "+"),
 			Token::Minus => write!(f, "-"),
 			Token::Asterisk => write!(f, "*"),

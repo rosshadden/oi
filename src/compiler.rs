@@ -224,26 +224,70 @@ impl Compiler {
 			let cl = trans.b.func.dfg.value_type(val);
 			let var = trans.b.declare_var(cl);
 			trans.b.def_var(var, val);
-			trans.vars.insert(name.clone(), (var, *typ));
+			trans.vars.insert(
+				name.clone(),
+				Local {
+					var,
+					typ: *typ,
+					mutable: false,
+				},
+			);
 		}
 
 		let mut last = (trans.b.ins().iconst(int, 0), Typ::Int);
 		let mut last_span: Option<Span> = None;
 		for &stmt in stmts {
 			match &stmt.0 {
-				Expr::Assign { name, value, .. } => {
+				Expr::Assign {
+					mutable,
+					name,
+					value,
+				} => {
 					let (val, typ) = trans.expr(value)?;
-					// a variable takes the type of its first assigned value
-					let var = match trans.vars.get(name) {
-						Some(&(var, _)) => var,
-						None => {
-							let cl = trans.b.func.dfg.value_type(val);
-							let var = trans.b.declare_var(cl);
-							trans.vars.insert(name.clone(), (var, typ));
-							var
-						}
-					};
+					// `:=` always declares a fresh binding, shadowing any earlier one
+					let cl = trans.b.func.dfg.value_type(val);
+					let var = trans.b.declare_var(cl);
 					trans.b.def_var(var, val);
+					trans.vars.insert(
+						name.clone(),
+						Local {
+							var,
+							typ,
+							mutable: *mutable,
+						},
+					);
+				}
+
+				Expr::Reassign { name, value } => {
+					let (val, typ) = trans.expr(value)?;
+					let local = trans.vars.get(name).copied().ok_or_else(|| {
+						Diagnostic::new(
+							format!("cannot assign to undefined variable `{name}`"),
+							stmt.1.into_range(),
+						)
+						.with_label("not found in scope")
+						.with_note(format!("declare it first with `{name} := ...`"))
+					})?;
+					if !local.mutable {
+						return Err(Diagnostic::new(
+							format!("cannot assign to immutable `{name}`"),
+							stmt.1.into_range(),
+						)
+						.with_label("declared without `mut`")
+						.with_note(format!("use `mut {name} := ...` to allow reassignment")));
+					}
+					// a binding keeps the type it was declared with
+					if typ != local.typ {
+						return Err(Diagnostic::new(
+							format!(
+								"cannot assign {typ:?} to `{name}`, which is {:?}",
+								local.typ
+							),
+							value.1.into_range(),
+						)
+						.with_label("type mismatch"));
+					}
+					trans.b.def_var(local.var, val);
 				}
 
 				Expr::Return(value) => {
@@ -338,10 +382,18 @@ struct FnSig {
 	ret: Typ,
 }
 
+// A local variable.
+#[derive(Clone, Copy)]
+struct Local {
+	var: Variable,
+	typ: Typ,
+	mutable: bool,
+}
+
 struct Translator<'a> {
 	int: types::Type,
 	b: FunctionBuilder<'a>,
-	vars: HashMap<String, (Variable, Typ)>,
+	vars: HashMap<String, Local>,
 	module: &'a mut JITModule,
 	funcs: &'a HashMap<String, FnSig>,
 	string_idx: &'a mut usize,
@@ -356,11 +408,11 @@ impl<'a> Translator<'a> {
 			Expr::String(s) => Ok((self.str_const(s), Typ::Str)),
 
 			Expr::Ident(name) => {
-				let (var, typ) = self.vars.get(name).copied().ok_or_else(|| {
+				let local = self.vars.get(name).copied().ok_or_else(|| {
 					Diagnostic::new(format!("undefined variable `{name}`"), expr.1.into_range())
 						.with_label("not found in scope")
 				})?;
-				Ok((self.b.use_var(var), typ))
+				Ok((self.b.use_var(local.var), local.typ))
 			}
 
 			Expr::Negative(e) => {
@@ -419,6 +471,7 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
+			Expr::Reassign { .. } => unreachable!("reassign in expression position"),
 			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
 		}

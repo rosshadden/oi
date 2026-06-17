@@ -65,6 +65,7 @@ where
 		))
 	});
 
+	// bindings
 	let assign = just(Token::Mut)
 		.or_not()
 		.then(select! {
@@ -83,13 +84,27 @@ where
 			)
 		});
 
-	// `return expr` or a bare `return`
+	// assignment
+	let reassign = select! { Token::Ident(name) => name }
+		.then_ignore(just(Token::Eq))
+		.then(expr.clone())
+		.map_with(|(name, value), ex| {
+			(
+				Expr::Reassign {
+					name,
+					value: Box::new(value),
+				},
+				ex.span(),
+			)
+		});
+
+	// return statements
 	let ret_stmt = just(Token::Return)
 		.ignore_then(expr.clone().or_not())
 		.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
 
-	// a statement is a return, an assignment, or an expression
-	let stmt = ret_stmt.or(assign).or(expr);
+	// statements
+	let stmt = ret_stmt.or(assign).or(reassign).or(expr);
 
 	// param type is kept for the compiler to resolve
 	let param = select! { Token::Ident(name) => name }
