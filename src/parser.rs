@@ -100,18 +100,33 @@ where
 		.collect::<Vec<_>>()
 		.delimited_by(just(Token::LParen), just(Token::RParen));
 
-	// `fn name(params) ret? { ... }` — the return type is parsed but ignored for now
+	// optional return type
+	let ret = select! { Token::Ident(typ) => typ }
+		.map_with(|typ, ex| (typ, ex.span()))
+		.or_not();
+
+	// `fn name(params) ret? { ... }`
 	let func = just(Token::Fn)
 		.ignore_then(select! { Token::Ident(name) => name })
 		.then(params)
-		.then_ignore(select! { Token::Ident(_) => () }.or_not())
+		.then(ret)
 		.then(
 			stmt.clone()
 				.repeated()
 				.collect::<Vec<_>>()
 				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
 		)
-		.map_with(|((name, params), body), ex| (Expr::Fn { name, params, body }, ex.span()));
+		.map_with(|(((name, params), ret), body), ex| {
+			(
+				Expr::Fn {
+					name,
+					params,
+					ret,
+					body,
+				},
+				ex.span(),
+			)
+		});
 
 	func.or(stmt).repeated().collect().then_ignore(end())
 }

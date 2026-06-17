@@ -10,7 +10,12 @@ use crate::diagnostics::Diagnostic;
 use crate::runtime;
 
 // A top-level named function awaiting compilation.
-type FnItem<'a> = (&'a str, &'a [Param], &'a [Spanned<Expr>]);
+type FnItem<'a> = (
+	&'a str,
+	&'a [Param],
+	&'a Option<Spanned<String>>,
+	&'a [Spanned<Expr>],
+);
 
 pub struct Compiler {
 	builder_ctx: FunctionBuilderContext,
@@ -59,21 +64,31 @@ impl Compiler {
 		for item in program {
 			match &item.0 {
 				Expr::Fn { name, body, .. } if name == "main" => main_body = Some(body),
-				Expr::Fn { name, params, body } => others.push((name.as_str(), params, body)),
+				Expr::Fn {
+					name,
+					params,
+					ret,
+					body,
+				} => others.push((name.as_str(), params, ret, body)),
 				_ => loose.push(item),
 			}
 		}
 
 		// compile each named fn, recording its signature so the rest can call it
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();
-		for &(name, params, body) in &others {
-			// resolve declared param types up front
+		for &(name, params, ret, body) in &others {
+			// resolve declared param and return types up front
 			let params: Vec<(String, Typ)> = params
 				.iter()
 				.map(|p| Ok((p.name.clone(), typ_from_name(&p.typ, p.span)?)))
 				.collect::<Result<_, Diagnostic>>()?;
+			let ret = ret
+				.as_ref()
+				.map(|(typ, span)| Ok::<_, Diagnostic>((typ_from_name(typ, *span)?, *span)))
+				.transpose()?;
 			let stmts: Vec<&Spanned<Expr>> = body.iter().collect();
-			let (id, ret) = self.compile_fn(int, &format!("oi_{name}"), &params, &stmts, &funcs)?;
+			let (id, ret) =
+				self.compile_fn(int, &format!("oi_{name}"), &params, ret, &stmts, &funcs)?;
 			let param_typs = params.iter().map(|(_, t)| *t).collect();
 			funcs.insert(
 				name.to_string(),
@@ -104,7 +119,7 @@ impl Compiler {
 			None => loose,
 		};
 		// the program prints whatever it returns
-		let (entry_id, typ) = self.compile_fn(int, "oi_main", &[], &entry, &funcs)?;
+		let (entry_id, typ) = self.compile_fn(int, "oi_main", &[], None, &entry, &funcs)?;
 		let id = self.compile_entry(int, entry_id, typ, &funcs);
 
 		self.module
@@ -119,10 +134,11 @@ impl Compiler {
 		int: types::Type,
 		name: &str,
 		params: &[(String, Typ)],
+		ret: Option<(Typ, Span)>,
 		stmts: &[&Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
 	) -> Result<(FuncId, Typ), Diagnostic> {
-		let typ = self.translate(int, params, stmts, funcs)?;
+		let typ = self.translate(int, params, ret, stmts, funcs)?;
 		let id = self.finish_fn(name);
 		Ok((id, typ))
 	}
@@ -176,6 +192,7 @@ impl Compiler {
 		&mut self,
 		int: types::Type,
 		params: &[(String, Typ)],
+		ret: Option<(Typ, Span)>,
 		stmts: &[&Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
 	) -> Result<Typ, Diagnostic> {
@@ -211,6 +228,7 @@ impl Compiler {
 		}
 
 		let mut last = (trans.b.ins().iconst(int, 0), Typ::Int);
+		let mut last_span: Option<Span> = None;
 		for &stmt in stmts {
 			match &stmt.0 {
 				Expr::Assign { name, value, .. } => {
@@ -227,12 +245,25 @@ impl Compiler {
 					};
 					trans.b.def_var(var, val);
 				}
-				_ => last = trans.expr(stmt)?,
+				_ => {
+					last = trans.expr(stmt)?;
+					last_span = Some(stmt.1);
+				}
 			}
 		}
 
-		// the return type of a fn matches its final value
+		// the fn returns its final value
+		// if a return type was declared, it must match
 		let (val, typ) = last;
+		if let Some((declared, decl_span)) = ret
+			&& typ != declared
+		{
+			return Err(Diagnostic::new(
+				format!("expected {declared:?} return value, got {typ:?}"),
+				last_span.unwrap_or(decl_span).into_range(),
+			)
+			.with_label("wrong return type"));
+		}
 		trans
 			.b
 			.func

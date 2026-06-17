@@ -22,6 +22,7 @@ pub enum Expr {
 	Fn {
 		name: String,
 		params: Vec<Param>,
+		ret: Option<Spanned<String>>,
 		body: Vec<Spanned<Expr>>,
 	},
 
