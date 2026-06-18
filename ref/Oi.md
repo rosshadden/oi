@@ -106,6 +106,10 @@
 - I kind of like Rust's `pub(crate)` concept where you specify what it's public for
 - nushell's easy working with var parts in pipelines
 	- `("hi", "mom") |> "{$in.0}, {$in.1}!"`
+- `for/else`, `while/else` `python`
+- `match{}/or` (in addition to the planned `match{else}`)
+	- or at least clean up the usage of one of them
+- `if` unwrapping `v`
 # stdlib
 - `os`
 - `fs`
