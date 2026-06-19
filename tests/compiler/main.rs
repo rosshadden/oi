@@ -10,6 +10,7 @@ mod control_flow;
 mod diagnostics;
 mod functions;
 mod literals;
+mod loops;
 mod statements;
 mod strings;
 mod tuples;
