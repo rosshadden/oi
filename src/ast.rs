@@ -52,6 +52,9 @@ pub enum Expr {
 		body: Vec<Spanned<Expr>>,
 	},
 
+	Break,
+	Continue,
+
 	// structures
 	Tuple(Vec<(Option<String>, Spanned<Expr>)>),
 	Field {

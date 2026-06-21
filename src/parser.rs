@@ -136,9 +136,18 @@ where
 		let loop_expr = just(Token::Loop)
 			.ignore_then(block.clone())
 			.map_with(|body, ex| (Expr::Loop { body }, ex.span()));
+		let break_expr = just(Token::Break).map_with(|_, ex| (Expr::Break, ex.span()));
+		let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
 		// atoms
-		let atom = leaf.or(group).or(tuple).or(if_expr).or(loop_expr).or(bad);
+		let atom = leaf
+			.or(group)
+			.or(tuple)
+			.or(if_expr)
+			.or(loop_expr)
+			.or(break_expr)
+			.or(continue_expr)
+			.or(bad);
 
 		let field = select! {
 			Token::Int(n) => n.to_string(),

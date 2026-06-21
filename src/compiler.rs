@@ -163,6 +163,7 @@ impl Compiler {
 			funcs,
 			string_idx: &mut self.string_idx,
 			ret: None,
+			loops: vec![],
 		};
 
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
@@ -221,6 +222,7 @@ impl Compiler {
 			funcs,
 			string_idx: &mut self.string_idx,
 			ret,
+			loops: vec![],
 		};
 
 		// bind each parameter to a variable holding its incoming block param
@@ -314,6 +316,13 @@ struct Local {
 	mutable: bool,
 }
 
+// An in-progress loop's jump targets.
+// `continue` jumps to `top` and `break` jumps to `exit`
+struct LoopFrame {
+	top: Block,
+	exit: Option<Block>,
+}
+
 struct Translator<'a> {
 	int: types::Type,
 	b: FunctionBuilder<'a>,
@@ -323,6 +332,7 @@ struct Translator<'a> {
 	string_idx: &'a mut usize,
 	// the fn's return type (locked in by the first return, and later returns must agree)
 	ret: Option<(Typ, Span)>,
+	loops: Vec<LoopFrame>,
 }
 
 impl<'a> Translator<'a> {
@@ -410,6 +420,46 @@ impl<'a> Translator<'a> {
 					Some((v, t)) => last = (v, t),
 					None => return Ok(None),
 				},
+
+				// `break`/`continue` end the current block, so the rest of it is unreachable
+				Expr::Break => {
+					let exit = match self.loops.last() {
+						Some(frame) => frame.exit,
+						None => {
+							return Err(Diagnostic::new(
+								"`break` outside of a loop",
+								stmt.1.into_range(),
+							)
+							.with_label("not inside a loop"));
+						}
+					};
+					// the first `break` creates the loop's exit block
+					let exit = match exit {
+						Some(exit) => exit,
+						None => {
+							let exit = self.b.create_block();
+							self.loops.last_mut().unwrap().exit = Some(exit);
+							exit
+						}
+					};
+					self.b.ins().jump(exit, &[]);
+					return Ok(None);
+				}
+
+				Expr::Continue => {
+					let top = match self.loops.last() {
+						Some(frame) => frame.top,
+						None => {
+							return Err(Diagnostic::new(
+								"`continue` outside of a loop",
+								stmt.1.into_range(),
+							)
+							.with_label("not inside a loop"));
+						}
+					};
+					self.b.ins().jump(top, &[]);
+					return Ok(None);
+				}
 
 				_ => last = self.expr(stmt)?,
 			}
@@ -548,11 +598,13 @@ impl<'a> Translator<'a> {
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
 
+		self.loops.push(LoopFrame { top, exit: None });
 		// bindings made inside the loop must not leak past it
 		let saved = self.vars.clone();
 		let refs: Vec<&Spanned<Expr>> = body.iter().collect();
 		let flow = self.block(&refs)?;
 		self.vars = saved;
+		let frame = self.loops.pop().expect("loop frame");
 
 		// loop back to the top unless the body diverged
 		if flow.is_some() {
@@ -560,7 +612,16 @@ impl<'a> Translator<'a> {
 		}
 		self.b.seal_block(top);
 
-		Ok(None)
+		match frame.exit {
+			// a `break` made an exit, so the loop falls through to it
+			Some(exit) => {
+				self.b.switch_to_block(exit);
+				self.b.seal_block(exit);
+				Ok(Some((self.b.ins().iconst(self.int, 0), Typ::Int)))
+			}
+			// the loop has no exit and never falls through (no break)
+			None => Ok(None),
+		}
 	}
 
 	fn expr(&mut self, expr: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
@@ -751,6 +812,9 @@ impl<'a> Translator<'a> {
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
 			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
+			Expr::Break | Expr::Continue => {
+				unreachable!("break/continue in expression position")
+			}
 		}
 	}
 
