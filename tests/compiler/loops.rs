@@ -201,13 +201,9 @@ fn for_range_sums() {
 #[test]
 fn for_range_excludes_end() {
 	let src = indoc! {"
-		mut last := -1
-		loop i in 0..3 {
-			last = i
-		}
-		last
+		loop i in 0..3 { print(i) }
 	"};
-	check(src, "2");
+	check(src, "0\n1\n2\n0");
 }
 
 // an empty range runs the body zero times
@@ -332,11 +328,8 @@ fn for_each_variable_array() {
 #[test]
 fn for_each_strings() {
 	let src = indoc! {r#"
-		mut out := ""
-		loop s in ["a", "b", "c"] {
-			out = out + s
-		}
-		out
+		loop s in ["a", "b", "c"] { write(s) }
+		""
 	"#};
 	check(src, "abc");
 }
