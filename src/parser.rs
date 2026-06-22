@@ -133,9 +133,21 @@ where
 		});
 
 		// loops
+		// `loop {}`: infinite loop
+		// `loop <condition> {}`: while loop
+		// TODO: `loop <pattern> in <iter> {}`: for loop
 		let loop_expr = just(Token::Loop)
-			.ignore_then(block.clone())
-			.map_with(|body, ex| (Expr::Loop { body }, ex.span()));
+			.ignore_then(expr.clone().or_not())
+			.then(block.clone())
+			.map_with(|(cond, body), ex| {
+				(
+					Expr::Loop {
+						cond: cond.map(Box::new),
+						body,
+					},
+					ex.span(),
+				)
+			});
 		let break_expr = just(Token::Break).map_with(|_, ex| (Expr::Break, ex.span()));
 		let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 

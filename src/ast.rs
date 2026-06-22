@@ -49,6 +49,7 @@ pub enum Expr {
 	},
 
 	Loop {
+		cond: Option<Box<Spanned<Expr>>>,
 		body: Vec<Spanned<Expr>>,
 	},
 

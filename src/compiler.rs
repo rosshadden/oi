@@ -416,7 +416,7 @@ impl<'a> Translator<'a> {
 					}
 				}
 
-				Expr::Loop { body } => match self.loop_expr(body)? {
+				Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
 					Some((v, t)) => last = (v, t),
 					None => return Ok(None),
 				},
@@ -593,12 +593,37 @@ impl<'a> Translator<'a> {
 		}
 	}
 
-	fn loop_expr(&mut self, body: &[Spanned<Expr>]) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	fn loop_expr(
+		&mut self,
+		cond: Option<&Spanned<Expr>>,
+		body: &[Spanned<Expr>],
+	) -> Result<Option<(Value, Typ)>, Diagnostic> {
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
 
-		self.loops.push(LoopFrame { top, exit: None });
+		// a conditional loop branches at the top into the body or out to `exit`
+		let exit = match cond {
+			Some(cond) => {
+				let (cv, ct) = self.expr(cond)?;
+				if ct != Typ::Bool {
+					return Err(Diagnostic::new(
+						format!("`loop` condition must be Bool, got {ct:?}"),
+						cond.1.into_range(),
+					)
+					.with_label("not a Bool"));
+				}
+				let body_block = self.b.create_block();
+				let exit = self.b.create_block();
+				self.b.ins().brif(cv, body_block, &[], exit, &[]);
+				self.b.seal_block(body_block);
+				self.b.switch_to_block(body_block);
+				Some(exit)
+			}
+			None => None,
+		};
+
+		self.loops.push(LoopFrame { top, exit });
 		// bindings made inside the loop must not leak past it
 		let saved = self.vars.clone();
 		let refs: Vec<&Spanned<Expr>> = body.iter().collect();
@@ -613,13 +638,13 @@ impl<'a> Translator<'a> {
 		self.b.seal_block(top);
 
 		match frame.exit {
-			// a `break` made an exit, so the loop falls through to it
+			// the loop has an exit (a false condition or a `break`), so it falls through to it
 			Some(exit) => {
 				self.b.switch_to_block(exit);
 				self.b.seal_block(exit);
 				Ok(Some((self.b.ins().iconst(self.int, 0), Typ::Int)))
 			}
-			// the loop has no exit and never falls through (no break)
+			// an infinite loop with no `break` never falls through
 			None => Ok(None),
 		}
 	}
@@ -799,7 +824,7 @@ impl<'a> Translator<'a> {
 				}
 			}
 
-			Expr::Loop { body } => match self.loop_expr(body)? {
+			Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
 				Some(vt) => Ok(vt),
 				None => Err(Diagnostic::new(
 					"this `loop` never produces a value",
