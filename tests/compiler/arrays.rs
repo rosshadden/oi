@@ -199,3 +199,62 @@ fn slice_non_array() {
 fn slice_non_int_bound() {
 	assert!(fail(r#"a := [1, 2, 3]; a[true..2]"#).contains("must be Int"));
 }
+
+// index assignment
+
+#[test]
+fn index_assign_basic() {
+	check("mut a := [1, 2, 3]\na[1] = 99\na", "[1, 99, 3]");
+}
+
+#[test]
+fn index_assign_first() {
+	check("mut a := [10, 20]\na[0] = 1\na[0]", "1");
+}
+
+#[test]
+fn index_assign_variable_index() {
+	check("mut a := [1, 2, 3]\nmut i := 2\na[i] = 7\na", "[1, 2, 7]");
+}
+
+#[test]
+fn index_assign_multiple() {
+	check(
+		"mut a := [0, 0, 0]\na[0] = 1\na[1] = 2\na[2] = 3\na",
+		"[1, 2, 3]",
+	);
+}
+
+#[test]
+fn index_assign_strings() {
+	check(
+		r#"mut a := ["x", "y"]; a[0] = "hello"; a"#,
+		r#"["hello", "y"]"#,
+	);
+}
+
+#[test]
+fn index_assign_slice_sees_mutation() {
+	// b is a view into a's buffer; mutating a[1] is visible through b[0]
+	check("mut a := [1, 2, 3]\nb := a[1..]\na[1] = 99\nb[0]", "99");
+}
+
+#[test]
+fn index_assign_immutable_error() {
+	assert!(fail("a := [1, 2]\na[0] = 5").contains("immutable"));
+}
+
+#[test]
+fn index_assign_non_array_error() {
+	assert!(fail("mut x := 5\nx[0] = 1").contains("not an array"));
+}
+
+#[test]
+fn index_assign_type_mismatch_error() {
+	assert!(fail(r#"mut a := [1, 2]; a[0] = "hi""#).contains("type mismatch"));
+}
+
+#[test]
+fn index_assign_oob_error() {
+	assert!(fail("mut a := [1, 2]\na[5] = 9").contains("out of range"));
+}
