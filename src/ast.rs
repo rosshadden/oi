@@ -57,11 +57,23 @@ pub enum Expr {
 	Continue,
 
 	// structures
+
+	// tuples
 	Tuple(Vec<(Option<String>, Spanned<Expr>)>),
 	Field {
 		tuple: Box<Spanned<Expr>>,
 		field: String,
 	},
+
+	// arrays
+	Array(Vec<Spanned<Expr>>),
+	Index {
+		collection: Box<Spanned<Expr>>,
+		index: Box<Spanned<Expr>>,
+	},
+
+	// TODO: structs
+	// TODO: enums
 
 	// operators
 

@@ -7,6 +7,8 @@ pub const STR_CONCAT: &str = "oi_str_concat";
 pub const ALLOC: &str = "oi_alloc";
 pub const PRINT: &str = "oi_print";
 pub const WRITE: &str = "oi_write";
+pub const WRITE_SEP: &str = "oi_write_sep";
+pub const PANIC_OOB: &str = "oi_panic_oob";
 
 // Type tag shared with the compiler.
 #[repr(i64)]
@@ -44,6 +46,19 @@ pub extern "C" fn print(tag: Tag, bits: i64) {
 // Write a value fragment with no newline.
 pub extern "C" fn write(tag: Tag, bits: i64) {
 	print!("{}", render(tag, bits, true));
+}
+
+// Write the ", " that separates collection elements, before every element but the first.
+pub extern "C" fn write_sep(i: i64) {
+	if i > 0 {
+		print!(", ");
+	}
+}
+
+// Panic with an out-of-bounds message.
+pub extern "C" fn panic_oob(index: i64, len: i64) {
+	eprintln!("index out of range: the length is {len} but the index is {index}");
+	std::process::abort();
 }
 
 // Concatenate two 0-terminated strings into a fresh one.

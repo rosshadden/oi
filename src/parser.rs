@@ -111,6 +111,15 @@ where
 			.delimited_by(just(Token::LParen), just(Token::RParen))
 			.map_with(|elems, ex| (Expr::Tuple(elems), ex.span()));
 
+		// array literal
+		let array = expr
+			.clone()
+			.separated_by(just(Token::Comma))
+			.allow_trailing()
+			.collect::<Vec<_>>()
+			.delimited_by(just(Token::LBracket), just(Token::RBracket))
+			.map_with(|elems, ex| (Expr::Array(elems), ex.span()));
+
 		let if_expr = recursive(|if_expr| {
 			just(Token::If)
 				.ignore_then(expr.clone())
@@ -155,6 +164,7 @@ where
 		let atom = leaf
 			.or(group)
 			.or(tuple)
+			.or(array)
 			.or(if_expr)
 			.or(loop_expr)
 			.or(break_expr)
@@ -176,6 +186,21 @@ where
 					ex.span(),
 				)
 			}),
+			// indexing
+			postfix(
+				8,
+				expr.clone()
+					.delimited_by(just(Token::LBracket), just(Token::RBracket)),
+				|lhs, index, ex| {
+					(
+						Expr::Index {
+							collection: Box::new(lhs),
+							index: Box::new(index),
+						},
+						ex.span(),
+					)
+				},
+			),
 			// unary
 			prefix(7, just(Token::Minus), |_, rhs, ex| {
 				(Expr::Negative(Box::new(rhs)), ex.span())

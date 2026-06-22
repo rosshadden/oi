@@ -40,6 +40,8 @@ impl Default for Compiler {
 		builder.symbol(runtime::ALLOC, runtime::alloc as *const u8);
 		builder.symbol(runtime::PRINT, runtime::print as *const u8);
 		builder.symbol(runtime::WRITE, runtime::write as *const u8);
+		builder.symbol(runtime::WRITE_SEP, runtime::write_sep as *const u8);
+		builder.symbol(runtime::PANIC_OOB, runtime::panic_oob as *const u8);
 
 		let module = JITModule::new(builder);
 		Self {
@@ -268,7 +270,8 @@ enum Op {
 
 // An expression's Oi type.
 // A tuple field is an optional name paired with its type.
-// TODO: `PartialEq` compares names too right now, but comparisons need to ignore them
+// An array carries its element type. Its length is only known at runtime.
+// TODO: `PartialEq` compares tuple field names too right now, but comparisons need to ignore them
 #[derive(Clone, PartialEq, Debug)]
 enum Typ {
 	Int,
@@ -276,6 +279,7 @@ enum Typ {
 	Bool,
 	Str,
 	Tuple(Vec<(Option<String>, Typ)>),
+	Array(Box<Typ>),
 }
 
 // The cranelift type backing an Oi type.
@@ -774,6 +778,27 @@ impl<'a> Translator<'a> {
 
 			Expr::Field { tuple, field } => {
 				let (ptr, typ) = self.expr(tuple)?;
+
+				// arrays expose `.len` and numeric `.n` (sugar for `arr[n]`)
+				if let Typ::Array(elem) = &typ {
+					let elem = (**elem).clone();
+					if field == "len" {
+						let len = self.b.ins().load(self.int, MemFlags::new(), ptr, 0);
+						return Ok((len, Typ::Int));
+					}
+					return match field.parse::<i64>() {
+						Ok(n) => {
+							let idx = self.b.ins().iconst(self.int, n);
+							Ok((self.load_index(ptr, &elem, idx), elem))
+						}
+						Err(_) => Err(Diagnostic::new(
+							format!("arrays have no field `{field}`"),
+							expr.1.into_range(),
+						)
+						.with_label("arrays only have `.len` and numeric indices")),
+					};
+				}
+
 				let fields = match &typ {
 					Typ::Tuple(fields) => fields,
 					_ => {
@@ -812,6 +837,69 @@ impl<'a> Translator<'a> {
 					.ins()
 					.load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
 				Ok((v, field_typ))
+			}
+
+			Expr::Array(elems) => {
+				if elems.is_empty() {
+					return Err(Diagnostic::new(
+						"empty array literals aren't supported yet",
+						expr.1.into_range(),
+					)
+					.with_label("needs at least one element to infer its type"));
+				}
+				// every element must share one type
+				let mut elem_typ: Option<Typ> = None;
+				let mut vals = Vec::with_capacity(elems.len());
+				for e in elems {
+					let (val, typ) = self.expr(e)?;
+					match &elem_typ {
+						Some(t) if t != &typ => {
+							return Err(Diagnostic::new(
+								format!(
+									"array elements must share a type: expected {t:?}, got {typ:?}"
+								),
+								e.1.into_range(),
+							)
+							.with_label("mismatched element type"));
+						}
+						_ => elem_typ = Some(typ),
+					}
+					vals.push(val);
+				}
+				let elem = elem_typ.unwrap();
+
+				let ptr = self.call_alloc(elems.len() + 1);
+				let len = self.b.ins().iconst(self.int, elems.len() as i64);
+				self.b.ins().store(MemFlags::new(), len, ptr, 0);
+				for (i, val) in vals.into_iter().enumerate() {
+					self.b
+						.ins()
+						.store(MemFlags::new(), val, ptr, ((i + 1) * 8) as i32);
+				}
+				Ok((ptr, Typ::Array(Box::new(elem))))
+			}
+
+			Expr::Index { collection, index } => {
+				let (ptr, typ) = self.expr(collection)?;
+				let elem = match &typ {
+					Typ::Array(elem) => (**elem).clone(),
+					_ => {
+						return Err(Diagnostic::new(
+							format!("cannot index {typ:?}"),
+							collection.1.into_range(),
+						)
+						.with_label("not an array"));
+					}
+				};
+				let (idx, it) = self.expr(index)?;
+				if it != Typ::Int {
+					return Err(Diagnostic::new(
+						format!("array index must be Int, got {it:?}"),
+						index.1.into_range(),
+					)
+					.with_label("not an Int"));
+				}
+				Ok((self.load_index(ptr, &elem, idx), elem))
 			}
 
 			// an `if` nested inside an expression must yield a value on every branch
@@ -868,8 +956,9 @@ impl<'a> Translator<'a> {
 			Typ::Float => self.b.ins().f64const(0.0),
 			Typ::Str => self.str_const(""),
 			Typ::Int | Typ::Bool => self.b.ins().iconst(self.int, 0),
-			// unreachable until tuple return types exist, returns are scalar names for now
+			// unreachable until composite return types exist, returns are scalar names for now
 			Typ::Tuple(_) => unreachable!("tuple return types aren't supported yet"),
+			Typ::Array(_) => unreachable!("array return types aren't supported yet"),
 		}
 	}
 
@@ -1037,6 +1126,35 @@ impl<'a> Translator<'a> {
 		self.b.inst_results(call)[0]
 	}
 
+	// Bounds-check `idx` against the array's length header, then load that element.
+	fn load_index(&mut self, ptr: Value, elem: &Typ, idx: Value) -> Value {
+		let len = self.b.ins().load(self.int, MemFlags::new(), ptr, 0);
+		let oob = self
+			.b
+			.ins()
+			.icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
+
+		let panic_block = self.b.create_block();
+		let ok_block = self.b.create_block();
+		self.b.ins().brif(oob, panic_block, &[], ok_block, &[]);
+		self.b.seal_block(panic_block);
+		self.b.seal_block(ok_block);
+
+		self.b.switch_to_block(panic_block);
+		let func = self.import_fn(runtime::PANIC_OOB, &[self.int, self.int], None);
+		self.b.ins().call(func, &[idx, len]);
+		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+
+		// element `idx` lives at byte offset `(idx + 1) * 8`, past the length header
+		self.b.switch_to_block(ok_block);
+		let slot = self.b.ins().iadd_imm(idx, 1);
+		let off = self.b.ins().imul_imm(slot, 8);
+		let addr = self.b.ins().iadd(ptr, off);
+		self.b
+			.ins()
+			.load(cl_type(elem, self.int), MemFlags::new(), addr, 0)
+	}
+
 	// Write a literal text fragment (delimiter, field) with no newline.
 	fn write_lit(&mut self, s: &str) {
 		let ptr = self.str_const(s);
@@ -1073,12 +1191,61 @@ impl<'a> Translator<'a> {
 			return;
 		}
 
+		// an array's length is only known at runtime, so walk it with an emitted loop
+		if let Typ::Array(elem) = typ {
+			self.write_lit("[");
+			let len = self.b.ins().load(self.int, MemFlags::new(), val, 0);
+			let i = self.b.declare_var(self.int);
+			let zero = self.b.ins().iconst(self.int, 0);
+			self.b.def_var(i, zero);
+
+			let header = self.b.create_block();
+			let body = self.b.create_block();
+			let exit = self.b.create_block();
+			self.b.ins().jump(header, &[]);
+
+			// header
+			// loop while `i < len`
+			self.b.switch_to_block(header);
+			let iv = self.b.use_var(i);
+			let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, len);
+			self.b.ins().brif(more, body, &[], exit, &[]);
+			self.b.seal_block(body);
+			self.b.seal_block(exit);
+
+			// body
+			// a runtime helper writes the ", " before all but the first element, then element `i` is loaded from byte offset `(i + 1) * 8`, past the header
+			self.b.switch_to_block(body);
+			let iv = self.b.use_var(i);
+			let sep = self.import_fn(runtime::WRITE_SEP, &[self.int], None);
+			self.b.ins().call(sep, &[iv]);
+			let next = self.b.ins().iadd_imm(iv, 1);
+			let off = self.b.ins().imul_imm(next, 8);
+			let addr = self.b.ins().iadd(val, off);
+			let ev = self
+				.b
+				.ins()
+				.load(cl_type(elem, self.int), MemFlags::new(), addr, 0);
+			self.emit_print(ev, elem, false);
+			self.b.def_var(i, next);
+			self.b.ins().jump(header, &[]);
+			self.b.seal_block(header);
+
+			self.b.switch_to_block(exit);
+			self.write_lit("]");
+			if top {
+				self.write_lit("\n");
+			}
+			return;
+		}
+
 		let tag = match typ {
 			Typ::Bool => runtime::Tag::Bool,
 			Typ::Int => runtime::Tag::Int,
 			Typ::Float => runtime::Tag::Float,
 			Typ::Str => runtime::Tag::Str,
 			Typ::Tuple(_) => unreachable!("tuple handled above"),
+			Typ::Array(_) => unreachable!("array handled above"),
 		};
 		// pass floats by raw bits since the runtime reads every value from an 8-byte slot
 		let bits = if *typ == Typ::Float {
