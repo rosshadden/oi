@@ -313,3 +313,38 @@ fn append_non_array_error() {
 fn append_type_mismatch_error() {
 	assert!(fail(r#"mut a := [1, 2]; a << "hi""#).contains("type mismatch"));
 }
+
+// array extend (<<)
+
+#[test]
+fn extend_basic() {
+	check("mut odd := [1, 3, 5]\nodd << [9, 11]\nodd", "[1, 3, 5, 9, 11]");
+}
+
+#[test]
+fn extend_updates_len() {
+	check("mut odd := [1, 3, 5]\nodd << [9, 11]\nodd.len", "5");
+}
+
+#[test]
+fn extend_empty_src() {
+	// appending a zero-length slice leaves dst unchanged
+	check(
+		"mut a := [1, 2, 3]\nb := a[0..0]\na << b\na",
+		"[1, 2, 3]",
+	);
+}
+
+#[test]
+fn extend_into_empty_ish() {
+	// extend a slice (cap == len) by another array
+	check(
+		"a := [1, 2]\nmut b := a[0..0]\nb << [3, 4]\nb",
+		"[3, 4]",
+	);
+}
+
+#[test]
+fn extend_type_mismatch_error() {
+	assert!(fail(r#"mut a := [1, 2]; b := ["x"]; a << b"#).contains("type mismatch"));
+}
