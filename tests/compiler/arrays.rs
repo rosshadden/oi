@@ -166,11 +166,14 @@ fn slice_variable_bounds() {
 #[test]
 fn slice_is_an_array() {
 	// the result is a normal array: indexable, with a `len`, and re-sliceable
-	check(indoc!{"
+	check(
+		indoc! {"
 		a := [0, 2, 4, 6, 8]
 		assert(a[1..][0] == 2)
 		assert(a[1..3].len == 2)
-	"}, "true");
+	"},
+		"true",
+	);
 }
 
 #[test]
@@ -238,12 +241,15 @@ fn index_assign_strings() {
 
 #[test]
 fn index_assign_slice_sees_mutation() {
-	check(indoc!{"
+	check(
+		indoc! {"
 		mut a := [1, 2, 3]
 		b := a[1..]
 		a[1] = 99
 		assert(b[0] == 99)
-	"}, "true");
+	"},
+		"true",
+	);
 }
 
 #[test]

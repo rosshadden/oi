@@ -27,8 +27,11 @@ fn print_mixed_types() {
 
 #[test]
 fn print_as_statement() {
-	check(r#"print("hello")
-42"#, "hello\n42");
+	check(
+		r#"print("hello")
+42"#,
+		"hello\n42",
+	);
 }
 
 #[test]
