@@ -400,6 +400,46 @@ impl<'a> Translator<'a> {
 					self.b.def_var(local.var, val);
 				}
 
+				Expr::IndexAssign { name, index, value } => {
+					let local = self.vars.get(name).cloned().ok_or_else(|| {
+						Diagnostic::new(
+							format!("cannot assign to undefined variable `{name}`"),
+							stmt.1.into_range(),
+						)
+						.with_label("not found in scope")
+						.with_note(format!("declare it first with `{name} := ...`"))
+					})?;
+					if !local.mutable {
+						return Err(Diagnostic::new(
+							format!("cannot assign to element of immutable `{name}`"),
+							stmt.1.into_range(),
+						)
+						.with_label("declared without `mut`")
+						.with_note(format!("use `mut {name} := ...` to allow assignment")));
+					}
+					let elem = match &local.typ {
+						Typ::Array(e) => (**e).clone(),
+						_ => {
+							return Err(Diagnostic::new(
+								format!("`{name}` is not an array"),
+								stmt.1.into_range(),
+							)
+							.with_label("not an array"));
+						}
+					};
+					let ptr = self.b.use_var(local.var);
+					let idx = self.int_value(index, "array index")?;
+					let (val, vtyp) = self.expr(value)?;
+					if vtyp != elem {
+						return Err(Diagnostic::new(
+							format!("cannot assign {vtyp:?} to element of {elem:?} array"),
+							value.1.into_range(),
+						)
+						.with_label("type mismatch"));
+					}
+					self.store_index(ptr, idx, val);
+				}
+
 				Expr::Return(value) => {
 					let (val, typ) = match value {
 						Some(e) => self.expr(e)?,
@@ -933,6 +973,7 @@ impl<'a> Translator<'a> {
 
 			Expr::Bind { .. } => unreachable!("bind in expression position"),
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
+			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),
 			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
 			Expr::Break | Expr::Continue => {
@@ -1207,6 +1248,32 @@ impl<'a> Translator<'a> {
 		self.b
 			.ins()
 			.load(cl_type(elem, self.int), MemFlags::new(), addr, 0)
+	}
+
+	// Bounds-check `idx`, then store `val` at that element position.
+	fn store_index(&mut self, header: Value, idx: Value, val: Value) {
+		let len = self.array_len(header);
+		let oob = self
+			.b
+			.ins()
+			.icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
+
+		let panic_block = self.b.create_block();
+		let ok_block = self.b.create_block();
+		self.b.ins().brif(oob, panic_block, &[], ok_block, &[]);
+		self.b.seal_block(panic_block);
+		self.b.seal_block(ok_block);
+
+		self.b.switch_to_block(panic_block);
+		let func = self.import_fn(runtime::PANIC_OOB, &[self.int, self.int], None);
+		self.b.ins().call(func, &[idx, len]);
+		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+
+		self.b.switch_to_block(ok_block);
+		let data = self.array_data(header);
+		let off = self.b.ins().imul_imm(idx, 8);
+		let addr = self.b.ins().iadd(data, off);
+		self.b.ins().store(MemFlags::new(), val, addr, 0);
 	}
 
 	// Write a literal text fragment (delimiter, field) with no newline.

@@ -79,6 +79,12 @@ pub enum Expr {
 		start: Option<Box<Spanned<Expr>>>,
 		end: Option<Box<Spanned<Expr>>>,
 	},
+	// `name[index] = value`
+	IndexAssign {
+		name: String,
+		index: Box<Spanned<Expr>>,
+		value: Box<Spanned<Expr>>,
+	},
 
 	// TODO: structs
 	// TODO: enums
