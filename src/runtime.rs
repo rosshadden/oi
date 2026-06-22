@@ -10,7 +10,8 @@ pub const WRITE: &str = "oi_write";
 pub const WRITE_SEP: &str = "oi_write_sep";
 pub const SLICE: &str = "oi_slice";
 pub const PANIC_OOB: &str = "oi_panic_oob";
-pub const ARRAY_GROW: &str = "oi_array_grow";
+pub const ARRAY_RESERVE: &str = "oi_array_reserve";
+pub const ARRAY_EXTEND: &str = "oi_array_extend";
 
 // Type tag shared with the compiler.
 #[repr(i64)]
@@ -102,17 +103,42 @@ pub extern "C" fn slice(header: *const i64, start: i64, end: i64, elem_size: i64
 	out
 }
 
-// Grow an array's element buffer to at least cap+1 slots.
-// Doubles capacity (minimum 1). Updates handle's data pointer and cap in place.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn array_grow(header: *mut i64, elem_size: i64) {
+// Ensure the array has capacity for at least `min_cap` elements.
+// Grows by doubling, at least to `min_cap`. Updates data and cap in place.
+fn reserve(header: *mut i64, min_cap: i64, elem_size: i64) {
 	let (data, len, cap) = unsafe { (*header, *header.add(1), *header.add(2)) };
-	let new_cap = if cap == 0 { 1 } else { cap * 2 };
+	if min_cap <= cap {
+		return;
+	}
+	let new_cap = cap.max(1) * 2;
+	let new_cap = new_cap.max(min_cap);
 	let new_data = alloc(new_cap * elem_size) as *mut u8;
-	let old_bytes = (len * elem_size) as usize;
 	unsafe {
-		std::ptr::copy_nonoverlapping(data as *const u8, new_data, old_bytes);
+		std::ptr::copy_nonoverlapping(data as *const u8, new_data, (len * elem_size) as usize);
 		*header = new_data as i64;
 		*header.add(2) = new_cap;
+	}
+}
+
+// Ensure the array has room for one more element.
+// Called before single-element append.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn array_reserve(header: *mut i64, elem_size: i64) {
+	let len = unsafe { *header.add(1) };
+	reserve(header, len + 1, elem_size);
+}
+
+// Append all elements of `src` to `dst`, growing dst's buffer as needed.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn array_extend(dst: *mut i64, src: *const i64, elem_size: i64) {
+	let (_, dst_len, _) = unsafe { (*dst, *dst.add(1), *dst.add(2)) };
+	let (src_data, src_len) = unsafe { (*src, *src.add(1)) };
+	reserve(dst, dst_len + src_len, elem_size);
+	let new_len = dst_len + src_len;
+	unsafe {
+		let dst_data = *dst as *mut u8;
+		let dst_tail = dst_data.add((dst_len * elem_size) as usize);
+		std::ptr::copy_nonoverlapping(src_data as *const u8, dst_tail, (src_len * elem_size) as usize);
+		*dst.add(1) = new_len;
 	}
 }

@@ -43,7 +43,8 @@ impl Default for Compiler {
 		builder.symbol(runtime::WRITE_SEP, runtime::write_sep as *const u8);
 		builder.symbol(runtime::SLICE, runtime::slice as *const u8);
 		builder.symbol(runtime::PANIC_OOB, runtime::panic_oob as *const u8);
-		builder.symbol(runtime::ARRAY_GROW, runtime::array_grow as *const u8);
+		builder.symbol(runtime::ARRAY_RESERVE, runtime::array_reserve as *const u8);
+		builder.symbol(runtime::ARRAY_EXTEND, runtime::array_extend as *const u8);
 
 		let module = JITModule::new(builder);
 		Self {
@@ -478,38 +479,48 @@ impl<'a> Translator<'a> {
 						}
 					};
 					let (val, vtyp) = self.expr(value)?;
-					if vtyp != elem {
+					let size = self.b.ins().iconst(self.int, elem_size(&elem));
+					let ptr = self.b.use_var(local.var);
+
+					if vtyp == elem {
+						// single-element append: grow if full, then write and increment len
+						let len = self.array_len(ptr);
+						let cap = self.array_cap(ptr);
+						let full = self.b.ins().icmp(IntCC::Equal, len, cap);
+						let grow_block = self.b.create_block();
+						let ok_block = self.b.create_block();
+						self.b.ins().brif(full, grow_block, &[], ok_block, &[]);
+						self.b.seal_block(grow_block);
+
+						self.b.switch_to_block(grow_block);
+						let func = self.import_fn(runtime::ARRAY_RESERVE, &[self.int, self.int], None);
+						self.b.ins().call(func, &[ptr, size]);
+						self.b.ins().jump(ok_block, &[]);
+						self.b.seal_block(ok_block);
+
+						self.b.switch_to_block(ok_block);
+						let len = self.array_len(ptr);
+						let data = self.array_data(ptr);
+						let off = self.b.ins().imul_imm(len, elem_size(&elem));
+						let addr = self.b.ins().iadd(data, off);
+						self.b.ins().store(MemFlags::new(), val, addr, 0);
+						let new_len = self.b.ins().iadd_imm(len, 1);
+						self.b.ins().store(MemFlags::new(), new_len, ptr, 8);
+					} else if vtyp == Typ::Array(Box::new(elem.clone())) {
+						// array extend: delegate entirely to the runtime
+						let func = self.import_fn(
+							runtime::ARRAY_EXTEND,
+							&[self.int, self.int, self.int],
+							None,
+						);
+						self.b.ins().call(func, &[ptr, val, size]);
+					} else {
 						return Err(Diagnostic::new(
 							format!("cannot append {vtyp:?} to {elem:?} array"),
 							value.1.into_range(),
 						)
 						.with_label("type mismatch"));
 					}
-					let ptr = self.b.use_var(local.var);
-					let len = self.array_len(ptr);
-					let cap = self.array_cap(ptr);
-
-					// grow if full
-					let full = self.b.ins().icmp(IntCC::Equal, len, cap);
-					let grow_block = self.b.create_block();
-					let ok_block = self.b.create_block();
-					self.b.ins().brif(full, grow_block, &[], ok_block, &[]);
-					self.b.seal_block(grow_block);
-
-					self.b.switch_to_block(grow_block);
-					let size = self.b.ins().iconst(self.int, elem_size(&elem));
-					let func = self.import_fn(runtime::ARRAY_GROW, &[self.int, self.int], None);
-					self.b.ins().call(func, &[ptr, size]);
-					self.b.ins().jump(ok_block, &[]);
-					self.b.seal_block(ok_block);
-
-					self.b.switch_to_block(ok_block);
-					let data = self.array_data(ptr);
-					let off = self.b.ins().imul_imm(len, elem_size(&elem));
-					let addr = self.b.ins().iadd(data, off);
-					self.b.ins().store(MemFlags::new(), val, addr, 0);
-					let new_len = self.b.ins().iadd_imm(len, 1);
-					self.b.ins().store(MemFlags::new(), new_len, ptr, 8);
 				}
 
 				Expr::Return(value) => {
