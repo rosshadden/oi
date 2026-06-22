@@ -45,6 +45,7 @@ impl Default for Compiler {
 		builder.symbol(runtime::PANIC_OOB, runtime::panic_oob as *const u8);
 		builder.symbol(runtime::ARRAY_RESERVE, runtime::array_reserve as *const u8);
 		builder.symbol(runtime::ARRAY_EXTEND, runtime::array_extend as *const u8);
+		builder.symbol(runtime::STR_EQ, runtime::str_eq as *const u8);
 
 		let module = JITModule::new(builder);
 		Self {
@@ -1093,6 +1094,19 @@ impl<'a> Translator<'a> {
 		self.module.define_data(id, &desc).unwrap();
 		let gv = self.module.declare_data_in_func(id, self.b.func);
 		self.b.ins().symbol_value(self.int, gv)
+	}
+
+	// Compare two values of the same type.
+	fn emit_eq(&mut self, a: Value, b: Value, typ: &Typ) -> Value {
+		match typ {
+			Typ::Float => self.b.ins().fcmp(FloatCC::Equal, a, b),
+			Typ::Str => {
+				let func = self.import_fn(runtime::STR_EQ, &[self.int, self.int], Some(self.int));
+				let call = self.b.ins().call(func, &[a, b]);
+				self.b.inst_results(call)[0]
+			}
+			_ => self.b.ins().icmp(IntCC::Equal, a, b),
+		}
 	}
 
 	// The zero value for an Oi type.

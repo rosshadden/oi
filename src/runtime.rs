@@ -12,6 +12,7 @@ pub const SLICE: &str = "oi_slice";
 pub const PANIC_OOB: &str = "oi_panic_oob";
 pub const ARRAY_RESERVE: &str = "oi_array_reserve";
 pub const ARRAY_EXTEND: &str = "oi_array_extend";
+pub const STR_EQ: &str = "oi_str_eq";
 
 // Type tag shared with the compiler.
 #[repr(i64)]
@@ -62,6 +63,13 @@ pub extern "C" fn write_sep(i: i64) {
 pub extern "C" fn panic_oob(index: i64, len: i64) {
 	eprintln!("index out of range: the length is {len} but the index is {index}");
 	std::process::abort();
+}
+
+// Compare two 0-terminated strings.
+pub extern "C" fn str_eq(a: *const u8, b: *const u8) -> i64 {
+	let a = unsafe { CStr::from_ptr(a as *const c_char) };
+	let b = unsafe { CStr::from_ptr(b as *const c_char) };
+	(a == b) as i64
 }
 
 // Concatenate two 0-terminated strings into a fresh one.
