@@ -278,7 +278,10 @@ fn append_multiple() {
 
 #[test]
 fn append_strings() {
-	check(r#"mut a := ["x"]; a << "y"; a << "z"; a"#, r#"["x", "y", "z"]"#);
+	check(
+		r#"mut a := ["x"]; a << "y"; a << "z"; a"#,
+		r#"["x", "y", "z"]"#,
+	);
 }
 
 #[test]
@@ -293,10 +296,7 @@ fn append_grows_past_initial_cap() {
 #[test]
 fn append_slice_copies_buffer() {
 	// appending to a slice forces a copy; the parent is unaffected
-	check(
-		"a := [1, 2, 3]\nmut b := a[1..]\nb << 99\nb",
-		"[2, 3, 99]",
-	);
+	check("a := [1, 2, 3]\nmut b := a[1..]\nb << 99\nb", "[2, 3, 99]");
 }
 
 #[test]
@@ -318,7 +318,10 @@ fn append_type_mismatch_error() {
 
 #[test]
 fn extend_basic() {
-	check("mut odd := [1, 3, 5]\nodd << [9, 11]\nodd", "[1, 3, 5, 9, 11]");
+	check(
+		"mut odd := [1, 3, 5]\nodd << [9, 11]\nodd",
+		"[1, 3, 5, 9, 11]",
+	);
 }
 
 #[test]
@@ -329,19 +332,13 @@ fn extend_updates_len() {
 #[test]
 fn extend_empty_src() {
 	// appending a zero-length slice leaves dst unchanged
-	check(
-		"mut a := [1, 2, 3]\nb := a[0..0]\na << b\na",
-		"[1, 2, 3]",
-	);
+	check("mut a := [1, 2, 3]\nb := a[0..0]\na << b\na", "[1, 2, 3]");
 }
 
 #[test]
 fn extend_into_empty_ish() {
 	// extend a slice (cap == len) by another array
-	check(
-		"a := [1, 2]\nmut b := a[0..0]\nb << [3, 4]\nb",
-		"[3, 4]",
-	);
+	check("a := [1, 2]\nmut b := a[0..0]\nb << [3, 4]\nb", "[3, 4]");
 }
 
 #[test]

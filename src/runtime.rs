@@ -146,7 +146,11 @@ pub extern "C" fn array_extend(dst: *mut i64, src: *const i64, elem_size: i64) {
 	unsafe {
 		let dst_data = *dst as *mut u8;
 		let dst_tail = dst_data.add((dst_len * elem_size) as usize);
-		std::ptr::copy_nonoverlapping(src_data as *const u8, dst_tail, (src_len * elem_size) as usize);
+		std::ptr::copy_nonoverlapping(
+			src_data as *const u8,
+			dst_tail,
+			(src_len * elem_size) as usize,
+		);
 		*dst.add(1) = new_len;
 	}
 }

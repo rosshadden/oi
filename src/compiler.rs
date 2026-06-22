@@ -496,7 +496,11 @@ impl<'a> Translator<'a> {
 
 						self.b.switch_to_block(grow_block);
 						let min_cap = self.b.ins().iadd_imm(len, 1);
-						let func = self.import_fn(runtime::ARRAY_RESERVE, &[self.int, self.int, self.int], None);
+						let func = self.import_fn(
+							runtime::ARRAY_RESERVE,
+							&[self.int, self.int, self.int],
+							None,
+						);
 						self.b.ins().call(func, &[ptr, min_cap, size]);
 						self.b.ins().jump(ok_block, &[]);
 						self.b.seal_block(ok_block);
@@ -805,8 +809,11 @@ impl<'a> Translator<'a> {
 			ForIter::Iter(e) => {
 				let (arr, typ) = self.expr(e)?;
 				let Typ::Array(elem) = typ else {
-					return Err(Diagnostic::new(format!("cannot iterate over {typ:?}"), e.1.into_range())
-						.with_label("not iterable"));
+					return Err(Diagnostic::new(
+						format!("cannot iterate over {typ:?}"),
+						e.1.into_range(),
+					)
+					.with_label("not iterable"));
 				};
 				let zero = self.b.ins().iconst(self.int, 0);
 				let len = self.array_len(arr);
@@ -838,18 +845,28 @@ impl<'a> Translator<'a> {
 			Some((data, elem)) => {
 				let off = self.b.ins().imul_imm(iv, elem_size(elem));
 				let addr = self.b.ins().iadd(*data, off);
-				(self.b.ins().load(cl_type(elem, self.int), MemFlags::new(), addr, 0), elem.clone())
+				(
+					self.b
+						.ins()
+						.load(cl_type(elem, self.int), MemFlags::new(), addr, 0),
+					elem.clone(),
+				)
 			}
 		};
 		let saved = self.vars.clone();
 		self.bind_pattern(pat, val, &typ, span)?;
-		self.loops.push(LoopFrame { top: latch, exit: Some(exit) });
+		self.loops.push(LoopFrame {
+			top: latch,
+			exit: Some(exit),
+		});
 		let refs: Vec<&Spanned<Expr>> = body.iter().collect();
 		let flow = self.block(&refs)?;
 		self.vars = saved;
 		self.loops.pop().expect("loop frame");
 
-		if flow.is_some() { self.b.ins().jump(latch, &[]); }
+		if flow.is_some() {
+			self.b.ins().jump(latch, &[]);
+		}
 		self.b.seal_block(latch);
 		self.b.seal_block(exit);
 
@@ -864,27 +881,62 @@ impl<'a> Translator<'a> {
 		Ok((self.b.ins().iconst(types::I32, 0), Typ::Int))
 	}
 
-	fn bind_pattern(&mut self, pat: &Pattern, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
+	fn bind_pattern(
+		&mut self,
+		pat: &Pattern,
+		val: Value,
+		typ: &Typ,
+		span: Span,
+	) -> Result<(), Diagnostic> {
 		match pat {
 			Pattern::Name(name) => {
 				let var = self.b.declare_var(cl_type(typ, self.int));
 				self.b.def_var(var, val);
-				self.vars.insert(name.clone(), Local { var, typ: typ.clone(), mutable: false });
+				self.vars.insert(
+					name.clone(),
+					Local {
+						var,
+						typ: typ.clone(),
+						mutable: false,
+					},
+				);
 			}
 			Pattern::Tuple(names) => {
 				let Typ::Tuple(fields) = typ else {
-					return Err(Diagnostic::new(format!("cannot destructure {typ:?} with a tuple pattern"), span.into_range())
-						.with_label("not a tuple"));
+					return Err(Diagnostic::new(
+						format!("cannot destructure {typ:?} with a tuple pattern"),
+						span.into_range(),
+					)
+					.with_label("not a tuple"));
 				};
 				if names.len() != fields.len() {
-					return Err(Diagnostic::new(format!("pattern binds {} names but the tuple has {} fields", names.len(), fields.len()), span.into_range())
-						.with_label("wrong number of fields"));
+					return Err(Diagnostic::new(
+						format!(
+							"pattern binds {} names but the tuple has {} fields",
+							names.len(),
+							fields.len()
+						),
+						span.into_range(),
+					)
+					.with_label("wrong number of fields"));
 				}
 				for (i, (name, (_, ftyp))) in names.iter().zip(fields).enumerate() {
-					let fv = self.b.ins().load(cl_type(ftyp, self.int), MemFlags::new(), val, (i * 8) as i32);
+					let fv = self.b.ins().load(
+						cl_type(ftyp, self.int),
+						MemFlags::new(),
+						val,
+						(i * 8) as i32,
+					);
 					let var = self.b.declare_var(cl_type(ftyp, self.int));
 					self.b.def_var(var, fv);
-					self.vars.insert(name.clone(), Local { var, typ: ftyp.clone(), mutable: false });
+					self.vars.insert(
+						name.clone(),
+						Local {
+							var,
+							typ: ftyp.clone(),
+							mutable: false,
+						},
+					);
 				}
 			}
 		}
@@ -1193,7 +1245,11 @@ impl<'a> Translator<'a> {
 						)
 						.with_label("type mismatch: value must be Str"));
 					}
-					let func = self.import_fn(runtime::STR_CONTAINS, &[self.int, self.int], Some(self.int));
+					let func = self.import_fn(
+						runtime::STR_CONTAINS,
+						&[self.int, self.int],
+						Some(self.int),
+					);
 					let call = self.b.ins().call(func, &[rhs_val, lhs_val]);
 					return Ok((self.b.inst_results(call)[0], Typ::Bool));
 				}
@@ -1249,9 +1305,14 @@ impl<'a> Translator<'a> {
 				let iv = self.b.use_var(i);
 				let off = self.b.ins().imul_imm(iv, elem_size(&elem));
 				let addr = self.b.ins().iadd(data, off);
-				let elem_val = self.b.ins().load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
+				let elem_val =
+					self.b
+						.ins()
+						.load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
 				let equal = self.emit_eq(val, elem_val, &elem);
-				self.b.ins().brif(equal, found_block, &[], continue_block, &[]);
+				self.b
+					.ins()
+					.brif(equal, found_block, &[], continue_block, &[]);
 				self.b.seal_block(found_block);
 				self.b.seal_block(continue_block);
 
