@@ -1067,6 +1067,82 @@ impl<'a> Translator<'a> {
 				.with_label("an infinite loop with no `break` yields nothing")),
 			},
 
+			Expr::In(lhs, rhs) => {
+				let (arr, arr_typ) = self.expr(rhs)?;
+				let elem = match arr_typ {
+					Typ::Array(ref e) => (**e).clone(),
+					_ => {
+						return Err(Diagnostic::new(
+							format!("right side of `in` must be an array, got {arr_typ:?}"),
+							rhs.1.into_range(),
+						)
+						.with_label("not an array"));
+					}
+				};
+				let (val, val_typ) = self.expr(lhs)?;
+				if val_typ != elem {
+					return Err(Diagnostic::new(
+						format!("cannot search {val_typ:?} in {elem:?} array"),
+						lhs.1.into_range(),
+					)
+					.with_label("type mismatch"));
+				}
+
+				let len = self.array_len(arr);
+				let data = self.array_data(arr);
+
+				// result: false until a match is found
+				let found = self.b.declare_var(self.int);
+				let zero = self.b.ins().iconst(self.int, 0);
+				self.b.def_var(found, zero);
+				let i = self.b.declare_var(self.int);
+				self.b.def_var(i, zero);
+
+				let header = self.b.create_block();
+				let body = self.b.create_block();
+				let found_block = self.b.create_block();
+				let continue_block = self.b.create_block();
+				let exit = self.b.create_block();
+
+				self.b.ins().jump(header, &[]);
+
+				// header: loop while i < len
+				self.b.switch_to_block(header);
+				let iv = self.b.use_var(i);
+				let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, len);
+				self.b.ins().brif(more, body, &[], exit, &[]);
+				self.b.seal_block(body);
+
+				// body: compare element, then branch to found_block or continue_block
+				self.b.switch_to_block(body);
+				let iv = self.b.use_var(i);
+				let off = self.b.ins().imul_imm(iv, elem_size(&elem));
+				let addr = self.b.ins().iadd(data, off);
+				let elem_val = self.b.ins().load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
+				let equal = self.emit_eq(val, elem_val, &elem);
+				self.b.ins().brif(equal, found_block, &[], continue_block, &[]);
+				self.b.seal_block(found_block);
+				self.b.seal_block(continue_block);
+
+				// found: set result = true, jump to exit
+				self.b.switch_to_block(found_block);
+				let one = self.b.ins().iconst(self.int, 1);
+				self.b.def_var(found, one);
+				self.b.ins().jump(exit, &[]);
+				self.b.seal_block(exit);
+
+				// continue: advance i and loop back
+				self.b.switch_to_block(continue_block);
+				let iv = self.b.use_var(i);
+				let next = self.b.ins().iadd_imm(iv, 1);
+				self.b.def_var(i, next);
+				self.b.ins().jump(header, &[]);
+				self.b.seal_block(header);
+
+				self.b.switch_to_block(exit);
+				Ok((self.b.use_var(found), Typ::Bool))
+			}
+
 			Expr::Bind { .. } => unreachable!("bind in expression position"),
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
 			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),
