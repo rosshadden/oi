@@ -4,6 +4,7 @@ mod support;
 mod helpers;
 
 mod arithmetic;
+mod arrays;
 mod booleans;
 mod comparisons;
 mod control_flow;
