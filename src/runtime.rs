@@ -14,6 +14,7 @@ pub const ARRAY_RESERVE: &str = "oi_array_reserve";
 pub const ARRAY_EXTEND: &str = "oi_array_extend";
 pub const STR_EQ: &str = "oi_str_eq";
 pub const STR_CONTAINS: &str = "oi_str_contains";
+pub const ASSERT_FAIL: &str = "oi_assert_fail";
 
 // Type tag shared with the compiler.
 #[repr(i64)]
@@ -63,6 +64,13 @@ pub extern "C" fn write_sep(i: i64) {
 // Panic with an out-of-bounds message.
 pub extern "C" fn panic_oob(index: i64, len: i64) {
 	eprintln!("index out of range: the length is {len} but the index is {index}");
+	std::process::abort();
+}
+
+// Print an assertion failure message and abort.
+pub extern "C" fn assert_fail(msg: *const u8) {
+	let msg = unsafe { CStr::from_ptr(msg as *const c_char) }.to_string_lossy();
+	eprintln!("assertion failed: {msg}");
 	std::process::abort();
 }
 

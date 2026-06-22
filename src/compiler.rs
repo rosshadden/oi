@@ -47,6 +47,7 @@ impl Default for Compiler {
 		builder.symbol(runtime::ARRAY_EXTEND, runtime::array_extend as *const u8);
 		builder.symbol(runtime::STR_EQ, runtime::str_eq as *const u8);
 		builder.symbol(runtime::STR_CONTAINS, runtime::str_contains as *const u8);
+		builder.symbol(runtime::ASSERT_FAIL, runtime::assert_fail as *const u8);
 
 		let module = JITModule::new(builder);
 		Self {
@@ -1015,6 +1016,52 @@ impl<'a> Translator<'a> {
 				}
 				// a bool is always 0 or 1, so flipping the low bit negates it
 				Ok((self.b.ins().bxor_imm(v, 1), Typ::Bool))
+			}
+
+			// TODO: migrate to `assert!` macro once we, you know, have macros
+			Expr::Call { name, args } if name == "assert" => {
+				if args.is_empty() || args.len() > 2 {
+					return Err(Diagnostic::new(
+						format!("`assert` takes 1 or 2 arguments, got {}", args.len()),
+						expr.1.into_range(),
+					)
+					.with_label("wrong number of arguments"));
+				}
+				let (cond, cond_typ) = self.expr(&args[0])?;
+				if cond_typ != Typ::Bool {
+					return Err(Diagnostic::new(
+						format!("`assert` condition must be Bool, got {cond_typ:?}"),
+						args[0].1.into_range(),
+					)
+					.with_label("not a Bool"));
+				}
+				let msg = if args.len() == 2 {
+					let (msg_val, msg_typ) = self.expr(&args[1])?;
+					if msg_typ != Typ::Str {
+						return Err(Diagnostic::new(
+							format!("`assert` message must be Str, got {msg_typ:?}"),
+							args[1].1.into_range(),
+						)
+						.with_label("not a Str"));
+					}
+					msg_val
+				} else {
+					self.str_const("assertion failed")
+				};
+
+				let fail_block = self.b.create_block();
+				let ok_block = self.b.create_block();
+				self.b.ins().brif(cond, ok_block, &[], fail_block, &[]);
+				self.b.seal_block(fail_block);
+				self.b.seal_block(ok_block);
+
+				self.b.switch_to_block(fail_block);
+				let func = self.import_fn(runtime::ASSERT_FAIL, &[self.int], None);
+				self.b.ins().call(func, &[msg]);
+				self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+
+				self.b.switch_to_block(ok_block);
+				Ok((cond, Typ::Bool))
 			}
 
 			Expr::Call { name, args } => {

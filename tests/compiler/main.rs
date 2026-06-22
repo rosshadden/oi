@@ -5,6 +5,7 @@ mod helpers;
 
 mod arithmetic;
 mod arrays;
+mod assertions;
 mod booleans;
 mod comparisons;
 mod control_flow;
