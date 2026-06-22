@@ -43,15 +43,16 @@ fn render(tag: Tag, bits: i64, quote: bool) -> String {
 	}
 }
 
-// Write a rendered value fragment to stdout.
-pub extern "C" fn write(tag: Tag, bits: i64, quote: i64) {
-	print!("{}", render(tag, bits, quote != 0));
+// Write a rendered value fragment.
+pub extern "C" fn write(tag: Tag, bits: i64, quote: i64, stderr: i64) {
+	let s = render(tag, bits, quote != 0);
+	if stderr != 0 { eprint!("{s}") } else { print!("{s}") }
 }
 
-// Write the ", " that separates collection elements, before every element but the first.
-pub extern "C" fn write_sep(i: i64) {
+// Write the ", " separator before every element but the first.
+pub extern "C" fn write_sep(i: i64, stderr: i64) {
 	if i > 0 {
-		print!(", ");
+		if stderr != 0 { eprint!(", ") } else { print!(", ") }
 	}
 }
 

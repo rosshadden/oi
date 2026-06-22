@@ -176,8 +176,8 @@ impl Compiler {
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
 		let call = trans.b.ins().call(callee, &[]);
 		if let Some(val) = trans.b.inst_results(call).first().copied() {
-			trans.emit_print(val, &typ, false);
-			trans.write_lit("\n");
+			trans.emit_print(val, &typ, false, false);
+			trans.write_lit("\n", false);
 		}
 		trans.b.ins().return_(&[]);
 		trans.b.finalize();
@@ -1018,22 +1018,28 @@ impl<'a> Translator<'a> {
 				Ok((self.b.ins().bxor_imm(v, 1), Typ::Bool))
 			}
 
-			Expr::Call { name, args } if name == "print" => {
+			Expr::Call { name, args }
+				if matches!(name.as_str(), "print" | "write" | "eprint" | "ewrite") =>
+			{
 				if args.is_empty() {
 					return Err(Diagnostic::new(
-						"`print` takes at least 1 argument",
+						format!("`{name}` takes at least 1 argument"),
 						expr.1.into_range(),
 					)
 					.with_label("missing argument"));
 				}
+				let stderr = matches!(name.as_str(), "eprint" | "ewrite");
+				let newline = matches!(name.as_str(), "print" | "eprint");
 				for (i, arg) in args.iter().enumerate() {
 					if i > 0 {
-						self.write_lit(" ");
+						self.write_lit(" ", stderr);
 					}
 					let (val, typ) = self.expr(arg)?;
-					self.emit_print(val, &typ, false);
+					self.emit_print(val, &typ, false, stderr);
 				}
-				self.write_lit("\n");
+				if newline {
+					self.write_lit("\n", stderr);
+				}
 				Ok((self.b.ins().iconst(types::I32, 0), Typ::Int))
 			}
 
@@ -1741,41 +1747,44 @@ impl<'a> Translator<'a> {
 	}
 
 	// Write a raw text fragment (delimiter, separator, newline) with no newline of its own.
-	fn write_lit(&mut self, s: &str) {
+	fn write_lit(&mut self, s: &str, stderr: bool) {
 		let ptr = self.str_const(s);
-		self.emit_frag(runtime::Tag::Raw, ptr, false);
+		self.emit_frag(runtime::Tag::Raw, ptr, false, stderr);
 	}
 
-	// Write one rendered value to stdout. `quote` debug-quotes strings.
-	fn emit_frag(&mut self, tag: runtime::Tag, bits: Value, quote: bool) {
+	// Write one rendered value fragment.
+	// `quote` debug-quotes strings, and `stderr` routes to stderr.
+	fn emit_frag(&mut self, tag: runtime::Tag, bits: Value, quote: bool, stderr: bool) {
 		let tag = self.b.ins().iconst(self.int, tag as i64);
 		let quote = self.b.ins().iconst(self.int, quote as i64);
-		let func = self.import_fn(runtime::WRITE, &[self.int, self.int, self.int], None);
-		self.b.ins().call(func, &[tag, bits, quote]);
+		let stderr_v = self.b.ins().iconst(self.int, stderr as i64);
+		let func = self.import_fn(runtime::WRITE, &[self.int, self.int, self.int, self.int], None);
+		self.b.ins().call(func, &[tag, bits, quote, stderr_v]);
 	}
 
 	// Render a value with no trailing newline.
-	fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool) {
+	// `stderr` routes all output to stderr.
+	fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool, stderr: bool) {
 		match typ {
 			Typ::Tuple(fields) => {
-				self.write_lit("(");
+				self.write_lit("(", stderr);
 				for (i, (name, ft)) in fields.iter().enumerate() {
 					if i > 0 {
-						self.write_lit(", ");
+						self.write_lit(", ", stderr);
 					}
 					if let Some(name) = name {
-						self.write_lit(&format!("{name}: "));
+						self.write_lit(&format!("{name}: "), stderr);
 					}
 					let cl = cl_type(ft, self.int);
 					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
-					self.emit_print(fv, ft, true);
+					self.emit_print(fv, ft, true, stderr);
 				}
-				self.write_lit(")");
+				self.write_lit(")", stderr);
 			}
 
 			// an array's length is only known at runtime, so walk it with an emitted loop
 			Typ::Array(elem) => {
-				self.write_lit("[");
+				self.write_lit("[", stderr);
 				let len = self.array_len(val);
 				let data = self.array_data(val);
 				let i = self.b.declare_var(self.int);
@@ -1799,22 +1808,23 @@ impl<'a> Translator<'a> {
 				// then element `i` is loaded from byte offset `i * 8` in the data buffer
 				self.b.switch_to_block(body);
 				let iv = self.b.use_var(i);
-				let sep = self.import_fn(runtime::WRITE_SEP, &[self.int], None);
-				self.b.ins().call(sep, &[iv]);
+				let stderr_v = self.b.ins().iconst(self.int, stderr as i64);
+				let sep = self.import_fn(runtime::WRITE_SEP, &[self.int, self.int], None);
+				self.b.ins().call(sep, &[iv, stderr_v]);
 				let off = self.b.ins().imul_imm(iv, elem_size(elem));
 				let addr = self.b.ins().iadd(data, off);
 				let ev = self
 					.b
 					.ins()
 					.load(cl_type(elem, self.int), MemFlags::new(), addr, 0);
-				self.emit_print(ev, elem, true);
+				self.emit_print(ev, elem, true, stderr);
 				let next = self.b.ins().iadd_imm(iv, 1);
 				self.b.def_var(i, next);
 				self.b.ins().jump(header, &[]);
 				self.b.seal_block(header);
 
 				self.b.switch_to_block(exit);
-				self.write_lit("]");
+				self.write_lit("]", stderr);
 			}
 
 			_ => {
@@ -1831,7 +1841,7 @@ impl<'a> Translator<'a> {
 					Typ::Int => self.b.ins().sextend(self.int, val),
 					_ => val,
 				};
-				self.emit_frag(tag, bits, quote);
+				self.emit_frag(tag, bits, quote, stderr);
 			}
 		}
 	}
