@@ -593,6 +593,7 @@ impl<'a> Translator<'a> {
 		}
 	}
 
+	// Lower a `loop`.
 	fn loop_expr(
 		&mut self,
 		cond: Option<&Spanned<Expr>>,
@@ -649,6 +650,7 @@ impl<'a> Translator<'a> {
 		}
 	}
 
+	// Lower an expresson.
 	fn expr(&mut self, expr: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
 		match &expr.0 {
 			Expr::Int(n) => Ok((self.b.ins().iconst(self.int, *n as i64), Typ::Int)),
@@ -951,7 +953,7 @@ impl<'a> Translator<'a> {
 		Ok((out, Typ::Bool))
 	}
 
-	// Lower a `&&` or `||`, yielding a Bool.
+	// Lower boolean operators, yielding a Bool.
 	// Short-circuits (the right side is only evaluated when the left doesn't already decide the result).
 	fn logical(
 		&mut self,
