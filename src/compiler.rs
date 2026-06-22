@@ -284,10 +284,15 @@ enum Typ {
 }
 
 // The cranelift type backing an Oi type.
-// Floats are f64. Everything else is pointer-sized.
+// ints are i32, floats are f64, everything else is pointer-sized for now.
 fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
-	if *typ == Typ::Float { types::F64 } else { int }
+	match typ {
+		Typ::Int => types::I32,
+		Typ::Float => types::F64,
+		_ => int,
+	}
 }
+
 
 // Resolve a declared type name to an Oi type.
 fn typ_from_name(name: &str, span: Span) -> Result<Typ, Diagnostic> {
@@ -345,7 +350,7 @@ impl<'a> Translator<'a> {
 	// The block's value is its final expression.
 	// `None` means the block diverged before reaching the end.
 	fn block(&mut self, stmts: &[&Spanned<Expr>]) -> Result<Option<(Value, Typ)>, Diagnostic> {
-		let mut last = (self.b.ins().iconst(self.int, 0), Typ::Int);
+		let mut last = (self.b.ins().iconst(types::I32, 0), Typ::Int);
 		for &stmt in stmts {
 			match &stmt.0 {
 				Expr::Bind {
@@ -429,6 +434,7 @@ impl<'a> Translator<'a> {
 					};
 					let ptr = self.b.use_var(local.var);
 					let idx = self.int_value(index, "array index")?;
+					let idx = self.b.ins().sextend(self.int, idx);
 					let (val, vtyp) = self.expr(value)?;
 					if vtyp != elem {
 						return Err(Diagnostic::new(
@@ -688,7 +694,7 @@ impl<'a> Translator<'a> {
 			Some(exit) => {
 				self.b.switch_to_block(exit);
 				self.b.seal_block(exit);
-				Ok(Some((self.b.ins().iconst(self.int, 0), Typ::Int)))
+				Ok(Some((self.b.ins().iconst(types::I32, 0), Typ::Int)))
 			}
 			// an infinite loop with no `break` never falls through
 			None => Ok(None),
@@ -698,7 +704,7 @@ impl<'a> Translator<'a> {
 	// Lower an expresson.
 	fn expr(&mut self, expr: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
 		match &expr.0 {
-			Expr::Int(n) => Ok((self.b.ins().iconst(self.int, *n as i64), Typ::Int)),
+			Expr::Int(n) => Ok((self.b.ins().iconst(types::I32, *n as i64), Typ::Int)),
 			Expr::Bool(v) => Ok((self.b.ins().iconst(self.int, *v as i64), Typ::Bool)),
 			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float)),
 			Expr::String(s) => Ok((self.str_const(s), Typ::Str)),
@@ -824,7 +830,9 @@ impl<'a> Translator<'a> {
 				if let Typ::Array(elem) = &typ {
 					let elem = (**elem).clone();
 					if field == "len" {
-						return Ok((self.array_len(ptr), Typ::Int));
+						let raw = self.array_len(ptr);
+						let len = self.b.ins().ireduce(types::I32, raw);
+						return Ok((len, Typ::Int));
 					}
 					return match field.parse::<i64>() {
 						Ok(n) => {
@@ -923,6 +931,7 @@ impl<'a> Translator<'a> {
 			Expr::Index { collection, index } => {
 				let (ptr, elem) = self.array_operand(collection, "index")?;
 				let idx = self.int_value(index, "array index")?;
+				let idx = self.b.ins().sextend(self.int, idx);
 				Ok((self.load_index(ptr, &elem, idx), elem))
 			}
 
@@ -934,11 +943,17 @@ impl<'a> Translator<'a> {
 			} => {
 				let (ptr, elem) = self.array_operand(collection, "slice")?;
 				let start = match start {
-					Some(e) => self.int_value(e, "slice start")?,
+					Some(e) => {
+						let v = self.int_value(e, "slice start")?;
+						self.b.ins().sextend(self.int, v)
+					}
 					None => self.b.ins().iconst(self.int, 0),
 				};
 				let end = match end {
-					Some(e) => self.int_value(e, "slice end")?,
+					Some(e) => {
+						let v = self.int_value(e, "slice end")?;
+						self.b.ins().sextend(self.int, v)
+					}
 					None => self.array_len(ptr),
 				};
 				let func = self.import_fn(
@@ -1004,7 +1019,8 @@ impl<'a> Translator<'a> {
 		match typ {
 			Typ::Float => self.b.ins().f64const(0.0),
 			Typ::Str => self.str_const(""),
-			Typ::Int | Typ::Bool => self.b.ins().iconst(self.int, 0),
+			Typ::Int => self.b.ins().iconst(types::I32, 0),
+			Typ::Bool => self.b.ins().iconst(self.int, 0),
 			// unreachable until composite return types exist, returns are scalar names for now
 			Typ::Tuple(_) => unreachable!("tuple return types aren't supported yet"),
 			Typ::Array(_) => unreachable!("array return types aren't supported yet"),
@@ -1167,10 +1183,15 @@ impl<'a> Translator<'a> {
 		self.b.inst_results(call)[0]
 	}
 
-	// Allocate the block for a tuple of `n` fields, returning the pointer.
+	// Allocate `n` pointer-sized slots (used for handles and tuple fields).
 	fn call_alloc(&mut self, n: usize) -> Value {
+		self.call_alloc_bytes((n * 8) as i64)
+	}
+
+	// Allocate exactly `bytes` bytes and return the pointer.
+	fn call_alloc_bytes(&mut self, bytes: i64) -> Value {
 		let func = self.import_fn(runtime::ALLOC, &[self.int], Some(self.int));
-		let size = self.b.ins().iconst(self.int, (n * 8) as i64);
+		let size = self.b.ins().iconst(self.int, bytes);
 		let call = self.b.ins().call(func, &[size]);
 		self.b.inst_results(call)[0]
 	}
@@ -1221,7 +1242,7 @@ impl<'a> Translator<'a> {
 		Ok(v)
 	}
 
-	// Bounds-check `idx` against the array's length, then load that element.
+	// Bounds-check `idx` (pointer-sized) against the array's length, then load that element.
 	fn load_index(&mut self, header: Value, elem: &Typ, idx: Value) -> Value {
 		let len = self.array_len(header);
 		let oob = self
@@ -1240,7 +1261,6 @@ impl<'a> Translator<'a> {
 		self.b.ins().call(func, &[idx, len]);
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
-		// element `idx` lives at byte offset `idx * 8` in the shared data buffer
 		self.b.switch_to_block(ok_block);
 		let data = self.array_data(header);
 		let off = self.b.ins().imul_imm(idx, 8);
@@ -1250,7 +1270,7 @@ impl<'a> Translator<'a> {
 			.load(cl_type(elem, self.int), MemFlags::new(), addr, 0)
 	}
 
-	// Bounds-check `idx`, then store `val` at that element position.
+	// Bounds-check `idx` (pointer-sized), then store `val` at that element position.
 	fn store_index(&mut self, header: Value, idx: Value, val: Value) {
 		let len = self.array_len(header);
 		let oob = self
@@ -1370,11 +1390,11 @@ impl<'a> Translator<'a> {
 			Typ::Tuple(_) => unreachable!("tuple handled above"),
 			Typ::Array(_) => unreachable!("array handled above"),
 		};
-		// pass floats by raw bits since the runtime reads every value from an 8-byte slot
-		let bits = if *typ == Typ::Float {
-			self.b.ins().bitcast(self.int, MemFlags::new(), val)
-		} else {
-			val
+		// normalize to pointer-sized before passing to the runtime
+		let bits = match typ {
+			Typ::Float => self.b.ins().bitcast(self.int, MemFlags::new(), val),
+			Typ::Int => self.b.ins().sextend(self.int, val),
+			_ => val,
 		};
 		let func = if top { runtime::PRINT } else { runtime::WRITE };
 		self.emit_value(func, tag, bits);
