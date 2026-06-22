@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Param, Spanned};
+use crate::ast::{Expr, ForIter, Param, Pattern, Spanned};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -188,7 +188,7 @@ where
 		// loops
 		// `loop {}`: infinite loop
 		// `loop <condition> {}`: while loop
-		// TODO: `loop <pattern> in <iter> {}`: for loop
+		// `loop <pattern> in <iter> {}`: for loop
 		let loop_expr = just(Token::Loop)
 			.ignore_then(expr.clone().or_not())
 			.then(block.clone())
@@ -201,6 +201,31 @@ where
 					ex.span(),
 				)
 			});
+
+		// a for-loop binds/destructures into names
+		let pattern = {
+			let name = select! { Token::Ident(name) => name };
+			let tuple = name
+				.separated_by(just(Token::Comma))
+				.allow_trailing()
+				.collect::<Vec<_>>()
+				.delimited_by(just(Token::LParen), just(Token::RParen))
+				.map(Pattern::Tuple);
+			tuple.or(name.map(Pattern::Name))
+		};
+		let for_iter = expr
+			.clone()
+			.then(just(Token::DotDot).ignore_then(expr.clone()).or_not())
+			.map(|(start, end)| match end {
+				Some(end) => ForIter::Range(Box::new(start), Box::new(end)),
+				None => ForIter::Iter(Box::new(start)),
+			});
+		let for_expr = just(Token::Loop)
+			.ignore_then(pattern)
+			.then_ignore(just(Token::In))
+			.then(for_iter)
+			.then(block.clone())
+			.map_with(|((pat, iter), body), ex| (Expr::For { pat, iter, body }, ex.span()));
 		let break_expr = just(Token::Break).map_with(|_, ex| (Expr::Break, ex.span()));
 		let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
@@ -210,6 +235,7 @@ where
 			.or(tuple)
 			.or(array)
 			.or(if_expr)
+			.or(for_expr)
 			.or(loop_expr)
 			.or(break_expr)
 			.or(continue_expr)

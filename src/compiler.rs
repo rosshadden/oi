@@ -5,7 +5,7 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 
-use crate::ast::{Expr, Param, Span, Spanned};
+use crate::ast::{Expr, ForIter, Param, Pattern, Span, Spanned};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
 
@@ -552,6 +552,10 @@ impl<'a> Translator<'a> {
 					None => return Ok(None),
 				},
 
+				// a for-loop is finite, so it always falls through
+				// TODO: revisit this after adding the Iterator trait
+				Expr::For { pat, iter, body } => last = self.for_loop(pat, iter, body, stmt.1)?,
+
 				// `break`/`continue` end the current block, so the rest of it is unreachable
 				Expr::Break => {
 					let exit = match self.loops.last() {
@@ -779,6 +783,112 @@ impl<'a> Translator<'a> {
 			// an infinite loop with no `break` never falls through
 			None => Ok(None),
 		}
+	}
+
+	fn for_loop(
+		&mut self,
+		pat: &Pattern,
+		iter: &ForIter,
+		body: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		// (data ptr, elem type) for array iteration
+		// `None` for a range
+		let (counter, limit, arr_src): (_, _, Option<(Value, Typ)>) = match iter {
+			ForIter::Range(s, e) => {
+				let start = self.int_value(s, "range start")?;
+				let end = self.int_value(e, "range end")?;
+				let v = self.b.declare_var(types::I32);
+				self.b.def_var(v, start);
+				(v, end, None)
+			}
+			ForIter::Iter(e) => {
+				let (arr, typ) = self.expr(e)?;
+				let Typ::Array(elem) = typ else {
+					return Err(Diagnostic::new(format!("cannot iterate over {typ:?}"), e.1.into_range())
+						.with_label("not iterable"));
+				};
+				let zero = self.b.ins().iconst(self.int, 0);
+				let len = self.array_len(arr);
+				let data = self.array_data(arr);
+				let v = self.b.declare_var(self.int);
+				self.b.def_var(v, zero);
+				(v, len, Some((data, *elem)))
+			}
+		};
+
+		let (header, body_block, latch, exit) = (
+			self.b.create_block(),
+			self.b.create_block(),
+			self.b.create_block(),
+			self.b.create_block(),
+		);
+		self.b.ins().jump(header, &[]);
+
+		self.b.switch_to_block(header);
+		let iv = self.b.use_var(counter);
+		let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, limit);
+		self.b.ins().brif(more, body_block, &[], exit, &[]);
+		self.b.seal_block(body_block);
+
+		self.b.switch_to_block(body_block);
+		let iv = self.b.use_var(counter);
+		let (val, typ) = match &arr_src {
+			None => (iv, Typ::Int),
+			Some((data, elem)) => {
+				let off = self.b.ins().imul_imm(iv, elem_size(elem));
+				let addr = self.b.ins().iadd(*data, off);
+				(self.b.ins().load(cl_type(elem, self.int), MemFlags::new(), addr, 0), elem.clone())
+			}
+		};
+		let saved = self.vars.clone();
+		self.bind_pattern(pat, val, &typ, span)?;
+		self.loops.push(LoopFrame { top: latch, exit: Some(exit) });
+		let refs: Vec<&Spanned<Expr>> = body.iter().collect();
+		let flow = self.block(&refs)?;
+		self.vars = saved;
+		self.loops.pop().expect("loop frame");
+
+		if flow.is_some() { self.b.ins().jump(latch, &[]); }
+		self.b.seal_block(latch);
+		self.b.seal_block(exit);
+
+		self.b.switch_to_block(latch);
+		let iv = self.b.use_var(counter);
+		let next = self.b.ins().iadd_imm(iv, 1);
+		self.b.def_var(counter, next);
+		self.b.ins().jump(header, &[]);
+		self.b.seal_block(header);
+
+		self.b.switch_to_block(exit);
+		Ok((self.b.ins().iconst(types::I32, 0), Typ::Int))
+	}
+
+	fn bind_pattern(&mut self, pat: &Pattern, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
+		match pat {
+			Pattern::Name(name) => {
+				let var = self.b.declare_var(cl_type(typ, self.int));
+				self.b.def_var(var, val);
+				self.vars.insert(name.clone(), Local { var, typ: typ.clone(), mutable: false });
+			}
+			Pattern::Tuple(names) => {
+				let Typ::Tuple(fields) = typ else {
+					return Err(Diagnostic::new(format!("cannot destructure {typ:?} with a tuple pattern"), span.into_range())
+						.with_label("not a tuple"));
+				};
+				if names.len() != fields.len() {
+					return Err(Diagnostic::new(format!("pattern binds {} names but the tuple has {} fields", names.len(), fields.len()), span.into_range())
+						.with_label("wrong number of fields"));
+				}
+				for (i, (name, (_, ftyp))) in names.iter().zip(fields).enumerate() {
+					let fv = self.b.ins().load(cl_type(ftyp, self.int), MemFlags::new(), val, (i * 8) as i32);
+					let var = self.b.declare_var(cl_type(ftyp, self.int));
+					self.b.def_var(var, fv);
+					self.vars.insert(name.clone(), Local { var, typ: ftyp.clone(), mutable: false });
+				}
+			}
+		}
+		Ok(())
 	}
 
 	// Lower an expresson.
@@ -1067,6 +1177,8 @@ impl<'a> Translator<'a> {
 				)
 				.with_label("an infinite loop with no `break` yields nothing")),
 			},
+
+			Expr::For { pat, iter, body } => self.for_loop(pat, iter, body, expr.1),
 
 			Expr::In(lhs, rhs) => {
 				let (rhs_val, rhs_typ) = self.expr(rhs)?;

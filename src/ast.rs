@@ -53,6 +53,13 @@ pub enum Expr {
 		body: Vec<Spanned<Expr>>,
 	},
 
+	// `loop <pat> in <iter> {}`
+	For {
+		pat: Pattern,
+		iter: ForIter,
+		body: Vec<Spanned<Expr>>,
+	},
+
 	Break,
 	Continue,
 
@@ -121,6 +128,22 @@ pub enum Expr {
 
 	// membership
 	In(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+}
+
+// A `loop` binding pattern (name or destruction).
+#[derive(Debug)]
+pub enum Pattern {
+	Name(String),
+	Tuple(Vec<String>),
+}
+
+// What a for loop walks.
+#[derive(Debug)]
+pub enum ForIter {
+	// in `[start, end)`
+	Range(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+	// an iterable value (an array, for now)
+	Iter(Box<Spanned<Expr>>),
 }
 
 // A function parameter.
