@@ -63,7 +63,10 @@ where
 
 	// `name[index] = value`
 	let index_assign = select! { Token::Ident(name) => name }
-		.then(expr.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)))
+		.then(
+			expr.clone()
+				.delimited_by(just(Token::LBracket), just(Token::RBracket)),
+		)
 		.then_ignore(just(Token::Assign))
 		.then(expr.clone())
 		.map_with(|((name, index), value), ex| {
@@ -78,7 +81,11 @@ where
 		});
 
 	// statements
-	let stmt = ret_stmt.or(bind).or(assign).or(index_assign).or(expr.clone());
+	let stmt = ret_stmt
+		.or(bind)
+		.or(assign)
+		.or(index_assign)
+		.or(expr.clone());
 
 	// blocks
 	let block = stmt
