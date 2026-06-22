@@ -293,6 +293,11 @@ fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 	}
 }
 
+// Bytes per element in a packed array buffer.
+fn elem_size(typ: &Typ) -> i64 {
+	if *typ == Typ::Int { 4 } else { 8 }
+}
+
 
 // Resolve a declared type name to an Oi type.
 fn typ_from_name(name: &str, span: Span) -> Result<Typ, Diagnostic> {
@@ -443,7 +448,7 @@ impl<'a> Translator<'a> {
 						)
 						.with_label("type mismatch"));
 					}
-					self.store_index(ptr, idx, val);
+					self.store_index(ptr, &elem, idx, val);
 				}
 
 				Expr::Return(value) => {
@@ -917,11 +922,12 @@ impl<'a> Translator<'a> {
 				let elem = elem_typ.unwrap();
 
 				// fill a fresh element buffer, then wrap it in a handle
-				let data = self.call_alloc(elems.len());
+				let size = elem_size(&elem);
+				let data = self.call_alloc_bytes(elems.len() as i64 * size);
 				for (i, val) in vals.into_iter().enumerate() {
 					self.b
 						.ins()
-						.store(MemFlags::new(), val, data, (i * 8) as i32);
+						.store(MemFlags::new(), val, data, (i as i64 * size) as i32);
 				}
 				let len = self.b.ins().iconst(self.int, elems.len() as i64);
 				let header = self.make_array(data, len);
@@ -956,12 +962,13 @@ impl<'a> Translator<'a> {
 					}
 					None => self.array_len(ptr),
 				};
+				let size = self.b.ins().iconst(self.int, elem_size(&elem));
 				let func = self.import_fn(
 					runtime::SLICE,
-					&[self.int, self.int, self.int],
+					&[self.int, self.int, self.int, self.int],
 					Some(self.int),
 				);
-				let call = self.b.ins().call(func, &[ptr, start, end]);
+				let call = self.b.ins().call(func, &[ptr, start, end, size]);
 				Ok((self.b.inst_results(call)[0], Typ::Array(Box::new(elem))))
 			}
 
@@ -1263,7 +1270,7 @@ impl<'a> Translator<'a> {
 
 		self.b.switch_to_block(ok_block);
 		let data = self.array_data(header);
-		let off = self.b.ins().imul_imm(idx, 8);
+		let off = self.b.ins().imul_imm(idx, elem_size(elem));
 		let addr = self.b.ins().iadd(data, off);
 		self.b
 			.ins()
@@ -1271,7 +1278,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Bounds-check `idx` (pointer-sized), then store `val` at that element position.
-	fn store_index(&mut self, header: Value, idx: Value, val: Value) {
+	fn store_index(&mut self, header: Value, elem: &Typ, idx: Value, val: Value) {
 		let len = self.array_len(header);
 		let oob = self
 			.b
@@ -1291,7 +1298,7 @@ impl<'a> Translator<'a> {
 
 		self.b.switch_to_block(ok_block);
 		let data = self.array_data(header);
-		let off = self.b.ins().imul_imm(idx, 8);
+		let off = self.b.ins().imul_imm(idx, elem_size(elem));
 		let addr = self.b.ins().iadd(data, off);
 		self.b.ins().store(MemFlags::new(), val, addr, 0);
 	}
@@ -1362,7 +1369,7 @@ impl<'a> Translator<'a> {
 			let iv = self.b.use_var(i);
 			let sep = self.import_fn(runtime::WRITE_SEP, &[self.int], None);
 			self.b.ins().call(sep, &[iv]);
-			let off = self.b.ins().imul_imm(iv, 8);
+			let off = self.b.ins().imul_imm(iv, elem_size(elem));
 			let addr = self.b.ins().iadd(data, off);
 			let ev = self
 				.b

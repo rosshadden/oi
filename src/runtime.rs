@@ -85,7 +85,7 @@ pub extern "C" fn alloc(size: i64) -> *mut u8 {
 // The view shares the parent's element buffer.
 // Panics if out of range.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn slice(header: *const i64, start: i64, end: i64) -> *const i64 {
+pub extern "C" fn slice(header: *const i64, start: i64, end: i64, elem_size: i64) -> *const i64 {
 	let (data, len) = unsafe { (*header, *header.add(1)) };
 	if start < 0 || start > end || end > len {
 		eprintln!("slice range {start}..{end} out of bounds for array of length {len}");
@@ -93,7 +93,7 @@ pub extern "C" fn slice(header: *const i64, start: i64, end: i64) -> *const i64 
 	}
 	let out = alloc(16) as *mut i64;
 	unsafe {
-		*out = data + start * 8;
+		*out = data + start * elem_size;
 		*out.add(1) = end - start;
 	}
 	out
