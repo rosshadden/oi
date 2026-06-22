@@ -38,7 +38,6 @@ impl Default for Compiler {
 		let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 		builder.symbol(runtime::STR_CONCAT, runtime::str_concat as *const u8);
 		builder.symbol(runtime::ALLOC, runtime::alloc as *const u8);
-		builder.symbol(runtime::PRINT, runtime::print as *const u8);
 		builder.symbol(runtime::WRITE, runtime::write as *const u8);
 		builder.symbol(runtime::WRITE_SEP, runtime::write_sep as *const u8);
 		builder.symbol(runtime::SLICE, runtime::slice as *const u8);
@@ -177,7 +176,8 @@ impl Compiler {
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
 		let call = trans.b.ins().call(callee, &[]);
 		if let Some(val) = trans.b.inst_results(call).first().copied() {
-			trans.emit_print(val, &typ, true);
+			trans.emit_print(val, &typ, false);
+			trans.write_lit("\n");
 		}
 		trans.b.ins().return_(&[]);
 		trans.b.finalize();
@@ -1018,6 +1018,25 @@ impl<'a> Translator<'a> {
 				Ok((self.b.ins().bxor_imm(v, 1), Typ::Bool))
 			}
 
+			Expr::Call { name, args } if name == "print" => {
+				if args.is_empty() {
+					return Err(Diagnostic::new(
+						"`print` takes at least 1 argument",
+						expr.1.into_range(),
+					)
+					.with_label("missing argument"));
+				}
+				for (i, arg) in args.iter().enumerate() {
+					if i > 0 {
+						self.write_lit(" ");
+					}
+					let (val, typ) = self.expr(arg)?;
+					self.emit_print(val, &typ, false);
+				}
+				self.write_lit("\n");
+				Ok((self.b.ins().iconst(types::I32, 0), Typ::Int))
+			}
+
 			// TODO: migrate to `assert!` macro once we, you know, have macros
 			Expr::Call { name, args } if name == "assert" => {
 				if args.is_empty() || args.len() > 2 {
@@ -1721,107 +1740,99 @@ impl<'a> Translator<'a> {
 		self.b.ins().store(MemFlags::new(), val, addr, 0);
 	}
 
-	// Write a literal text fragment (delimiter, field) with no newline.
+	// Write a raw text fragment (delimiter, separator, newline) with no newline of its own.
 	fn write_lit(&mut self, s: &str) {
 		let ptr = self.str_const(s);
-		self.emit_value(runtime::WRITE, runtime::Tag::Raw, ptr);
+		self.emit_frag(runtime::Tag::Raw, ptr, false);
 	}
 
-	// Call a runtime printer with a type tag.
-	fn emit_value(&mut self, func_name: &str, tag: runtime::Tag, bits: Value) {
+	// Write one rendered value to stdout. `quote` debug-quotes strings.
+	fn emit_frag(&mut self, tag: runtime::Tag, bits: Value, quote: bool) {
 		let tag = self.b.ins().iconst(self.int, tag as i64);
-		let func = self.import_fn(func_name, &[self.int, self.int], None);
-		self.b.ins().call(func, &[tag, bits]);
+		let quote = self.b.ins().iconst(self.int, quote as i64);
+		let func = self.import_fn(runtime::WRITE, &[self.int, self.int, self.int], None);
+		self.b.ins().call(func, &[tag, bits, quote]);
 	}
 
-	// Print value.
-	// Top level adds a newline.
-	fn emit_print(&mut self, val: Value, typ: &Typ, top: bool) {
-		if let Typ::Tuple(fields) = typ {
-			self.write_lit("(");
-			for (i, (name, ft)) in fields.iter().enumerate() {
-				if i > 0 {
-					self.write_lit(", ");
+	// Render a value with no trailing newline.
+	fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool) {
+		match typ {
+			Typ::Tuple(fields) => {
+				self.write_lit("(");
+				for (i, (name, ft)) in fields.iter().enumerate() {
+					if i > 0 {
+						self.write_lit(", ");
+					}
+					if let Some(name) = name {
+						self.write_lit(&format!("{name}: "));
+					}
+					let cl = cl_type(ft, self.int);
+					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
+					self.emit_print(fv, ft, true);
 				}
-				if let Some(name) = name {
-					self.write_lit(&format!("{name}: "));
-				}
-				let cl = cl_type(ft, self.int);
-				let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
-				self.emit_print(fv, ft, false);
+				self.write_lit(")");
 			}
-			self.write_lit(")");
-			if top {
-				self.write_lit("\n");
+
+			// an array's length is only known at runtime, so walk it with an emitted loop
+			Typ::Array(elem) => {
+				self.write_lit("[");
+				let len = self.array_len(val);
+				let data = self.array_data(val);
+				let i = self.b.declare_var(self.int);
+				let zero = self.b.ins().iconst(self.int, 0);
+				self.b.def_var(i, zero);
+
+				let header = self.b.create_block();
+				let body = self.b.create_block();
+				let exit = self.b.create_block();
+				self.b.ins().jump(header, &[]);
+
+				// loop while `i < len`
+				self.b.switch_to_block(header);
+				let iv = self.b.use_var(i);
+				let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, len);
+				self.b.ins().brif(more, body, &[], exit, &[]);
+				self.b.seal_block(body);
+				self.b.seal_block(exit);
+
+				// a runtime helper writes the ", " before all but the first element,
+				// then element `i` is loaded from byte offset `i * 8` in the data buffer
+				self.b.switch_to_block(body);
+				let iv = self.b.use_var(i);
+				let sep = self.import_fn(runtime::WRITE_SEP, &[self.int], None);
+				self.b.ins().call(sep, &[iv]);
+				let off = self.b.ins().imul_imm(iv, elem_size(elem));
+				let addr = self.b.ins().iadd(data, off);
+				let ev = self
+					.b
+					.ins()
+					.load(cl_type(elem, self.int), MemFlags::new(), addr, 0);
+				self.emit_print(ev, elem, true);
+				let next = self.b.ins().iadd_imm(iv, 1);
+				self.b.def_var(i, next);
+				self.b.ins().jump(header, &[]);
+				self.b.seal_block(header);
+
+				self.b.switch_to_block(exit);
+				self.write_lit("]");
 			}
-			return;
+
+			_ => {
+				let tag = match typ {
+					Typ::Bool => runtime::Tag::Bool,
+					Typ::Int => runtime::Tag::Int,
+					Typ::Float => runtime::Tag::Float,
+					Typ::Str => runtime::Tag::Str,
+					Typ::Tuple(_) | Typ::Array(_) => unreachable!("handled above"),
+				};
+				// normalize to pointer-sized before passing to the runtime
+				let bits = match typ {
+					Typ::Float => self.b.ins().bitcast(self.int, MemFlags::new(), val),
+					Typ::Int => self.b.ins().sextend(self.int, val),
+					_ => val,
+				};
+				self.emit_frag(tag, bits, quote);
+			}
 		}
-
-		// an array's length is only known at runtime, so walk it with an emitted loop
-		if let Typ::Array(elem) = typ {
-			self.write_lit("[");
-			let len = self.array_len(val);
-			let data = self.array_data(val);
-			let i = self.b.declare_var(self.int);
-			let zero = self.b.ins().iconst(self.int, 0);
-			self.b.def_var(i, zero);
-
-			let header = self.b.create_block();
-			let body = self.b.create_block();
-			let exit = self.b.create_block();
-			self.b.ins().jump(header, &[]);
-
-			// header
-			// loop while `i < len`
-			self.b.switch_to_block(header);
-			let iv = self.b.use_var(i);
-			let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, len);
-			self.b.ins().brif(more, body, &[], exit, &[]);
-			self.b.seal_block(body);
-			self.b.seal_block(exit);
-
-			// body
-			// a runtime helper writes the ", " before all but the first element,
-			// then element `i` is loaded from byte offset `i * 8` in the data buffer
-			self.b.switch_to_block(body);
-			let iv = self.b.use_var(i);
-			let sep = self.import_fn(runtime::WRITE_SEP, &[self.int], None);
-			self.b.ins().call(sep, &[iv]);
-			let off = self.b.ins().imul_imm(iv, elem_size(elem));
-			let addr = self.b.ins().iadd(data, off);
-			let ev = self
-				.b
-				.ins()
-				.load(cl_type(elem, self.int), MemFlags::new(), addr, 0);
-			self.emit_print(ev, elem, false);
-			let next = self.b.ins().iadd_imm(iv, 1);
-			self.b.def_var(i, next);
-			self.b.ins().jump(header, &[]);
-			self.b.seal_block(header);
-
-			self.b.switch_to_block(exit);
-			self.write_lit("]");
-			if top {
-				self.write_lit("\n");
-			}
-			return;
-		}
-
-		let tag = match typ {
-			Typ::Bool => runtime::Tag::Bool,
-			Typ::Int => runtime::Tag::Int,
-			Typ::Float => runtime::Tag::Float,
-			Typ::Str => runtime::Tag::Str,
-			Typ::Tuple(_) => unreachable!("tuple handled above"),
-			Typ::Array(_) => unreachable!("array handled above"),
-		};
-		// normalize to pointer-sized before passing to the runtime
-		let bits = match typ {
-			Typ::Float => self.b.ins().bitcast(self.int, MemFlags::new(), val),
-			Typ::Int => self.b.ins().sextend(self.int, val),
-			_ => val,
-		};
-		let func = if top { runtime::PRINT } else { runtime::WRITE };
-		self.emit_value(func, tag, bits);
 	}
 }

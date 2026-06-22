@@ -5,7 +5,6 @@ use std::ffi::{CStr, c_char};
 
 pub const STR_CONCAT: &str = "oi_str_concat";
 pub const ALLOC: &str = "oi_alloc";
-pub const PRINT: &str = "oi_print";
 pub const WRITE: &str = "oi_write";
 pub const WRITE_SEP: &str = "oi_write_sep";
 pub const SLICE: &str = "oi_slice";
@@ -44,14 +43,9 @@ fn render(tag: Tag, bits: i64, quote: bool) -> String {
 	}
 }
 
-// Print a top-level value with a newline.
-pub extern "C" fn print(tag: Tag, bits: i64) {
-	println!("{}", render(tag, bits, false));
-}
-
-// Write a value fragment with no newline.
-pub extern "C" fn write(tag: Tag, bits: i64) {
-	print!("{}", render(tag, bits, true));
+// Write a rendered value fragment to stdout.
+pub extern "C" fn write(tag: Tag, bits: i64, quote: i64) {
+	print!("{}", render(tag, bits, quote != 0));
 }
 
 // Write the ", " that separates collection elements, before every element but the first.
