@@ -1,4 +1,5 @@
 use super::helpers::*;
+use indoc::indoc;
 
 #[test]
 fn field_access() {
@@ -106,6 +107,56 @@ fn mixed_field_types() {
 		v.s"#,
 		"world",
 	);
+}
+
+#[test]
+fn fn_return_type_annotation() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		fn origin() Point { Point{} }
+		origin()
+	"};
+	check(src, "Point{x: 0, y: 0}");
+}
+
+#[test]
+fn fn_return_type_annotation_named_fields() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		fn make(a int, b int) Point { Point{ x: a, y: b } }
+		make(3, 4)
+	"};
+	check(src, "Point{x: 3, y: 4}");
+}
+
+#[test]
+fn fn_return_type_annotation_mismatch() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		fn bad() Point { 42 }
+		bad()
+	"};
+	assert!(fail(src).contains("wrong return type"));
+}
+
+#[test]
+fn fn_param_struct_type() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		fn sum(p Point) int { p.x + p.y }
+		sum(Point{ x: 3, y: 4 })
+	"};
+	check(src, "7");
+}
+
+#[test]
+fn if_no_else_struct_zero() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		p := if false { Point{ x: 1, y: 2 } }
+		p.x
+	"};
+	check(src, "0");
 }
 
 #[test]
