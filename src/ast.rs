@@ -159,6 +159,7 @@ pub enum Expr {
 pub enum TypeExpr {
 	Name(String),
 	Tuple(Vec<TypeExpr>),
+	Array(Box<TypeExpr>),
 }
 
 #[derive(Debug)]

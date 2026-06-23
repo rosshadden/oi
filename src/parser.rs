@@ -445,13 +445,17 @@ where
 			.then(just(Token::RParen))
 			.to(TypeExpr::Tuple(vec![]));
 		let tuple = te
+			.clone()
 			.separated_by(just(Token::Comma))
 			.allow_trailing()
 			.at_least(1)
 			.collect::<Vec<_>>()
 			.delimited_by(just(Token::LParen), just(Token::RParen))
 			.map(TypeExpr::Tuple);
-		unit.or(name).or(tuple)
+		let array = te
+			.delimited_by(just(Token::LBracket), just(Token::RBracket))
+			.map(|elem| TypeExpr::Array(Box::new(elem)));
+		unit.or(name).or(tuple).or(array)
 	});
 	let ret = type_expr.map_with(|t, ex| (t, ex.span())).or_not();
 

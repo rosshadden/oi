@@ -348,6 +348,7 @@ fn resolve_type(
 				.collect::<Result<Vec<_>, _>>()?;
 			Ok(Typ::Tuple(fields))
 		}
+		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(elem, span, structs)?))),
 	}
 }
 
@@ -1878,7 +1879,10 @@ impl<'a> Translator<'a> {
 				}
 				ptr
 			}
-			Typ::Array(_) => unreachable!("array return types aren't supported yet"),
+			Typ::Array(_) => {
+				let zero = self.b.ins().iconst(self.int, 0);
+				self.make_array(zero, zero)
+			}
 		}
 	}
 
