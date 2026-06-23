@@ -17,5 +17,6 @@ mod loops;
 mod match_;
 mod statements;
 mod strings;
+mod structs;
 mod tuples;
 mod vars;
