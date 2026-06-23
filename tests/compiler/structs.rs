@@ -168,3 +168,13 @@ fn immutable_field_assign_error() {
 	);
 	assert!(err.contains("immutable"), "{err}");
 }
+
+#[test]
+fn struct_positional_field_access() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		p := Point{ 2 4 }
+		p.1 == p.y
+	"};
+	check(src, "true");
+}
