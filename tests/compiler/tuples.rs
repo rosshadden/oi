@@ -106,3 +106,59 @@ fn unknown_named_field() {
 fn field_of_non_tuple() {
 	assert!(fail("x := 5\nx.0").contains("cannot access a field"));
 }
+
+#[test]
+fn fn_returns_tuple() {
+	let src = indoc! {"
+		fn pair() { (1, 2) }
+		pair()
+	"};
+	check(src, "(1, 2)");
+}
+
+#[test]
+fn fn_returns_tuple_field() {
+	let src = indoc! {"
+		fn pair() { (10, 20) }
+		t := pair()
+		t.1
+	"};
+	check(src, "20");
+}
+
+#[test]
+fn fn_return_type_annotation_tuple() {
+	let src = indoc! {"
+		fn pair() (int, int) { (3, 4) }
+		pair()
+	"};
+	check(src, "(3, 4)");
+}
+
+#[test]
+fn fn_return_type_mismatch_tuple() {
+	let src = indoc! {"
+		fn bad() (int, int) { 42 }
+		bad()
+	"};
+	assert!(fail(src).contains("wrong return type"));
+}
+
+#[test]
+fn fn_tuple_return_composing() {
+	let src = indoc! {"
+		fn swap(x int, y int) (int, int) { (y, x) }
+		t := swap(1, 2)
+		t.0
+	"};
+	check(src, "2");
+}
+
+#[test]
+fn if_no_else_tuple_zero() {
+	let src = indoc! {"
+		t := if false { (1, 2) }
+		t
+	"};
+	check(src, "(0, 0)");
+}
