@@ -5,7 +5,7 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 
-use crate::ast::{Expr, ForIter, Param, Pattern, Span, Spanned};
+use crate::ast::{Expr, ForIter, MatchArm, Param, Pattern, Span, Spanned};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
 
@@ -552,6 +552,15 @@ impl<'a> Translator<'a> {
 					}
 				}
 
+				Expr::Match {
+					subject,
+					arms,
+					else_body,
+				} => match self.match_expr(subject, arms, else_body.as_deref(), stmt.1)? {
+					Some((v, t)) => last = (v, t),
+					None => return Ok(None),
+				},
+
 				Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
 					Some((v, t)) => last = (v, t),
 					None => return Ok(None),
@@ -730,6 +739,122 @@ impl<'a> Translator<'a> {
 			}
 			// both branches diverged, and control never reaches a merge
 			None => Ok(None),
+		}
+	}
+
+	// Lower a `match` expression.
+	// First match wins.
+	fn match_expr(
+		&mut self,
+		subject: &Spanned<Expr>,
+		arms: &[MatchArm],
+		else_body: Option<&[Spanned<Expr>]>,
+		span: Span,
+	) -> Result<Option<(Value, Typ)>, Diagnostic> {
+		let (sv, st) = self.expr(subject)?;
+		let sv_var = self.b.declare_var(cl_type(&st, self.int));
+		self.b.def_var(sv_var, sv);
+
+		let merge = self.b.create_block();
+		let mut result: Option<(Variable, Typ)> = None;
+
+		// pre-create each arm's entry (first pattern-test block) so each arm knows where to fail to
+		let arm_entries: Vec<Block> = arms.iter().map(|_| self.b.create_block()).collect();
+		let else_blk = self.b.create_block();
+		self.b
+			.ins()
+			.jump(arm_entries.first().copied().unwrap_or(else_blk), &[]);
+
+		for (i, arm) in arms.iter().enumerate() {
+			let arm_body = self.b.create_block();
+			let fail = arm_entries.get(i + 1).copied().unwrap_or(else_blk);
+
+			self.b.switch_to_block(arm_entries[i]);
+			self.b.seal_block(arm_entries[i]);
+
+			for (j, pat) in arm.patterns.iter().enumerate() {
+				let sv = self.b.use_var(sv_var);
+				let (pv, pt) = self.expr(pat)?;
+				if pt != st {
+					return Err(Diagnostic::new(
+						format!("match pattern ({pt:?}) does not match subject ({st:?})"),
+						pat.1.into_range(),
+					)
+					.with_label("type mismatch"));
+				}
+				let eq = self.emit_eq(sv, pv, &st);
+				if j + 1 < arm.patterns.len() {
+					let next = self.b.create_block();
+					self.b.ins().brif(eq, arm_body, &[], next, &[]);
+					self.b.seal_block(next);
+					self.b.switch_to_block(next);
+				} else {
+					self.b.ins().brif(eq, arm_body, &[], fail, &[]);
+				}
+			}
+
+			self.b.seal_block(arm_body);
+			self.b.switch_to_block(arm_body);
+			let saved = self.vars.clone();
+			let flow = self.block(&arm.body.iter().collect::<Vec<_>>())?;
+			self.vars = saved;
+			if let Some(vt) = flow {
+				self.match_contribute(vt, &mut result, merge, span)?;
+			}
+		}
+
+		self.b.switch_to_block(else_blk);
+		self.b.seal_block(else_blk);
+		let else_flow = if let Some(els) = else_body {
+			let saved = self.vars.clone();
+			let flow = self.block(&els.iter().collect::<Vec<_>>())?;
+			self.vars = saved;
+			flow
+		} else {
+			let t = result.as_ref().map_or(Typ::Int, |(_, t)| t.clone());
+			Some((self.zero(&t), t))
+		};
+		if let Some(vt) = else_flow {
+			self.match_contribute(vt, &mut result, merge, span)?;
+		}
+
+		Ok(if result.is_some() {
+			self.b.switch_to_block(merge);
+			self.b.seal_block(merge);
+			let (var, typ) = result.unwrap();
+			Some((self.b.use_var(var), typ))
+		} else {
+			None
+		})
+	}
+
+	// Write `(v, t)` into the shared result variable and jump to `merge`.
+	// All arms must agree on type. The first arm declares the variable.
+	fn match_contribute(
+		&mut self,
+		(v, t): (Value, Typ),
+		result: &mut Option<(Variable, Typ)>,
+		merge: Block,
+		span: Span,
+	) -> Result<(), Diagnostic> {
+		match result {
+			Some((_, rt)) if rt != &t => Err(Diagnostic::new(
+				format!("`match` arms have mismatched types: {rt:?} and {t:?}"),
+				span.into_range(),
+			)
+			.with_label("all arms must yield the same type")),
+			Some((var, _)) => {
+				self.b.def_var(*var, v);
+				self.b.ins().jump(merge, &[]);
+				Ok(())
+			}
+			None => {
+				let var = self.b.declare_var(cl_type(&t, self.int));
+				self.b.def_var(var, v);
+				self.b.ins().jump(merge, &[]);
+				*result = Some((var, t));
+				Ok(())
+			}
 		}
 	}
 
@@ -1292,6 +1417,19 @@ impl<'a> Translator<'a> {
 					.with_label("every branch returns, but a value is needed here")),
 				}
 			}
+
+			Expr::Match {
+				subject,
+				arms,
+				else_body,
+			} => match self.match_expr(subject, arms, else_body.as_deref(), expr.1)? {
+				Some((v, t)) => Ok((v, t)),
+				None => Err(Diagnostic::new(
+					"this `match` never produces a value",
+					expr.1.into_range(),
+				)
+				.with_label("every arm returns, but a value is needed here")),
+			},
 
 			Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
 				Some(vt) => Ok(vt),

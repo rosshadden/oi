@@ -1,4 +1,4 @@
-use crate::ast::{Expr, ForIter, Param, Pattern, Spanned};
+use crate::ast::{Expr, ForIter, MatchArm, Param, Pattern, Spanned};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -229,12 +229,42 @@ where
 		let break_expr = just(Token::Break).map_with(|_, ex| (Expr::Break, ex.span()));
 		let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
+		// match expression
+		let match_arm = expr
+			.clone()
+			.separated_by(just(Token::Comma))
+			.allow_trailing()
+			.at_least(1)
+			.collect::<Vec<_>>()
+			.then(block.clone())
+			.map(|(patterns, body)| MatchArm { patterns, body });
+		let match_expr = just(Token::Match)
+			.ignore_then(expr.clone())
+			.then(
+				match_arm
+					.repeated()
+					.collect::<Vec<_>>()
+					.then(just(Token::Else).ignore_then(block.clone()).or_not())
+					.delimited_by(just(Token::LBrace), just(Token::RBrace)),
+			)
+			.map_with(|(subject, (arms, else_body)), ex| {
+				(
+					Expr::Match {
+						subject: Box::new(subject),
+						arms,
+						else_body,
+					},
+					ex.span(),
+				)
+			});
+
 		// atoms
 		let atom = leaf
 			.or(group)
 			.or(tuple)
 			.or(array)
 			.or(if_expr)
+			.or(match_expr)
 			.or(for_expr)
 			.or(loop_expr)
 			.or(break_expr)

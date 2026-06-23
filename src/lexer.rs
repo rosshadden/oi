@@ -26,6 +26,8 @@ pub enum Token {
 	Fn,
 	#[token("return")]
 	Return,
+	#[token("match")]
+	Match,
 
 	// control flow
 	#[token("if")]
@@ -129,6 +131,7 @@ impl fmt::Display for Token {
 			Token::String(s) => write!(f, "\"{s}\""),
 			Token::Fn => write!(f, "fn"),
 			Token::Return => write!(f, "return"),
+			Token::Match => write!(f, "match"),
 			Token::If => write!(f, "if"),
 			Token::Else => write!(f, "else"),
 			Token::Loop => write!(f, "loop"),

@@ -98,6 +98,13 @@ pub enum Expr {
 		value: Box<Spanned<Expr>>,
 	},
 
+	// `match subject { pattern, ... { body } ... else { body } }`
+	Match {
+		subject: Box<Spanned<Expr>>,
+		arms: Vec<MatchArm>,
+		else_body: Option<Vec<Spanned<Expr>>>,
+	},
+
 	// TODO: structs
 	// TODO: enums
 
@@ -128,6 +135,15 @@ pub enum Expr {
 
 	// membership
 	In(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+}
+
+#[derive(Debug)]
+// One arm of a `match` expression.
+// `patterns` are compared to the subject (OR'd together).
+// `body` runs when any pattern matches.
+pub struct MatchArm {
+	pub patterns: Vec<Spanned<Expr>>,
+	pub body: Vec<Spanned<Expr>>,
 }
 
 // A `loop` binding pattern (name or destruction).
