@@ -30,7 +30,7 @@ pub enum Expr {
 	Fn {
 		name: String,
 		params: Vec<Param>,
-		ret: Option<Spanned<String>>,
+		ret: Option<Spanned<TypeExpr>>,
 		body: Vec<Spanned<Expr>>,
 	},
 
@@ -152,6 +152,13 @@ pub enum Expr {
 
 	// membership
 	In(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+}
+
+// Type annotation.
+#[derive(Debug, Clone)]
+pub enum TypeExpr {
+	Name(String),
+	Tuple(Vec<TypeExpr>),
 }
 
 #[derive(Debug)]

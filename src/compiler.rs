@@ -5,7 +5,7 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module};
 
-use crate::ast::{Expr, ForIter, MatchArm, Param, Pattern, Span, Spanned};
+use crate::ast::{Expr, ForIter, MatchArm, Param, Pattern, Span, Spanned, TypeExpr};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
 use cranelift::codegen::ir::{StackSlotData, StackSlotKind};
@@ -14,7 +14,7 @@ use cranelift::codegen::ir::{StackSlotData, StackSlotKind};
 type FnItem<'a> = (
 	&'a str,
 	&'a [Param],
-	&'a Option<Spanned<String>>,
+	&'a Option<Spanned<TypeExpr>>,
 	&'a [Spanned<Expr>],
 );
 
@@ -106,9 +106,7 @@ impl Compiler {
 				.collect::<Result<_, Diagnostic>>()?;
 			let ret = ret
 				.as_ref()
-				.map(|(typ, span)| {
-					Ok::<_, Diagnostic>((typ_from_name(typ, *span, &structs)?, *span))
-				})
+				.map(|(te, span)| Ok::<_, Diagnostic>((resolve_type(te, *span, &structs)?, *span)))
 				.transpose()?;
 			let stmts: Vec<&Spanned<Expr>> = body.iter().collect();
 			let (id, ret) = self.compile_fn(
@@ -333,6 +331,24 @@ fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 // Bytes per element in a packed array buffer.
 fn elem_size(typ: &Typ) -> i64 {
 	if *typ == Typ::Int { 4 } else { 8 }
+}
+
+// Resolve a type annotation to an Oi type.
+fn resolve_type(
+	te: &TypeExpr,
+	span: Span,
+	structs: &HashMap<String, Vec<(String, Typ)>>,
+) -> Result<Typ, Diagnostic> {
+	match te {
+		TypeExpr::Name(name) => typ_from_name(name, span, structs),
+		TypeExpr::Tuple(elems) => {
+			let fields = elems
+				.iter()
+				.map(|e| Ok((None, resolve_type(e, span, structs)?)))
+				.collect::<Result<Vec<_>, _>>()?;
+			Ok(Typ::Tuple(fields))
+		}
+	}
 }
 
 // Resolve a declared type name to an Oi type.
@@ -1853,8 +1869,15 @@ impl<'a> Translator<'a> {
 				}
 				ptr
 			}
-			// unreachable until composite return types exist, returns are scalar names for now
-			Typ::Tuple(_) => unreachable!("tuple return types aren't supported yet"),
+			Typ::Tuple(fields) => {
+				let fields = fields.clone();
+				let ptr = self.call_alloc(fields.len());
+				for (i, (_, ftyp)) in fields.iter().enumerate() {
+					let z = self.zero(ftyp);
+					self.b.ins().store(MemFlags::new(), z, ptr, (i * 8) as i32);
+				}
+				ptr
+			}
 			Typ::Array(_) => unreachable!("array return types aren't supported yet"),
 		}
 	}

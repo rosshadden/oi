@@ -1,4 +1,4 @@
-use crate::ast::{Expr, ForIter, MatchArm, Param, Pattern, Spanned};
+use crate::ast::{Expr, ForIter, MatchArm, Param, Pattern, Spanned, TypeExpr};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -438,13 +438,22 @@ where
 		.collect::<Vec<_>>()
 		.delimited_by(just(Token::LParen), just(Token::RParen));
 
-	// optional return type
-	let ret = select! { Token::Ident(typ) => typ }
-		.or(just(Token::LParen)
+	// optional return type annotation
+	let type_expr = recursive(|te| {
+		let name = select! { Token::Ident(t) => TypeExpr::Name(t) };
+		let unit = just(Token::LParen)
 			.then(just(Token::RParen))
-			.to("()".to_string()))
-		.map_with(|typ, ex| (typ, ex.span()))
-		.or_not();
+			.to(TypeExpr::Tuple(vec![]));
+		let tuple = te
+			.separated_by(just(Token::Comma))
+			.allow_trailing()
+			.at_least(1)
+			.collect::<Vec<_>>()
+			.delimited_by(just(Token::LParen), just(Token::RParen))
+			.map(TypeExpr::Tuple);
+		unit.or(name).or(tuple)
+	});
+	let ret = type_expr.map_with(|t, ex| (t, ex.span())).or_not();
 
 	// `fn name(params) ret? { ... }`
 	let func = just(Token::Fn)
