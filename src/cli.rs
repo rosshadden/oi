@@ -29,4 +29,7 @@ pub enum Command {
 		#[arg(allow_hyphen_values = true)]
 		source: Option<String>,
 	},
+
+	/// Start an interactive Oi REPL.
+	Repl,
 }
