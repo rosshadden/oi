@@ -80,7 +80,7 @@ where
 			)
 		});
 
-	// array appendign
+	// array appending
 	let append = select! { Token::Ident(name) => name }
 		.then_ignore(just(Token::LtLt))
 		.then(expr.clone())
