@@ -54,7 +54,10 @@ fn no_comma_single() {
 #[test]
 fn no_comma_mixed_with_nested() {
 	// spec example: `odd << [9 11]`
-	check("mut odd := [1, 3, 5]\nodd << [9 11]\nodd", "[1, 3, 5, 9, 11]");
+	check(
+		"mut odd := [1, 3, 5]\nodd << [9 11]\nodd",
+		"[1, 3, 5, 9, 11]",
+	);
 }
 
 #[test]

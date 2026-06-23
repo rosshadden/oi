@@ -42,13 +42,19 @@ fn no_comma_ints() {
 #[test]
 fn no_comma_mixed_literals() {
 	// spec: `other_literals := ("lisp, innit?" true [2 4 5])`
-	check(r#"("lisp, innit?" true [2, 4, 5])"#, r#"("lisp, innit?", true, [2, 4, 5])"#);
+	check(
+		r#"("lisp, innit?" true [2, 4, 5])"#,
+		r#"("lisp, innit?", true, [2, 4, 5])"#,
+	);
 }
 
 #[test]
 fn no_comma_nested_array_no_comma() {
 	// nested array also uses comma-free syntax
-	check(r#"("lisp, innit?" true [2 4 5])"#, r#"("lisp, innit?", true, [2, 4, 5])"#);
+	check(
+		r#"("lisp, innit?" true [2 4 5])"#,
+		r#"("lisp, innit?", true, [2, 4, 5])"#,
+	);
 }
 
 #[test]

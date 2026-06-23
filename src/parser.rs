@@ -292,13 +292,23 @@ where
 
 		atom.pratt((
 			// fields
-			postfix(8, just(Token::Dot).ignore_then(field_access), |lhs, parts, ex| {
-				let mut cur = lhs;
-				for field in parts {
-					cur = (Expr::Field { tuple: Box::new(cur), field }, ex.span());
-				}
-				cur
-			}),
+			postfix(
+				8,
+				just(Token::Dot).ignore_then(field_access),
+				|lhs, parts, ex| {
+					let mut cur = lhs;
+					for field in parts {
+						cur = (
+							Expr::Field {
+								tuple: Box::new(cur),
+								field,
+							},
+							ex.span(),
+						);
+					}
+					cur
+				},
+			),
 			// indexing and slicing
 			postfix(8, subscript, |lhs, sub, ex| {
 				let collection = Box::new(lhs);
