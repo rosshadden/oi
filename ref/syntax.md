@@ -69,14 +69,14 @@ fn random_user() User {
 
 # `$` directly matches the call signature, so it is strongly typed and enforceable by the compiler
 fn single_val(x int) {
-	assert(x == $)
+	assert!(x == $)
 }
 fn one_tuple(x int,) {
-	assert(x == $.0)
+	assert!(x == $.0)
 }
 fn two_tuple(x int, y int) {
-	assert(x == $.0)
-	assert(y == $.1)
+	assert!(x == $.0)
+	assert!(y == $.1)
 }
 
 # named returns
@@ -94,18 +94,18 @@ fn two_tuple(x int, y int) {
 
 # building on what Go does, a bare `return` updates the bound values
 fn two() result int {
-	assert(result == 0)
+	assert!(result == 0)
 	result = 2
 	return
 }
-assert(two() == 2)
+assert!(two() == 2)
 
 fn random_user() u User {
 	print(u) # User{}
 	u.name = "I Dunno"
 }
 ru := random_user()
-assert(ru.name == "I Dunno")
+assert!(ru.name == "I Dunno")
 
 # this really just skips the step of explicitly initializing a zeroed var
 fn divmod(a int, b int) out (int, int) {
@@ -153,7 +153,7 @@ sleep 1_000
 log.group :process
 
 # this can be used in conjunction with trailing functions
-test "foo" { assert(foo == bar) }
+test "foo" { assert!(foo == bar) }
 benchmark 1_000_000 { do_work() }
 config :production { ... }
 hook .startup { ... }
@@ -327,7 +327,7 @@ profile := Profile{
 	foo: 4
 	name: "one cool dude"
 }
-assert profile.foo == profile.Options.foo
+assert! profile.foo == profile.Options.foo
 
 # you can refer to and assign to embedded structs directly
 profile := Profile{
@@ -349,7 +349,7 @@ impl Add for Point {
 		Self{self.x + other.x, self.y + other.y}
 	}
 }
-assert(Point{1, 0} + Point{2, 3} == Point{3, 3})
+assert!(Point{1, 0} + Point{2, 3} == Point{3, 3})
 
 ## traits
 
@@ -396,7 +396,7 @@ impl Animal for Person {
 	fn speak(self) string { "Lorem ipsum..." }
 }
 # TODO: nail down syntax for trait checking. this is english for clarity, not final form
-assert(Person is of Animal)
+assert!(Person is of Animal)
 
 # you can optionally make traits implicit with @implicit
 @implicit
@@ -416,9 +416,9 @@ struct Bike {
 	color Color = :purple
 }
 impl Fruit for Apple
-assert(Kiwi is of Fruit)
-assert(Apple is of Fruit)
-assert(Bike is not of Fruit)
+assert!(Kiwi is of Fruit)
+assert!(Apple is of Fruit)
+assert!(Bike is not of Fruit)
 
 ## main entrypoint
 
@@ -482,7 +482,7 @@ fn main() {
 	small_unsigned_int := u8(16)
 	
 	# ints can be automatically promoted to f64 or larger-width ints
-	assert(2 + 1.0 == 3.0)
+	assert!(2 + 1.0 == 3.0)
 	
 	# supports arbitrary bit-width integers, like Zig
 	# use `i<width>` and `u<width>`, where width in [1, 65535]
@@ -502,7 +502,7 @@ fn main() {
 	"
 	
 	# concatenation
-	assert("foo" + "bar", "foobar")
+	assert!("foo" + "bar", "foobar")
 	
 	# string interpolation
 	who := "mom"
@@ -531,31 +531,31 @@ fn main() {
 	names := ["john", "jacob", "jingleheimerschmidt"]
 	print(names)
 	# can be accessed with an index expression
-	assert(names[1] == "jacob")
+	assert!(names[1] == "jacob")
 	i := 1
-	assert(names[i] == names[1])
+	assert!(names[i] == names[1])
 	# numbers literals may also be used with dot notation
-	assert(names.0 == "john")
-	assert(names.2 == "jingleheimerschmidt")
+	assert!(names.0 == "john")
+	assert!(names.2 == "jingleheimerschmidt")
 	
 	# append with `<<`
 	mut odd := [1, 3, 5]
 	odd << 7
-	assert(odd.3 == 7)
+	assert!(odd.3 == 7)
 	# entire arrays can be appended too
 	odd << [9 11]
-	assert(odd.5 == 11)
-	assert(odd.len == 6)
+	assert!(odd.5 == 11)
+	assert!(odd.len == 6)
 	
 	# arrays support dropping the commas when only literals are present
 	even := [2 4 6]
 	
 	# `in` operator returns whether array contains element
-	assert(6 in even)
+	assert!(6 in even)
 	
 	# arrays have fields
 	# `len` is the number of initialized elements in the array
-	assert(even.len == 3)
+	assert!(even.len == 3)
 	
 	# array init
 	mut arr := []int{}
@@ -582,9 +582,9 @@ fn main() {
 	# proper array
 	even := [0 2 4 6 8]
 	# slices of it
-	assert even[1..3] == [2 4]
-	assert even[..3] == [0 2 4]
-	assert even[1..] == [2 4 6 8]
+	assert! even[1..3] == [2 4]
+	assert! even[..3] == [0 2 4]
+	assert! even[1..] == [2 4 6 8]
 	
 	# tuples
 	
@@ -611,8 +611,8 @@ fn main() {
 	
 	t := (a: 1, b: 2)
 	print(t) # (a: 1, b: 2)
-	assert(t.a == t.0)
-	assert(t.b == t.1)
+	assert!(t.a == t.0)
+	assert!(t.b == t.1)
 	
 	#{
 		These names are purely aliases / hints, and do _not_ affect identity or comparison.
@@ -621,13 +621,13 @@ fn main() {
 		I've never been great with analogies.
 		Anyway don't abuse this. The field names are for convenience, not as a replacement for structs.
 	}#
-	assert((x: 4, y: 2) == (4, 2))
-	assert((x: 4, y: 2) == (4, z: 2))
+	assert!((x: 4, y: 2) == (4, 2))
+	assert!((x: 4, y: 2) == (4, z: 2))
 	
 	# names do not need to be given to all indices
 	t := (1, b: 2)
 	print(t) # (1, b: 2)
-	assert(t.b == t.1)
+	assert!(t.b == t.1)
 	
 	# can be used in function return signatures
 	fn split(value string) (left string, right string) {
@@ -635,9 +635,9 @@ fn main() {
 	}
 	splat := split("hi|mom")
 	(l, r) := split("hi|mom")
-	assert(splat.left == "hi")
-	assert(splat.right == "mom")
-	assert(splat == (l, r))
+	assert!(splat.left == "hi")
+	assert!(splat.right == "mom")
+	assert!(splat == (l, r))
 	
 	# another example with a common divmod method
 	fn divmod(a int, b int) (q int, r int) {
@@ -645,11 +645,11 @@ fn main() {
 	}
 	result := divmod(10, 3)
 	print(result) # (q: 3, r: 1)
-	assert(result == (3, 1))
-	assert(result.0 == 3)
-	assert(result.1 == 1)
-	assert(result.q == 3)
-	assert(result.r == 1)
+	assert!(result == (3, 1))
+	assert!(result.0 == 3)
+	assert!(result.1 == 1)
+	assert!(result.q == 3)
+	assert!(result.r == 1)
 
 	# this can be used alongside the named return feature, as they are different systems
 	fn divmod(a int, b int) out (q int, r int) {
@@ -663,15 +663,48 @@ fn main() {
 	}
 	result := http_get("/health")
 	print(result) # (200, body: "the body", [])
-	assert(result.body == result.1)
+	assert!(result.body == result.1)
+	
+	## unit type
+	
+	# (), a 0ple, is the unit type
+	# when you have a fn with no return type expressed, it returns `()`
+	assert!(() == ())
+	
+	# these are all equivalent:
+	fn nada() {}
+	fn zilch() () {}
+	fn nope() {
+		()
+	}
+	fn no_way() {
+		return ()
+	}
+	fn nuh_uh() {
+		return
+	}
+	assert!(nada() == zilch())
+	assert!(nada() == nope())
+	assert!(nada() == no_way())
+	assert!(nada() == nuh_uh())
+	assert!(nada() == ())
+	
+	## never
+	
+	# `never` indicates that a fn should not return
+	fn foo() never {
+		loop {}
+	}
+	foo()
+	unreachable!("the above fn should never have finished")
 	
 	## atoms
 	
 	# Oi has first-class atoms
 	:foo
-	assert(:foo != :bar)
+	assert!(:foo != :bar)
 	food := :apple
-	assert(food == :apple)
+	assert!(food == :apple)
 	
 	# atoms coerce to enum variants when the type is known from context
 	# NOTE: atoms by definition cannot carry payloads
@@ -679,8 +712,8 @@ fn main() {
 	mut c := Color.red # fully qualified
 	c = .red # type inferred from declaration
 	c = :blue # type inferred from declaration and coerced
-	assert(c == Color.blue)
-	assert(Color.blue == :blue)
+	assert!(c == Color.blue)
+	assert!(Color.blue == :blue)
 	
 	enum Stat { health mana stamina }
 	struct User {
@@ -688,7 +721,7 @@ fn main() {
 	}
 	user1 := User{ stat: .mana }
 	user2 := User{ stat: :mana }
-	assert(user1.stat == user2.stat)
+	assert!(user1.stat == user2.stat)
 
 	# this might be useful for quick prototyping?
 	# nothing at the callsites needs to change when you later add the definition
@@ -731,8 +764,8 @@ fn main() {
 	
 	# all types have zeroed values
 	u := User{}
-	assert(u.age == 0)
-	assert(u.name == "")
+	assert!(u.age == 0)
+	assert!(u.name == "")
 	
 	# unpack returns
 	a, b := foo()
@@ -815,13 +848,14 @@ fn main() {
 	foo := if true { "yes" } else { "no" }
 	
 	# if no else, uses default value from the if body
+	# TODO: or should it be `none` and make the var `?T`?
 	str := if false { "idk" }
 	num := if false { 42 }
-	assert(str == "")
-	assert(num == 0)
+	assert!(str == "")
+	assert!(num == 0)
 
 	# built-in functions
-	result := assert(check()) |> next
+	result := assert!(check()) |> next
 	
 	# match
 	(i, foo, bar, u, me) := (0, true, true, 2, [0 2 4])
@@ -1065,7 +1099,7 @@ fn main() {
 	
 	# crash out
 	if false {
-		assert(true, "optional message")
+		assert!(true, "optional message")
 		panic("uh oh...")
 	}
 	
@@ -1152,7 +1186,7 @@ fn main() {
 	# test("registration", fn { ... })
 	test "registration" {
 		user := make_user()
-		assert(user.can_register())
+		assert!(user.can_register())
 	}
 	retry 3 {
 		fetch(url)!
@@ -1249,7 +1283,7 @@ fn main() {
 			:block_done
 		}
 		|> fn {
-			assert($ == true)
+			assert!($ == true)
 			log.info("this is an _actual_ function")
 			:fn_done
 		}
@@ -1257,7 +1291,7 @@ fn main() {
 			eprint($)
 			return $
 		}
-	assert(result == :fn_done)
+	assert!(result == :fn_done)
 	config := os.env("config_path")
 		|> read_file!
 		|> parse!
@@ -1274,7 +1308,7 @@ fn main() {
 		outer |> fn (inner) {
 			log.debug("inner: {inner}, outer: {outer}")
 		}
-		assert(outer == $)
+		assert!(outer == $)
 	}
 
 	# or you can cache the `$`
@@ -1284,7 +1318,7 @@ fn main() {
 			inner := $
 			log.debug("inner: {inner}, outer: {outer}")
 		}
-		assert(outer == $)
+		assert!(outer == $)
 	}
 	
 	# all together now (all together now!)
@@ -1324,7 +1358,7 @@ fn main() {
 			log.info("called count_letters with {s}, and it has {$} unique letters")
 			$
 		}
-	assert(count_letters("hi, mom!") == 4)
+	assert!(count_letters("hi, mom!") == 4)
 	
 	## metaprogramming
 	
@@ -1353,7 +1387,7 @@ fn main() {
 	}
 	comp {
 		# comptime assertions
-		assert(max_connections > 0 && max_connections <= 65535)
+		assert!(max_connections > 0 && max_connections <= 65535)
 	}
 	
 	# function calls can have comptime args
