@@ -16,7 +16,7 @@ fn unit_inequality() {
 	check("() != ()", "false");
 }
 
-// Binding unit and then naming it yields unit → prints nothing
+// Binding unit and then naming it yields unit and prints nothing
 #[test]
 fn unit_in_binding() {
 	check("x := ()\nx", "");
