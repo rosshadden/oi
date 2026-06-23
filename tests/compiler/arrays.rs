@@ -32,6 +32,51 @@ fn trailing_comma() {
 }
 
 #[test]
+fn no_comma_ints() {
+	check("[2 4 6]", "[2, 4, 6]");
+}
+
+#[test]
+fn no_comma_strings() {
+	check(r#"["a" "b" "c"]"#, r#"["a", "b", "c"]"#);
+}
+
+#[test]
+fn no_comma_bools() {
+	check("[true false true]", "[true, false, true]");
+}
+
+#[test]
+fn no_comma_single() {
+	check("[42]", "[42]");
+}
+
+#[test]
+fn no_comma_mixed_with_nested() {
+	// spec example: `odd << [9 11]`
+	check("mut odd := [1, 3, 5]\nodd << [9 11]\nodd", "[1, 3, 5, 9, 11]");
+}
+
+#[test]
+fn no_comma_in_slice_literal() {
+	// spec shows `[2 4]` as a comma-free array literal
+	check("a := [2 4]\nassert(a[0] == 2)\na[1]", "4");
+}
+
+#[test]
+fn no_comma_loop() {
+	// spec example: `loop x in [2 4 6 8]`
+	check(
+		indoc! {"
+		mut sum := 0
+		loop x in [2 4 6 8] { sum = sum + x }
+		sum
+	"},
+		"20",
+	);
+}
+
+#[test]
 fn index_literal() {
 	check("a := [10, 20, 30]\na[1]", "20");
 }

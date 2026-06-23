@@ -148,8 +148,9 @@ where
 			.then_ignore(just(Token::Colon))
 			.or_not()
 			.then(expr.clone());
+		// tuple literal
 		let tuple = elem
-			.separated_by(just(Token::Comma))
+			.separated_by(just(Token::Comma).or_not())
 			.allow_trailing()
 			.collect::<Vec<_>>()
 			.delimited_by(just(Token::LParen), just(Token::RParen))
@@ -158,7 +159,7 @@ where
 		// array literal
 		let array = expr
 			.clone()
-			.separated_by(just(Token::Comma))
+			.separated_by(just(Token::Comma).or_not())
 			.allow_trailing()
 			.collect::<Vec<_>>()
 			.delimited_by(just(Token::LBracket), just(Token::RBracket))

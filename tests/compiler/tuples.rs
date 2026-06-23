@@ -34,6 +34,24 @@ fn one_tuple_needs_comma() {
 }
 
 #[test]
+fn no_comma_ints() {
+	// spec: `only_nums := (2 3 4)`
+	check("(2 3 4)", "(2, 3, 4)");
+}
+
+#[test]
+fn no_comma_mixed_literals() {
+	// spec: `other_literals := ("lisp, innit?" true [2 4 5])`
+	check(r#"("lisp, innit?" true [2, 4, 5])"#, r#"("lisp, innit?", true, [2, 4, 5])"#);
+}
+
+#[test]
+fn no_comma_nested_array_no_comma() {
+	// nested array also uses comma-free syntax
+	check(r#"("lisp, innit?" true [2 4 5])"#, r#"("lisp, innit?", true, [2, 4, 5])"#);
+}
+
+#[test]
 fn nested_tuple() {
 	check("(1, (2, 3))", "(1, (2, 3))");
 }
