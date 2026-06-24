@@ -982,10 +982,15 @@ impl<'a> Translator<'a> {
 						.b
 						.ins()
 						.sextend(cl_type(&Typ::Int(target), self.int), val),
-					Typ::Int(_) => self
-						.b
-						.ins()
-						.ireduce(cl_type(&Typ::Int(target), self.int), val),
+					Typ::Int(_) => {
+						let lo_v = self.b.ins().iconst(types::I64, i32::MIN as i64);
+						let hi_v = self.b.ins().iconst(types::I64, i32::MAX as i64);
+						let lt = self.b.ins().icmp(IntCC::SignedLessThan, val, lo_v);
+						let v = self.b.ins().select(lt, lo_v, val);
+						let gt = self.b.ins().icmp(IntCC::SignedGreaterThan, v, hi_v);
+						let v = self.b.ins().select(gt, hi_v, v);
+						self.b.ins().ireduce(types::I32, v)
+					}
 					_ => {
 						return Err(Diagnostic::new(
 							format!("cannot cast {typ:?} to i{target}"),
