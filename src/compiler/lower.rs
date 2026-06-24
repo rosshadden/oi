@@ -972,13 +972,21 @@ impl<'a> Translator<'a> {
 				let (val, typ) = self.expr(&args[0])?;
 				let out = match &typ {
 					Typ::Int(w) if *w == target => val,
-					Typ::Int(w) if *w < target => self.b.ins().sextend(cl_type(&Typ::Int(target), self.int), val),
-					Typ::Int(_) => self.b.ins().ireduce(cl_type(&Typ::Int(target), self.int), val),
-					_ => return Err(Diagnostic::new(
-						format!("cannot cast {typ:?} to i{target}"),
-						args[0].1.into_range(),
-					)
-					.with_label("not an integer")),
+					Typ::Int(w) if *w < target => self
+						.b
+						.ins()
+						.sextend(cl_type(&Typ::Int(target), self.int), val),
+					Typ::Int(_) => self
+						.b
+						.ins()
+						.ireduce(cl_type(&Typ::Int(target), self.int), val),
+					_ => {
+						return Err(Diagnostic::new(
+							format!("cannot cast {typ:?} to i{target}"),
+							args[0].1.into_range(),
+						)
+						.with_label("not an integer"));
+					}
 				};
 				Ok((out, Typ::Int(target)))
 			}
