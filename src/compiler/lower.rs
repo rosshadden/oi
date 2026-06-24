@@ -714,7 +714,7 @@ impl<'a> Translator<'a> {
 		self.b.switch_to_block(body_block);
 		let iv = self.b.use_var(counter);
 		let (val, typ) = match &arr_src {
-			None => (iv, Typ::Int),
+			None => (iv, Typ::Int(32)),
 			Some((data, elem)) => {
 				let off = self.b.ins().imul_imm(iv, elem_size(elem));
 				let addr = self.b.ins().iadd(*data, off);
@@ -818,7 +818,7 @@ impl<'a> Translator<'a> {
 
 	pub fn expr(&mut self, expr: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
 		match &expr.0 {
-			Expr::Int(n) => Ok((self.b.ins().iconst(types::I32, *n as i64), Typ::Int)),
+			Expr::Int(n) => Ok((self.b.ins().iconst(types::I32, *n as i64), Typ::Int(32))),
 			Expr::Bool(v) => Ok((self.b.ins().iconst(self.int, *v as i64), Typ::Bool)),
 			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float)),
 			Expr::String(s) => Ok((self.str_const(s), Typ::Str)),
@@ -834,7 +834,7 @@ impl<'a> Translator<'a> {
 			Expr::Negative(e) => {
 				let (v, typ) = self.expr(e)?;
 				let out = match typ {
-					Typ::Int => self.b.ins().ineg(v),
+					Typ::Int(_) => self.b.ins().ineg(v),
 					Typ::Float => self.b.ins().fneg(v),
 					_ => {
 						return Err(Diagnostic::new(
@@ -1024,7 +1024,7 @@ impl<'a> Translator<'a> {
 					if field == "len" {
 						let raw = self.array_len(ptr);
 						let len = self.b.ins().ireduce(types::I32, raw);
-						return Ok((len, Typ::Int));
+						return Ok((len, Typ::Int(32)));
 					}
 					return match field.parse::<i64>() {
 						Ok(n) => {
@@ -1438,7 +1438,7 @@ impl<'a> Translator<'a> {
 		match typ {
 			Typ::Float => self.b.ins().f64const(0.0),
 			Typ::Str => self.str_const(""),
-			Typ::Int => self.b.ins().iconst(types::I32, 0),
+			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::Bool => self.b.ins().iconst(self.int, 0),
 			Typ::Tuple(fields) if fields.is_empty() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
@@ -1505,7 +1505,7 @@ impl<'a> Translator<'a> {
 
 		// NOTE: might go with V-style int/float promotion eventually
 		let float = match (&lt, &rt) {
-			(Typ::Int, Typ::Int) => false,
+			(Typ::Int(lw), Typ::Int(rw)) if lw == rw => false,
 			(Typ::Float, Typ::Float) => true,
 			_ => {
 				return Err(Diagnostic::new(
@@ -1569,7 +1569,7 @@ impl<'a> Translator<'a> {
 		}
 
 		let raw = match (&lt, &rt) {
-			(Typ::Int, Typ::Int) | (Typ::Bool, Typ::Bool) => self.b.ins().icmp(icc, lv, rv),
+			(Typ::Int(_), Typ::Int(_)) | (Typ::Bool, Typ::Bool) => self.b.ins().icmp(icc, lv, rv),
 			(Typ::Float, Typ::Float) => self.b.ins().fcmp(fcc, lv, rv),
 			(Typ::Str, Typ::Str) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
 				let eq = self.emit_eq(lv, rv, &Typ::Str);
@@ -1711,7 +1711,7 @@ impl<'a> Translator<'a> {
 
 	fn int_value(&mut self, e: &Spanned<Expr>, what: &str) -> Result<Value, Diagnostic> {
 		let (v, t) = self.expr(e)?;
-		if t != Typ::Int {
+		if !matches!(t, Typ::Int(_)) {
 			return Err(Diagnostic::new(
 				format!("{what} must be Int, got {t:?}"),
 				e.1.into_range(),
@@ -1854,7 +1854,7 @@ impl<'a> Translator<'a> {
 			_ => {
 				let tag = match typ {
 					Typ::Bool => runtime::Tag::Bool,
-					Typ::Int => runtime::Tag::Int,
+					Typ::Int(_) => runtime::Tag::Int,
 					Typ::Float => runtime::Tag::Float,
 					Typ::Str => runtime::Tag::Str,
 					Typ::Tuple(_) | Typ::Array(_) | Typ::Struct(..) => {
@@ -1864,7 +1864,7 @@ impl<'a> Translator<'a> {
 				// normalize to pointer-sized before passing to the runtime
 				let bits = match typ {
 					Typ::Float => self.b.ins().bitcast(self.int, MemFlags::new(), val),
-					Typ::Int => self.b.ins().sextend(self.int, val),
+					Typ::Int(w) if *w < 64 => self.b.ins().sextend(self.int, val),
 					_ => val,
 				};
 				self.emit_frag(tag, bits, quote, stderr);

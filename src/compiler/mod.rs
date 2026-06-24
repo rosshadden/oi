@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use cranelift::codegen;
 use cranelift::prelude::*;
@@ -22,7 +23,7 @@ type FnItem<'a> = (
 // TODO: PartialEq compares tuple field names, but comparisons should ignore them
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) enum Typ {
-	Int,
+	Int(u16),
 	Float,
 	Bool,
 	Str,
@@ -56,14 +57,21 @@ impl PartialEq for FieldDef {
 
 pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 	match typ {
-		Typ::Int => types::I32,
+		Typ::Int(w) => match w {
+			32 => types::I32,
+			64 => types::I64,
+			w => panic!("unsupported int width i{w}"),
+		},
 		Typ::Float => types::F64,
 		_ => int,
 	}
 }
 
 pub(crate) fn elem_size(typ: &Typ) -> i64 {
-	if *typ == Typ::Int { 4 } else { 8 }
+	match typ {
+		Typ::Int(w) => (*w as i64) / 8,
+		_ => 8,
+	}
 }
 
 pub(crate) fn resolve_type(
@@ -90,7 +98,8 @@ pub(crate) fn typ_from_name(
 	structs: &HashMap<String, Vec<FieldDef>>,
 ) -> Result<Typ, Diagnostic> {
 	Ok(match name {
-		"int" => Typ::Int,
+		"int" | "i32" => Typ::Int(32),
+		"i64" => Typ::Int(64),
 		"f64" | "float" => Typ::Float,
 		"bool" => Typ::Bool,
 		"string" | "str" => Typ::Str,
