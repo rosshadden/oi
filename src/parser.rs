@@ -111,8 +111,11 @@ where
 			)
 		});
 
-	let doc =
-		select! { Token::Doc(text) => text }.map_with(|text, ex| (Expr::Doc(text), ex.span()));
+	let doc = select! { Token::Doc(text) => text }
+		.repeated()
+		.at_least(1)
+		.collect::<Vec<_>>()
+		.map_with(|lines, ex| (Expr::Doc(lines), ex.span()));
 
 	// statements
 	let stmt = doc

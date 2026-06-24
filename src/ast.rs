@@ -154,7 +154,7 @@ pub enum Expr {
 	In(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 
 	// meta
-	Doc(String),
+	Doc(Vec<String>),
 }
 
 // Type annotation.
