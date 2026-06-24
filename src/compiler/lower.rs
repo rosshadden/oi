@@ -967,6 +967,68 @@ impl<'a> Translator<'a> {
 				Ok((cond, Typ::Bool))
 			}
 
+			Expr::Call { name, args } if matches!(name.as_str(), "isize" | "usize") => {
+				let signed = name == "isize";
+				if args.len() != 1 {
+					return Err(Diagnostic::new(
+						format!("`{name}` cast takes exactly 1 argument"),
+						expr.1.into_range(),
+					)
+					.with_label("wrong number of arguments"));
+				}
+				let (val, typ) = self.expr(&args[0])?;
+				let out = match (&typ, signed) {
+					(Typ::ISize, true) | (Typ::USize, false) => val,
+					// isize -> usize: clamp negative to 0
+					(Typ::ISize, false) => {
+						let zero = self.b.ins().iconst(self.int, 0);
+						let lt = self.b.ins().icmp(IntCC::SignedLessThan, val, zero);
+						self.b.ins().select(lt, zero, val)
+					}
+					// usize -> isize: saturate at isize::MAX
+					(Typ::USize, true) => {
+						let max_v = self.b.ins().iconst(self.int, i64::MAX);
+						let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, val, max_v);
+						self.b.ins().select(gt, max_v, val)
+					}
+					// int -> isize: sign-extend
+					(Typ::Int(_), true) => {
+						let src_cl = cl_type(&typ, self.int);
+						if src_cl == self.int { val } else { self.b.ins().sextend(self.int, val) }
+					}
+					// uint -> usize: zero-extend
+					(Typ::UInt(_), false) => {
+						let src_cl = cl_type(&typ, self.int);
+						if src_cl == self.int { val } else { self.b.ins().uextend(self.int, val) }
+					}
+					// int -> usize: sign-extend then clamp negative to 0
+					(Typ::Int(_), false) => {
+						let src_cl = cl_type(&typ, self.int);
+						let v = if src_cl == self.int { val } else { self.b.ins().sextend(self.int, val) };
+						let zero = self.b.ins().iconst(self.int, 0);
+						let lt = self.b.ins().icmp(IntCC::SignedLessThan, v, zero);
+						self.b.ins().select(lt, zero, v)
+					}
+					// uint -> isize: zero-extend then saturate at isize::MAX
+					(Typ::UInt(_), true) => {
+						let src_cl = cl_type(&typ, self.int);
+						let v = if src_cl == self.int { val } else { self.b.ins().uextend(self.int, val) };
+						let max_v = self.b.ins().iconst(self.int, i64::MAX);
+						let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, v, max_v);
+						self.b.ins().select(gt, max_v, v)
+					}
+					_ => {
+						return Err(Diagnostic::new(
+							format!("cannot cast {typ:?} to {name}"),
+							args[0].1.into_range(),
+						)
+						.with_label("not an integer"));
+					}
+				};
+				let out_typ = if signed { Typ::ISize } else { Typ::USize };
+				Ok((out, out_typ))
+			}
+
 			Expr::Call { name, args }
 				if name.starts_with('i')
 					&& name[1..]
@@ -1640,7 +1702,7 @@ impl<'a> Translator<'a> {
 			Typ::Str => self.str_const(""),
 			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
-			Typ::Bool => self.b.ins().iconst(self.int, 0),
+			Typ::Bool | Typ::ISize | Typ::USize => self.b.ins().iconst(self.int, 0),
 			Typ::Tuple(fields) if fields.is_empty() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
 				let fields = fields.clone();
@@ -1713,7 +1775,9 @@ impl<'a> Translator<'a> {
 		// NOTE: might go with V-style int/float promotion eventually
 		let kind = match (&lt, &rt) {
 			(Typ::Int(lw), Typ::Int(rw)) if lw == rw => NumKind::Int,
+			(Typ::ISize, Typ::ISize) => NumKind::Int,
 			(Typ::UInt(lw), Typ::UInt(rw)) if lw == rw => NumKind::UInt,
+			(Typ::USize, Typ::USize) => NumKind::UInt,
 			(Typ::Float(lw), Typ::Float(rw)) if lw == rw => NumKind::Float,
 			_ => {
 				return Err(Diagnostic::new(
@@ -1788,15 +1852,17 @@ impl<'a> Translator<'a> {
 			}
 		}
 
-		let icc = if matches!((&lt, &rt), (Typ::UInt(_), Typ::UInt(_))) {
+		let icc = if matches!((&lt, &rt), (Typ::UInt(_), Typ::UInt(_)) | (Typ::USize, Typ::USize)) {
 			unsigned_cc(icc)
 		} else {
 			icc
 		};
 		let raw = match (&lt, &rt) {
-			(Typ::Int(_), Typ::Int(_)) | (Typ::UInt(_), Typ::UInt(_)) | (Typ::Bool, Typ::Bool) => {
-				self.b.ins().icmp(icc, lv, rv)
-			}
+			(Typ::Int(_), Typ::Int(_))
+			| (Typ::UInt(_), Typ::UInt(_))
+			| (Typ::ISize, Typ::ISize)
+			| (Typ::USize, Typ::USize)
+			| (Typ::Bool, Typ::Bool) => self.b.ins().icmp(icc, lv, rv),
 			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
 			(Typ::Str, Typ::Str) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
 				let eq = self.emit_eq(lv, rv, &Typ::Str);
@@ -2084,8 +2150,8 @@ impl<'a> Translator<'a> {
 			_ => {
 				let tag = match typ {
 					Typ::Bool => runtime::Tag::Bool,
-					Typ::Int(_) => runtime::Tag::Int,
-					Typ::UInt(_) => runtime::Tag::UInt,
+					Typ::Int(_) | Typ::ISize => runtime::Tag::Int,
+					Typ::UInt(_) | Typ::USize => runtime::Tag::UInt,
 					Typ::Float(_) => runtime::Tag::Float,
 					Typ::Str => runtime::Tag::Str,
 					Typ::Tuple(_) | Typ::Array(_) | Typ::Struct(..) => {

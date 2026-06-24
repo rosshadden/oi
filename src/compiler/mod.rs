@@ -25,6 +25,8 @@ type FnItem<'a> = (
 pub(crate) enum Typ {
 	Int(u16),
 	UInt(u16),
+	ISize,
+	USize,
 	Float(u16),
 	Bool,
 	Str,
@@ -56,6 +58,8 @@ impl fmt::Display for Typ {
 			Typ::Int(32) => write!(f, "int"),
 			Typ::Int(w) => write!(f, "i{w}"),
 			Typ::UInt(w) => write!(f, "u{w}"),
+			Typ::ISize => write!(f, "isize"),
+			Typ::USize => write!(f, "usize"),
 			Typ::Float(64) => write!(f, "float"),
 			Typ::Float(w) => write!(f, "f{w}"),
 			Typ::Bool => write!(f, "bool"),
@@ -86,6 +90,7 @@ pub(crate) fn cl_int_for_width(w: u16) -> types::Type {
 pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 	match typ {
 		Typ::Int(w) | Typ::UInt(w) => cl_int_for_width(*w),
+		Typ::ISize | Typ::USize => int,
 		Typ::Float(w) => match w {
 			16 => types::F16,
 			32 => types::F32,
@@ -130,6 +135,8 @@ pub(crate) fn typ_from_name(
 ) -> Result<Typ, Diagnostic> {
 	match name {
 		"int" => return Ok(Typ::Int(32)),
+		"isize" => return Ok(Typ::ISize),
+		"usize" => return Ok(Typ::USize),
 		"float" => return Ok(Typ::Float(64)),
 		"bool" => return Ok(Typ::Bool),
 		"string" | "str" => return Ok(Typ::Str),
