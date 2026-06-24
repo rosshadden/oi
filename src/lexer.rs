@@ -121,7 +121,7 @@ pub enum Token {
 	Semicolon,
 
 	// comments
-	#[regex(r"## ([^\r\n]+)", |lex| {
+	#[regex(r"##( [^\r\n]+)?", |lex| {
 		let s = lex.slice();
 		s.get(3..).unwrap_or("").to_owned()
 	}, allow_greedy = true)]
