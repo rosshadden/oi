@@ -11,11 +11,16 @@ fn lex_block_comment(lex: &mut Lexer<Token>) {
 	let mut i = 0;
 	while i < src.len() {
 		match (src[i], src.get(i + 1).copied()) {
-			(b'#', Some(b'{')) => { depth += 1; i += 2; }
+			(b'#', Some(b'{')) => {
+				depth += 1;
+				i += 2;
+			}
 			(b'}', Some(b'#')) => {
 				i += 2;
 				depth -= 1;
-				if depth == 0 { break; }
+				if depth == 0 {
+					break;
+				}
 			}
 			_ => i += 1,
 		}
@@ -148,13 +153,14 @@ pub enum Token {
 		s.get(3..).unwrap_or("").to_owned()
 	}, allow_greedy = true)]
 	Doc(String),
+	DocBreak,
 }
 
 impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			Token::Error(s) => write!(f, "{s}"),
-			Token::BlockComment | Token::Comment => write!(f, "comment"),
+			Token::BlockComment | Token::Comment | Token::DocBreak => write!(f, "comment"),
 			Token::Doc(_) => write!(f, "doc"),
 			Token::Bool(b) => write!(f, "{b}"),
 			Token::Int(n) => write!(f, "{n}"),
@@ -206,13 +212,29 @@ impl fmt::Display for Token {
 
 // Lex `src`.
 // Convert errors into tokens so parsing stays recoverable.
+// Insert `DocBreak` between consecutive `Doc` tokens separated by at least one newline.
 pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
-	Token::lexer(src)
+	let raw: Vec<(Token, SimpleSpan)> = Token::lexer(src)
 		.spanned()
 		.filter_map(|(token, span)| match token {
 			Ok(Token::BlockComment) => None,
 			Ok(token) => Some((token, span.into())),
 			Err(()) => Some((Token::Error(src[span.clone()].to_string()), span.into())),
 		})
-		.collect()
+		.collect();
+
+	let mut out = Vec::with_capacity(raw.len() + 4);
+	for i in 0..raw.len() {
+		let (tok, span) = &raw[i];
+		if i > 0 {
+			if let (Token::Doc(_), Token::Doc(_)) = (&raw[i - 1].0, tok) {
+				let gap = &src[raw[i - 1].1.end..span.start];
+				if gap.bytes().filter(|&b| b == b'\n').count() > 1 {
+					out.push((Token::DocBreak, (raw[i - 1].1.end..span.start).into()));
+				}
+			}
+		}
+		out.push((tok.clone(), *span));
+	}
+	out
 }

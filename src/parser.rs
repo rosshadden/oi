@@ -115,7 +115,8 @@ where
 		.repeated()
 		.at_least(1)
 		.collect::<Vec<_>>()
-		.map_with(|lines, ex| (Expr::Doc(lines), ex.span()));
+		.map_with(|lines, ex| (Expr::Doc(lines), ex.span()))
+		.then_ignore(just(Token::DocBreak).or_not());
 
 	// statements
 	let stmt = doc
