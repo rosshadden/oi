@@ -28,7 +28,7 @@ pub(crate) enum Typ {
 	Str,
 	Tuple(Vec<(Option<String>, Typ)>),
 	Array(Box<Typ>),
-	Struct(String, Vec<(String, Typ)>),
+	Struct(String, Vec<FieldDef>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -38,6 +38,20 @@ pub(crate) enum Op {
 	Mul,
 	Div,
 	Mod,
+}
+
+// A struct field definition.
+#[derive(Clone, Debug)]
+pub(crate) struct FieldDef {
+	pub name: String,
+	pub typ: Typ,
+	pub default: Option<Spanned<Expr>>,
+}
+
+impl PartialEq for FieldDef {
+	fn eq(&self, other: &Self) -> bool {
+		self.name == other.name && self.typ == other.typ
+	}
 }
 
 pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
@@ -55,7 +69,7 @@ pub(crate) fn elem_size(typ: &Typ) -> i64 {
 pub(crate) fn resolve_type(
 	te: &TypeExpr,
 	span: Span,
-	structs: &HashMap<String, Vec<(String, Typ)>>,
+	structs: &HashMap<String, Vec<FieldDef>>,
 ) -> Result<Typ, Diagnostic> {
 	match te {
 		TypeExpr::Name(name) => typ_from_name(name, span, structs),
@@ -73,7 +87,7 @@ pub(crate) fn resolve_type(
 pub(crate) fn typ_from_name(
 	name: &str,
 	span: Span,
-	structs: &HashMap<String, Vec<(String, Typ)>>,
+	structs: &HashMap<String, Vec<FieldDef>>,
 ) -> Result<Typ, Diagnostic> {
 	Ok(match name {
 		"int" => Typ::Int,
@@ -177,12 +191,18 @@ impl Compiler {
 			}
 		}
 
-		let mut structs: HashMap<String, Vec<(String, Typ)>> = HashMap::new();
-		let no_structs = HashMap::new();
+		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
+		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		for (name, fields) in &struct_items {
 			let resolved = fields
 				.iter()
-				.map(|p| typ_from_name(&p.typ, p.span, &no_structs).map(|t| (p.name.clone(), t)))
+				.map(|p| {
+					typ_from_name(&p.typ, p.span, &no_structs).map(|t| FieldDef {
+						name: p.name.clone(),
+						typ: t,
+						default: p.default.clone(),
+					})
+				})
 				.collect::<Result<Vec<_>, _>>()?;
 			structs.insert(name.to_string(), resolved);
 		}
@@ -253,7 +273,7 @@ impl Compiler {
 		ret: Option<(Typ, Span)>,
 		stmts: &[&Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
-		structs: &HashMap<String, Vec<(String, Typ)>>,
+		structs: &HashMap<String, Vec<FieldDef>>,
 	) -> Result<(FuncId, Typ), Diagnostic> {
 		let typ = self.translate(int, params, ret, stmts, funcs, structs)?;
 		let id = self.finish_fn(name);
@@ -266,7 +286,7 @@ impl Compiler {
 		entry: FuncId,
 		typ: Typ,
 		funcs: &HashMap<String, FnSig>,
-		structs: &HashMap<String, Vec<(String, Typ)>>,
+		structs: &HashMap<String, Vec<FieldDef>>,
 	) -> FuncId {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		let block = b.create_block();
@@ -316,7 +336,7 @@ impl Compiler {
 		ret: Option<(Typ, Span)>,
 		stmts: &[&Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
-		structs: &HashMap<String, Vec<(String, Typ)>>,
+		structs: &HashMap<String, Vec<FieldDef>>,
 	) -> Result<Typ, Diagnostic> {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		// declare param types before the entry block claims them

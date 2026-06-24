@@ -431,6 +431,7 @@ where
 			name,
 			typ,
 			span: ex.span(),
+			default: None,
 		});
 	let params = param
 		.separated_by(just(Token::Comma))
@@ -477,13 +478,15 @@ where
 			)
 		});
 
-	// `struct Name { name type, ... }`
+	// `struct Name { name type [= default], ... }`
 	let struct_field = select! { Token::Ident(name) => name }
 		.then(select! { Token::Ident(typ) => typ })
-		.map_with(|(name, typ), ex| Param {
+		.then(just(Token::Assign).ignore_then(expr.clone()).or_not())
+		.map_with(|((name, typ), default), ex| Param {
 			name,
 			typ,
 			span: ex.span(),
+			default,
 		});
 	let struct_def = just(Token::Struct)
 		.ignore_then(select! { Token::Ident(name) => name })

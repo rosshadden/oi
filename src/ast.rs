@@ -5,7 +5,7 @@ pub type Span = SimpleSpan;
 pub type Spanned<T> = (T, Span);
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
 	// literals
 	Bool(bool),
@@ -162,7 +162,7 @@ pub enum TypeExpr {
 	Array(Box<TypeExpr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 // One arm of a `match` expression.
 // `patterns` are compared to the subject (OR'd together).
 // `body` runs when any pattern matches.
@@ -172,14 +172,14 @@ pub struct MatchArm {
 }
 
 // A `loop` binding pattern (name or destruction).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Pattern {
 	Name(String),
 	Tuple(Vec<String>),
 }
 
 // What a for loop walks.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ForIter {
 	// in `[start, end)`
 	Range(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
@@ -187,11 +187,12 @@ pub enum ForIter {
 	Iter(Box<Spanned<Expr>>),
 }
 
-// A function parameter.
+// A function parameter or struct field declaration.
 // `typ` is the declared type name.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Param {
 	pub name: String,
 	pub typ: String,
 	pub span: Span,
+	pub default: Option<Spanned<Expr>>,
 }

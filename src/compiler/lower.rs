@@ -6,7 +6,7 @@ use cranelift::prelude::*;
 use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, Linkage, Module};
 
-use super::{FnSig, Local, LoopFrame, Op, Typ, cl_type, elem_size};
+use super::{FieldDef, FnSig, Local, LoopFrame, Op, Typ, cl_type, elem_size};
 use crate::ast::{Expr, ForIter, MatchArm, Pattern, Span, Spanned};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
@@ -17,7 +17,7 @@ pub(super) struct Translator<'a> {
 	pub vars: HashMap<String, Local>,
 	pub module: &'a mut JITModule,
 	pub funcs: &'a HashMap<String, FnSig>,
-	pub structs: &'a HashMap<String, Vec<(String, Typ)>>,
+	pub structs: &'a HashMap<String, Vec<FieldDef>>,
 	pub string_idx: &'a mut usize,
 	pub ret: Option<(Typ, Span)>,
 	pub loops: Vec<LoopFrame>,
@@ -87,8 +87,8 @@ impl<'a> Translator<'a> {
 					if let Typ::Struct(_, ref fields) = typ {
 						let fields = fields.clone();
 						let dst = self.b.use_var(local.var);
-						for (i, (_, ftyp)) in fields.iter().enumerate() {
-							let cl = cl_type(ftyp, self.int);
+						for (i, f) in fields.iter().enumerate() {
+							let cl = cl_type(&f.typ, self.int);
 							let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
 							self.b.ins().store(MemFlags::new(), fv, dst, (i * 8) as i32);
 						}
@@ -278,7 +278,7 @@ impl<'a> Translator<'a> {
 							.with_label("not a struct"));
 						}
 					};
-					let idx = fields.iter().position(|(n, _)| n == field).ok_or_else(|| {
+					let idx = fields.iter().position(|f| &f.name == field).ok_or_else(|| {
 						Diagnostic::new(
 							format!("struct has no field `{field}`"),
 							stmt.1.into_range(),
@@ -286,11 +286,11 @@ impl<'a> Translator<'a> {
 						.with_label("no such field")
 					})?;
 					let (val, vtyp) = self.expr(value)?;
-					if vtyp != fields[idx].1 {
+					if vtyp != fields[idx].typ {
 						return Err(Diagnostic::new(
 							format!(
 								"cannot assign {vtyp:?} to field `{field}` of type {:?}",
-								fields[idx].1
+								fields[idx].typ
 							),
 							value.1.into_range(),
 						)
@@ -369,8 +369,8 @@ impl<'a> Translator<'a> {
 		let final_val = if let Typ::Struct(_, ref fields) = typ {
 			let fields = fields.clone();
 			let heap = self.call_alloc(fields.len());
-			for (i, (_, ftyp)) in fields.iter().enumerate() {
-				let cl = cl_type(ftyp, self.int);
+			for (i, f) in fields.iter().enumerate() {
+				let cl = cl_type(&f.typ, self.int);
 				let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
 				self.b
 					.ins()
@@ -1038,7 +1038,7 @@ impl<'a> Translator<'a> {
 
 				// structs are just fully-named tuples at the codegen level
 				let typ = if let Typ::Struct(_, fields) = typ {
-					Typ::Tuple(fields.into_iter().map(|(n, t)| (Some(n), t)).collect())
+					Typ::Tuple(fields.into_iter().map(|f| (Some(f.name), f.typ)).collect())
 				} else {
 					typ
 				};
@@ -1304,9 +1304,25 @@ impl<'a> Translator<'a> {
 				));
 				let ptr = self.b.ins().stack_addr(self.int, slot, 0);
 
-				for (i, (_, ftyp)) in struct_fields.iter().enumerate() {
-					let z = self.zero(ftyp);
-					self.b.ins().store(MemFlags::new(), z, ptr, (i * 8) as i32);
+				for (i, f) in struct_fields.iter().enumerate() {
+					let init = if let Some(default_expr) = &f.default {
+						let (val, vtyp) = self.expr(default_expr)?;
+						if &vtyp != &f.typ {
+							return Err(Diagnostic::new(
+								format!(
+									"default value type mismatch: expected {:?}, got {vtyp:?}", f.typ
+								),
+								default_expr.1.into_range(),
+							)
+							.with_label("type mismatch"));
+						}
+						val
+					} else {
+						self.zero(&f.typ)
+					};
+					self.b
+						.ins()
+						.store(MemFlags::new(), init, ptr, (i * 8) as i32);
 				}
 
 				if !fields.is_empty() {
@@ -1325,7 +1341,7 @@ impl<'a> Translator<'a> {
 						}
 						for (i, (_, value)) in fields.iter().enumerate() {
 							let (val, vtyp) = self.expr(value)?;
-							let expected = &struct_fields[i].1;
+							let expected = &struct_fields[i].typ;
 							if &vtyp != expected {
 								return Err(Diagnostic::new(
 									format!("expected {expected:?}, got {vtyp:?}"),
@@ -1348,7 +1364,7 @@ impl<'a> Translator<'a> {
 							})?;
 							let idx = struct_fields
 								.iter()
-								.position(|(n, _)| n == fname)
+								.position(|f| f.name == fname)
 								.ok_or_else(|| {
 									Diagnostic::new(
 										format!("`{name}` has no field `{fname}`"),
@@ -1357,7 +1373,7 @@ impl<'a> Translator<'a> {
 									.with_label("no such field")
 								})?;
 							let (val, vtyp) = self.expr(value)?;
-							let expected = &struct_fields[idx].1;
+							let expected = &struct_fields[idx].typ;
 							if &vtyp != expected {
 								return Err(Diagnostic::new(
 									format!("expected {expected:?}, got {vtyp:?}"),
@@ -1430,8 +1446,8 @@ impl<'a> Translator<'a> {
 					0,
 				));
 				let ptr = self.b.ins().stack_addr(self.int, slot, 0);
-				for (i, (_, ftyp)) in fields.iter().enumerate() {
-					let z = self.zero(ftyp);
+				for (i, f) in fields.iter().enumerate() {
+					let z = self.zero(&f.typ);
 					self.b.ins().store(MemFlags::new(), z, ptr, (i * 8) as i32);
 				}
 				ptr
@@ -1452,7 +1468,7 @@ impl<'a> Translator<'a> {
 		}
 	}
 
-	fn struct_copy(&mut self, src: Value, fields: &[(String, Typ)]) -> Value {
+	fn struct_copy(&mut self, src: Value, fields: &[FieldDef]) -> Value {
 		let size = (fields.len() * 8) as u32;
 		let slot = self.b.create_sized_stack_slot(StackSlotData::new(
 			StackSlotKind::ExplicitSlot,
@@ -1460,8 +1476,8 @@ impl<'a> Translator<'a> {
 			0,
 		));
 		let dst = self.b.ins().stack_addr(self.int, slot, 0);
-		for (i, (_, ftyp)) in fields.iter().enumerate() {
-			let cl = cl_type(ftyp, self.int);
+		for (i, f) in fields.iter().enumerate() {
+			let cl = cl_type(&f.typ, self.int);
 			let fv = self.b.ins().load(cl, MemFlags::new(), src, (i * 8) as i32);
 			self.b.ins().store(MemFlags::new(), fv, dst, (i * 8) as i32);
 		}
@@ -1819,14 +1835,14 @@ impl<'a> Translator<'a> {
 				let sname = sname.clone();
 				let fields = fields.clone();
 				self.write_lit(&format!("{sname}{{"), stderr);
-				for (i, (fname, ftyp)) in fields.iter().enumerate() {
+				for (i, f) in fields.iter().enumerate() {
 					if i > 0 {
 						self.write_lit(", ", stderr);
 					}
-					self.write_lit(&format!("{fname}: "), stderr);
-					let cl = cl_type(ftyp, self.int);
+					self.write_lit(&format!("{}: ", f.name), stderr);
+					let cl = cl_type(&f.typ, self.int);
 					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
-					self.emit_print(fv, ftyp, true, stderr);
+					self.emit_print(fv, &f.typ, true, stderr);
 				}
 				self.write_lit("}", stderr);
 			}
