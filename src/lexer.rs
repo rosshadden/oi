@@ -1,9 +1,27 @@
 use std::fmt;
 
 use chumsky::span::SimpleSpan;
-use logos::Logos;
+use logos::{Lexer, Logos};
 
 pub enum Operator {}
+
+fn lex_block_comment(lex: &mut Lexer<Token>) {
+	let src = lex.remainder().as_bytes();
+	let mut depth = 1usize;
+	let mut i = 0;
+	while i < src.len() {
+		match (src[i], src.get(i + 1).copied()) {
+			(b'#', Some(b'{')) => { depth += 1; i += 2; }
+			(b'}', Some(b'#')) => {
+				i += 2;
+				depth -= 1;
+				if depth == 0 { break; }
+			}
+			_ => i += 1,
+		}
+	}
+	lex.bump(i);
+}
 
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
@@ -121,7 +139,7 @@ pub enum Token {
 	Semicolon,
 
 	// comments
-	#[regex(r"#\{([^}]|\}[^#])*\}#", logos::skip)]
+	#[token("#{", lex_block_comment)]
 	BlockComment,
 	#[regex(r"#([^{#\r\n][^\r\n]*)?", logos::skip)]
 	Comment,
@@ -191,9 +209,10 @@ impl fmt::Display for Token {
 pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
 	Token::lexer(src)
 		.spanned()
-		.map(|(token, span)| match token {
-			Ok(token) => (token, span.into()),
-			Err(()) => (Token::Error(src[span.clone()].to_string()), span.into()),
+		.filter_map(|(token, span)| match token {
+			Ok(Token::BlockComment) => None,
+			Ok(token) => Some((token, span.into())),
+			Err(()) => Some((Token::Error(src[span.clone()].to_string()), span.into())),
 		})
 		.collect()
 }
