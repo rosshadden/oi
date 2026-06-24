@@ -51,6 +51,26 @@ fn doc_multiline() {
 }
 
 #[test]
+fn doc_markdown() {
+	let src = indoc! {"
+		## Doc comments.
+		##
+		## # support markdown
+		## ```json
+		## [ 2, 4, 6 ]
+		## ```
+		## - item
+		## - item
+		## 1. one
+		## 1. two
+		## 1. three
+		fn greet() { 1 }
+		greet()
+	"};
+	check(src, "1");
+}
+
+#[test]
 fn doc_inside_fn() {
 	let src = indoc! {"
 		fn compute() {
