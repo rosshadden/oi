@@ -967,8 +967,14 @@ impl<'a> Translator<'a> {
 				Ok((cond, Typ::Bool))
 			}
 
-			Expr::Call { name, args } if matches!(name.as_str(), "i32" | "i64") => {
-				let target: u16 = if name == "i64" { 64 } else { 32 };
+			Expr::Call { name, args }
+				if name.starts_with('i')
+					&& name[1..]
+						.parse::<u16>()
+						.ok()
+						.is_some_and(|w| w > 0 && w <= 64) =>
+			{
+				let target: u16 = name[1..].parse().unwrap();
 				if args.len() != 1 {
 					return Err(Diagnostic::new(
 						format!("`{name}` cast takes exactly 1 argument"),
@@ -977,20 +983,27 @@ impl<'a> Translator<'a> {
 					.with_label("wrong number of arguments"));
 				}
 				let (val, typ) = self.expr(&args[0])?;
+				let target_cl = cl_type(&Typ::Int(target), self.int);
 				let out = match &typ {
 					Typ::Int(w) if *w == target => val,
-					Typ::Int(w) if *w < target => self
-						.b
-						.ins()
-						.sextend(cl_type(&Typ::Int(target), self.int), val),
-					Typ::Int(_) => {
-						let lo_v = self.b.ins().iconst(types::I64, i32::MIN as i64);
-						let hi_v = self.b.ins().iconst(types::I64, i32::MAX as i64);
-						let lt = self.b.ins().icmp(IntCC::SignedLessThan, val, lo_v);
-						let v = self.b.ins().select(lt, lo_v, val);
-						let gt = self.b.ins().icmp(IntCC::SignedGreaterThan, v, hi_v);
-						let v = self.b.ins().select(gt, hi_v, v);
-						self.b.ins().ireduce(types::I32, v)
+					Typ::Int(w) => {
+						let src_cl = cl_type(&Typ::Int(*w), self.int);
+						let v64 = if src_cl == types::I64 {
+							val
+						} else {
+							self.b.ins().sextend(types::I64, val)
+						};
+						let lo = self.b.ins().iconst(types::I64, int_min(target));
+						let hi = self.b.ins().iconst(types::I64, int_max(target));
+						let lt = self.b.ins().icmp(IntCC::SignedLessThan, v64, lo);
+						let v = self.b.ins().select(lt, lo, v64);
+						let gt = self.b.ins().icmp(IntCC::SignedGreaterThan, v, hi);
+						let v = self.b.ins().select(gt, hi, v);
+						if target_cl == types::I64 {
+							v
+						} else {
+							self.b.ins().ireduce(target_cl, v)
+						}
 					}
 					_ => {
 						return Err(Diagnostic::new(
@@ -1003,8 +1016,14 @@ impl<'a> Translator<'a> {
 				Ok((out, Typ::Int(target)))
 			}
 
-			Expr::Call { name, args } if matches!(name.as_str(), "u32" | "u64") => {
-				let target: u16 = if name == "u64" { 64 } else { 32 };
+			Expr::Call { name, args }
+				if name.starts_with('u')
+					&& name[1..]
+						.parse::<u16>()
+						.ok()
+						.is_some_and(|w| w > 0 && w <= 64) =>
+			{
+				let target: u16 = name[1..].parse().unwrap();
 				if args.len() != 1 {
 					return Err(Diagnostic::new(
 						format!("`{name}` cast takes exactly 1 argument"),
@@ -1016,28 +1035,38 @@ impl<'a> Translator<'a> {
 				let target_cl = cl_type(&Typ::UInt(target), self.int);
 				let out = match &typ {
 					Typ::UInt(w) if *w == target => val,
-					Typ::UInt(w) if *w < target => self.b.ins().uextend(target_cl, val),
-					Typ::UInt(_) => {
-						// clamp unsigned to [0, target_max] then ireduce
+					Typ::UInt(w) => {
+						// widen/narrow
+						// sign-extend to i64, clamp to [0, target_max], ireduce
+						let src_cl = cl_type(&Typ::UInt(*w), self.int);
+						let v64 = if src_cl == types::I64 {
+							val
+						} else {
+							self.b.ins().uextend(types::I64, val)
+						};
 						let max_v = self.b.ins().iconst(types::I64, uint_max(target));
-						let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, val, max_v);
-						let v = self.b.ins().select(gt, max_v, val);
-						self.b.ins().ireduce(target_cl, v)
+						let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, v64, max_v);
+						let v = self.b.ins().select(gt, max_v, v64);
+						if target_cl == types::I64 {
+							v
+						} else {
+							self.b.ins().ireduce(target_cl, v)
+						}
 					}
 					Typ::Int(w) => {
-						// signed to unsigned: sign-extend to i64, clamp to [0, target_max]
-						let v = if *w < 64 {
-							self.b.ins().sextend(types::I64, val)
-						} else {
+						let src_cl = cl_type(&Typ::Int(*w), self.int);
+						let v64 = if src_cl == types::I64 {
 							val
+						} else {
+							self.b.ins().sextend(types::I64, val)
 						};
 						let zero = self.b.ins().iconst(types::I64, 0);
 						let max_v = self.b.ins().iconst(types::I64, uint_max(target));
-						let lt = self.b.ins().icmp(IntCC::SignedLessThan, v, zero);
-						let v = self.b.ins().select(lt, zero, v);
+						let lt = self.b.ins().icmp(IntCC::SignedLessThan, v64, zero);
+						let v = self.b.ins().select(lt, zero, v64);
 						let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, v, max_v);
 						let v = self.b.ins().select(gt, max_v, v);
-						if target == 64 {
+						if target_cl == types::I64 {
 							v
 						} else {
 							self.b.ins().ireduce(target_cl, v)
@@ -1569,6 +1598,30 @@ impl<'a> Translator<'a> {
 		}
 	}
 
+	// Sign-extend the low `w` bits of `val` within its Cranelift container.
+	// A no-op for standard widths (8, 16, 32, 64).
+	fn reduce_int(&mut self, val: Value, w: u16) -> Value {
+		let cl = cl_type(&Typ::Int(w), self.int);
+		let shift = cl.bits() as i64 - w as i64;
+		if shift == 0 {
+			return val;
+		}
+		let shift_v = self.b.ins().iconst(cl, shift);
+		let up = self.b.ins().ishl(val, shift_v);
+		self.b.ins().sshr(up, shift_v)
+	}
+
+	// Zero-extend (mask) `val` to exactly `w` bits within its Cranelift container.
+	fn reduce_uint(&mut self, val: Value, w: u16) -> Value {
+		let cl = cl_type(&Typ::UInt(w), self.int);
+		if cl.bits() as u16 == w {
+			return val;
+		}
+		let mask = ((1u64 << w) - 1) as i64;
+		let mask_v = self.b.ins().iconst(cl, mask);
+		self.b.ins().band(val, mask_v)
+	}
+
 	fn zero(&mut self, typ: &Typ) -> Value {
 		match typ {
 			Typ::Float(16) => self.b.ins().f16const(Ieee16::with_bits(0)),
@@ -1692,6 +1745,16 @@ impl<'a> Translator<'a> {
 			(Op::Mod, NumKind::Float) => unreachable!("float `%` rejected above"),
 			(Op::Mod, NumKind::UInt) => b.urem(lv, rv),
 			(Op::Mod, NumKind::Int) => b.srem(lv, rv),
+		};
+		// For non-standard widths, wrap the result back to the declared bit width.
+		let out = match &lt {
+			Typ::Int(w) if cl_type(&Typ::Int(*w), self.int).bits() as u16 != *w => {
+				self.reduce_int(out, *w)
+			}
+			Typ::UInt(w) if cl_type(&Typ::UInt(*w), self.int).bits() as u16 != *w => {
+				self.reduce_uint(out, *w)
+			}
+			_ => out,
 		};
 		Ok((out, lt))
 	}
@@ -2055,10 +2118,26 @@ impl<'a> Translator<'a> {
 }
 
 fn uint_max(width: u16) -> i64 {
-	match width {
-		32 => u32::MAX as i64,
-		64 => u64::MAX as i64,
-		w => panic!("unsupported uint width u{w}"),
+	if width >= 64 {
+		u64::MAX as i64
+	} else {
+		((1u64 << width) - 1) as i64
+	}
+}
+
+fn int_min(width: u16) -> i64 {
+	if width >= 64 {
+		i64::MIN
+	} else {
+		-(1i64 << (width - 1))
+	}
+}
+
+fn int_max(width: u16) -> i64 {
+	if width >= 64 {
+		i64::MAX
+	} else {
+		(1i64 << (width - 1)) - 1
 	}
 }
 

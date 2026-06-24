@@ -74,13 +74,18 @@ impl PartialEq for FieldDef {
 	}
 }
 
+pub(crate) fn cl_int_for_width(w: u16) -> types::Type {
+	match w {
+		1..=8 => types::I8,
+		9..=16 => types::I16,
+		17..=32 => types::I32,
+		_ => types::I64,
+	}
+}
+
 pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 	match typ {
-		Typ::Int(w) | Typ::UInt(w) => match w {
-			32 => types::I32,
-			64 => types::I64,
-			w => panic!("unsupported int width {w}"),
-		},
+		Typ::Int(w) | Typ::UInt(w) => cl_int_for_width(*w),
 		Typ::Float(w) => match w {
 			16 => types::F16,
 			32 => types::F32,
@@ -94,7 +99,8 @@ pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 
 pub(crate) fn elem_size(typ: &Typ) -> i64 {
 	match typ {
-		Typ::Int(w) | Typ::UInt(w) | Typ::Float(w) => (*w as i64) / 8,
+		Typ::Int(w) | Typ::UInt(w) => cl_int_for_width(*w).bytes() as i64,
+		Typ::Float(w) => (*w as i64) / 8,
 		_ => 8,
 	}
 }
@@ -122,28 +128,60 @@ pub(crate) fn typ_from_name(
 	span: Span,
 	structs: &HashMap<String, Vec<FieldDef>>,
 ) -> Result<Typ, Diagnostic> {
-	Ok(match name {
-		"i32" | "int" => Typ::Int(32),
-		"i64" => Typ::Int(64),
-		"u32" => Typ::UInt(32),
-		"u64" => Typ::UInt(64),
-		"f16" => Typ::Float(16),
-		"f64" | "float" => Typ::Float(64),
-		"f128" => Typ::Float(128),
-		"bool" => Typ::Bool,
-		"string" | "str" => Typ::Str,
-		"()" => Typ::Tuple(vec![]),
-		_ => {
-			if let Some(fields) = structs.get(name) {
-				Typ::Struct(name.to_string(), fields.clone())
-			} else {
-				return Err(
-					Diagnostic::new(format!("unknown type `{name}`"), span.into_range())
-						.with_label("not a known type"),
-				);
+	match name {
+		"int" => return Ok(Typ::Int(32)),
+		"float" => return Ok(Typ::Float(64)),
+		"bool" => return Ok(Typ::Bool),
+		"string" | "str" => return Ok(Typ::Str),
+		"()" => return Ok(Typ::Tuple(vec![])),
+		_ => {}
+	}
+	if let Some(rest) = name.strip_prefix('i') {
+		if let Ok(w) = rest.parse::<u16>() {
+			if w == 0 || w > 64 {
+				return Err(Diagnostic::new(
+					format!("integer width {w} out of range"),
+					span.into_range(),
+				)
+				.with_label("width must be 1–64"));
 			}
+			return Ok(Typ::Int(w));
 		}
-	})
+	}
+	if let Some(rest) = name.strip_prefix('u') {
+		if let Ok(w) = rest.parse::<u16>() {
+			if w == 0 || w > 64 {
+				return Err(Diagnostic::new(
+					format!("unsigned integer width {w} out of range"),
+					span.into_range(),
+				)
+				.with_label("width must be 1–64"));
+			}
+			return Ok(Typ::UInt(w));
+		}
+	}
+	if let Some(rest) = name.strip_prefix('f') {
+		if let Ok(w) = rest.parse::<u16>() {
+			return match w {
+				16 => Ok(Typ::Float(16)),
+				32 => Ok(Typ::Float(32)),
+				64 => Ok(Typ::Float(64)),
+				128 => Ok(Typ::Float(128)),
+				_ => Err(Diagnostic::new(
+					format!("unsupported float width f{w}"),
+					span.into_range(),
+				)
+				.with_label("supported widths: f16, f32, f64, f128")),
+			};
+		}
+	}
+	if let Some(fields) = structs.get(name) {
+		return Ok(Typ::Struct(name.to_string(), fields.clone()));
+	}
+	Err(
+		Diagnostic::new(format!("unknown type `{name}`"), span.into_range())
+			.with_label("not a known type"),
+	)
 }
 
 #[derive(Clone)]
