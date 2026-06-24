@@ -97,6 +97,80 @@ fn uint_cmp() {
 }
 
 #[test]
+fn i8_cast() {
+	check("i8(0)", "0");
+	check("i8(127)", "127");
+	check("i8(128)", "127");
+	check("i8(-128)", "-128");
+	check("i8(-129)", "-128");
+}
+
+#[test]
+fn i16_cast() {
+	check("i16(0)", "0");
+	check("i16(32767)", "32767");
+	check("i16(32768)", "32767");
+	check("i16(-32768)", "-32768");
+	check("i16(-32769)", "-32768");
+}
+
+#[test]
+fn u8_cast() {
+	check("u8(0)", "0");
+	check("u8(255)", "255");
+	check("u8(256)", "255");
+	check("u8(-1)", "0");
+}
+
+#[test]
+fn u16_cast() {
+	check("u16(0)", "0");
+	check("u16(65535)", "65535");
+	check("u16(65536)", "65535");
+	check("u16(-1)", "0");
+}
+
+#[test]
+fn arb_width_signed() {
+	// i3 [-4..3]
+	check("i3(0)", "0");
+	check("i3(3)", "3");
+	check("i3(4)", "3");
+	check("i3(-4)", "-4");
+	check("i3(-5)", "-4");
+	// i7 [-64..63]
+	check("i7(63)", "63");
+	check("i7(64)", "63");
+	check("i7(-64)", "-64");
+	check("i7(-65)", "-64");
+	// i13 [-4096..4095]
+	check("i13(4095)", "4095");
+	check("i13(4096)", "4095");
+}
+
+#[test]
+fn arb_width_unsigned() {
+	// u3 [0..7]
+	check("u3(0)", "0");
+	check("u3(7)", "7");
+	check("u3(8)", "7");
+	check("u3(-1)", "0");
+	// u7 [0..127]
+	check("u7(127)", "127");
+	check("u7(128)", "127");
+}
+
+#[test]
+fn arb_width_arithmetic() {
+	// wrapping outside range
+	check("i3(3) + i3(1)", "-4");
+	check("i3(-4) - i3(1)", "3");
+	check("u3(7) + u3(1)", "0");
+	// no wrapping within range
+	check("i7(30) + i7(30)", "60");
+}
+
+#[test]
 fn f16_not_yet_supported() {
 	assert!(fail("f16(1.0)").contains("f16 casts are not yet supported"));
 	assert!(fail("f16(123)").contains("f16 casts are not yet supported"));
