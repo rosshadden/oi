@@ -27,11 +27,14 @@ pub enum Tag {
 }
 
 // Render one value to a string.
-fn render(tag: Tag, bits: i64, quote: bool) -> String {
+fn render(tag: Tag, bits: i64, width: i64, quote: bool) -> String {
 	match tag {
 		Tag::Bool => (bits == 1).to_string(),
 		Tag::Int => bits.to_string(),
-		Tag::Float => format!("{:?}", f64::from_bits(bits as u64)),
+		Tag::Float => match width {
+			32 => format!("{:?}", f32::from_bits(bits as u32)),
+			_ => format!("{:?}", f64::from_bits(bits as u64)),
+		},
 		Tag::Str | Tag::Raw => {
 			let s = unsafe { CStr::from_ptr(bits as *const c_char) }.to_string_lossy();
 			if quote && matches!(tag, Tag::Str) {
@@ -44,8 +47,8 @@ fn render(tag: Tag, bits: i64, quote: bool) -> String {
 }
 
 // Write a rendered value fragment.
-pub extern "C" fn write(tag: Tag, bits: i64, quote: i64, stderr: i64) {
-	let s = render(tag, bits, quote != 0);
+pub extern "C" fn write(tag: Tag, bits: i64, width: i64, quote: i64, stderr: i64) {
+	let s = render(tag, bits, width, quote != 0);
 	if stderr != 0 {
 		eprint!("{s}")
 	} else {

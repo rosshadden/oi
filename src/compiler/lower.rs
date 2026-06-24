@@ -1002,6 +1002,33 @@ impl<'a> Translator<'a> {
 				Ok((out, Typ::Int(target)))
 			}
 
+			Expr::Call { name, args } if matches!(name.as_str(), "f32" | "f64") => {
+				let target: u16 = if name == "f64" { 64 } else { 32 };
+				if args.len() != 1 {
+					return Err(Diagnostic::new(
+						format!("`{name}` cast takes exactly 1 argument"),
+						expr.1.into_range(),
+					)
+					.with_label("wrong number of arguments"));
+				}
+				let (val, typ) = self.expr(&args[0])?;
+				let target_cl = cl_type(&Typ::Float(target), self.int);
+				let out = match &typ {
+					Typ::Float(w) if *w == target => val,
+					Typ::Float(_) if target == 64 => self.b.ins().fpromote(types::F64, val),
+					Typ::Float(_) => self.b.ins().fdemote(types::F32, val),
+					Typ::Int(_) => self.b.ins().fcvt_from_sint(target_cl, val),
+					_ => {
+						return Err(Diagnostic::new(
+							format!("cannot cast {typ:?} to f{target}"),
+							args[0].1.into_range(),
+						)
+						.with_label("not a number"));
+					}
+				};
+				Ok((out, Typ::Float(target)))
+			}
+
 			Expr::Call { name, args } => {
 				let sig = self.funcs.get(name).cloned().ok_or_else(|| {
 					Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
@@ -1478,6 +1505,7 @@ impl<'a> Translator<'a> {
 
 	fn zero(&mut self, typ: &Typ) -> Value {
 		match typ {
+			Typ::Float(32) => self.b.ins().f32const(0.0),
 			Typ::Float(64) => self.b.ins().f64const(0.0),
 			Typ::Float(w) => panic!("unsupported float width f{w}"),
 			Typ::Str => self.str_const(""),
@@ -1803,19 +1831,20 @@ impl<'a> Translator<'a> {
 
 	pub fn write_lit(&mut self, s: &str, stderr: bool) {
 		let ptr = self.str_const(s);
-		self.emit_frag(runtime::Tag::Raw, ptr, false, stderr);
+		self.emit_frag(runtime::Tag::Raw, ptr, 0, false, stderr);
 	}
 
-	fn emit_frag(&mut self, tag: runtime::Tag, bits: Value, quote: bool, stderr: bool) {
+	fn emit_frag(&mut self, tag: runtime::Tag, bits: Value, width: u16, quote: bool, stderr: bool) {
 		let tag = self.b.ins().iconst(self.int, tag as i64);
+		let width = self.b.ins().iconst(self.int, width as i64);
 		let quote = self.b.ins().iconst(self.int, quote as i64);
 		let stderr_v = self.b.ins().iconst(self.int, stderr as i64);
 		let func = self.import_fn(
 			runtime::WRITE,
-			&[self.int, self.int, self.int, self.int],
+			&[self.int, self.int, self.int, self.int, self.int],
 			None,
 		);
-		self.b.ins().call(func, &[tag, bits, quote, stderr_v]);
+		self.b.ins().call(func, &[tag, bits, width, quote, stderr_v]);
 	}
 
 	pub fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool, stderr: bool) {
@@ -1905,13 +1934,17 @@ impl<'a> Translator<'a> {
 					}
 				};
 				// normalize to pointer-sized before passing to the runtime
-				let bits = match typ {
-					Typ::Float(64) => self.b.ins().bitcast(self.int, MemFlags::new(), val),
+				let (bits, float_width) = match typ {
+					Typ::Float(64) => (self.b.ins().bitcast(self.int, MemFlags::new(), val), 64),
+					Typ::Float(32) => {
+						let i32v = self.b.ins().bitcast(types::I32, MemFlags::new(), val);
+						(self.b.ins().uextend(self.int, i32v), 32)
+					}
 					Typ::Float(w) => panic!("unsupported float width f{w}"),
-					Typ::Int(w) if *w < 64 => self.b.ins().sextend(self.int, val),
-					_ => val,
+					Typ::Int(w) if *w < 64 => (self.b.ins().sextend(self.int, val), 0),
+					_ => (val, 0),
 				};
-				self.emit_frag(tag, bits, quote, stderr);
+				self.emit_frag(tag, bits, float_width, quote, stderr);
 			}
 		}
 	}

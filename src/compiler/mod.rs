@@ -80,6 +80,7 @@ pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 			w => panic!("unsupported int width i{w}"),
 		},
 		Typ::Float(w) => match w {
+			32 => types::F32,
 			64 => types::F64,
 			w => panic!("unsupported float width f{w}"),
 		},
