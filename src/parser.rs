@@ -111,8 +111,12 @@ where
 			)
 		});
 
+	let doc =
+		select! { Token::Doc(text) => text }.map_with(|text, ex| (Expr::Doc(text), ex.span()));
+
 	// statements
-	let stmt = ret_stmt
+	let stmt = doc
+		.or(ret_stmt)
 		.or(bind)
 		.or(field_assign)
 		.or(assign)

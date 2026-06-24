@@ -152,6 +152,9 @@ pub enum Expr {
 
 	// membership
 	In(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+
+	// meta
+	Doc(String),
 }
 
 // Type annotation.

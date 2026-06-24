@@ -270,6 +270,7 @@ impl Compiler {
 					ret,
 					body,
 				} => others.push((name.as_str(), params, ret, body)),
+				Expr::Doc(_) => {}
 				_ => loose.push(item),
 			}
 		}

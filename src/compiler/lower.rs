@@ -345,6 +345,8 @@ impl<'a> Translator<'a> {
 					return Ok(None);
 				}
 
+				Expr::Doc(_) => {}
+
 				_ => last = self.expr(stmt)?,
 			}
 		}
@@ -1645,6 +1647,7 @@ impl<'a> Translator<'a> {
 			Expr::Return(..) => unreachable!("return in expression position"),
 			Expr::Break | Expr::Continue => unreachable!("break/continue in expression position"),
 			Expr::Append { .. } => unreachable!("append in expression position"),
+			Expr::Doc(_) => unreachable!("doc comment in expression position"),
 		}
 	}
 
