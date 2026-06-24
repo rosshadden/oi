@@ -24,7 +24,7 @@ type FnItem<'a> = (
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) enum Typ {
 	Int(u16),
-	Float,
+	Float(u16),
 	Bool,
 	Str,
 	Tuple(Vec<(Option<String>, Typ)>),
@@ -54,7 +54,8 @@ impl fmt::Display for Typ {
 		match self {
 			Typ::Int(32) => write!(f, "int"),
 			Typ::Int(w) => write!(f, "i{w}"),
-			Typ::Float => write!(f, "float"),
+			Typ::Float(64) => write!(f, "float"),
+			Typ::Float(w) => write!(f, "f{w}"),
 			Typ::Bool => write!(f, "bool"),
 			Typ::Str => write!(f, "str"),
 			Typ::Tuple(fields) if fields.is_empty() => write!(f, "()"),
@@ -78,7 +79,10 @@ pub(crate) fn cl_type(typ: &Typ, int: types::Type) -> types::Type {
 			64 => types::I64,
 			w => panic!("unsupported int width i{w}"),
 		},
-		Typ::Float => types::F64,
+		Typ::Float(w) => match w {
+			64 => types::F64,
+			w => panic!("unsupported float width f{w}"),
+		},
 		_ => int,
 	}
 }
@@ -114,9 +118,9 @@ pub(crate) fn typ_from_name(
 	structs: &HashMap<String, Vec<FieldDef>>,
 ) -> Result<Typ, Diagnostic> {
 	Ok(match name {
-		"int" | "i32" => Typ::Int(32),
+		"i32" | "int" => Typ::Int(32),
 		"i64" => Typ::Int(64),
-		"f64" | "float" => Typ::Float,
+		"f64" | "float" => Typ::Float(64),
 		"bool" => Typ::Bool,
 		"string" | "str" => Typ::Str,
 		"()" => Typ::Tuple(vec![]),

@@ -820,7 +820,7 @@ impl<'a> Translator<'a> {
 		match &expr.0 {
 			Expr::Int(n) => Ok((self.b.ins().iconst(types::I32, *n as i64), Typ::Int(32))),
 			Expr::Bool(v) => Ok((self.b.ins().iconst(self.int, *v as i64), Typ::Bool)),
-			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float)),
+			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float(64))),
 			Expr::String(s) => Ok((self.str_const(s), Typ::Str)),
 
 			Expr::Ident(name) => {
@@ -835,7 +835,7 @@ impl<'a> Translator<'a> {
 				let (v, typ) = self.expr(e)?;
 				let out = match typ {
 					Typ::Int(_) => self.b.ins().ineg(v),
-					Typ::Float => self.b.ins().fneg(v),
+					Typ::Float(_) => self.b.ins().fneg(v),
 					_ => {
 						return Err(Diagnostic::new(
 							format!("cannot negate {typ:?}"),
@@ -1455,7 +1455,7 @@ impl<'a> Translator<'a> {
 
 	fn emit_eq(&mut self, a: Value, b: Value, typ: &Typ) -> Value {
 		match typ {
-			Typ::Float => self.b.ins().fcmp(FloatCC::Equal, a, b),
+			Typ::Float(_) => self.b.ins().fcmp(FloatCC::Equal, a, b),
 			Typ::Str => {
 				let func = self.import_fn(runtime::STR_EQ, &[self.int, self.int], Some(self.int));
 				let call = self.b.ins().call(func, &[a, b]);
@@ -1467,7 +1467,8 @@ impl<'a> Translator<'a> {
 
 	fn zero(&mut self, typ: &Typ) -> Value {
 		match typ {
-			Typ::Float => self.b.ins().f64const(0.0),
+			Typ::Float(64) => self.b.ins().f64const(0.0),
+			Typ::Float(w) => panic!("unsupported float width f{w}"),
 			Typ::Str => self.str_const(""),
 			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::Bool => self.b.ins().iconst(self.int, 0),
@@ -1537,7 +1538,7 @@ impl<'a> Translator<'a> {
 		// NOTE: might go with V-style int/float promotion eventually
 		let float = match (&lt, &rt) {
 			(Typ::Int(lw), Typ::Int(rw)) if lw == rw => false,
-			(Typ::Float, Typ::Float) => true,
+			(Typ::Float(lw), Typ::Float(rw)) if lw == rw => true,
 			_ => {
 				return Err(Diagnostic::new(
 					format!("cannot {op:?} {lt:?} and {rt:?}"),
@@ -1567,7 +1568,7 @@ impl<'a> Translator<'a> {
 			(Op::Mod, false) => b.srem(lv, rv),
 			(Op::Mod, true) => unreachable!("float `%` rejected above"),
 		};
-		Ok((out, if float { Typ::Float } else { lt }))
+		Ok((out, lt))
 	}
 
 	fn cmp(
@@ -1601,7 +1602,7 @@ impl<'a> Translator<'a> {
 
 		let raw = match (&lt, &rt) {
 			(Typ::Int(_), Typ::Int(_)) | (Typ::Bool, Typ::Bool) => self.b.ins().icmp(icc, lv, rv),
-			(Typ::Float, Typ::Float) => self.b.ins().fcmp(fcc, lv, rv),
+			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
 			(Typ::Str, Typ::Str) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
 				let eq = self.emit_eq(lv, rv, &Typ::Str);
 				// emit_eq returns 1 for equal, invert for Ne
@@ -1886,7 +1887,7 @@ impl<'a> Translator<'a> {
 				let tag = match typ {
 					Typ::Bool => runtime::Tag::Bool,
 					Typ::Int(_) => runtime::Tag::Int,
-					Typ::Float => runtime::Tag::Float,
+					Typ::Float(_) => runtime::Tag::Float,
 					Typ::Str => runtime::Tag::Str,
 					Typ::Tuple(_) | Typ::Array(_) | Typ::Struct(..) => {
 						unreachable!("handled above")
@@ -1894,7 +1895,8 @@ impl<'a> Translator<'a> {
 				};
 				// normalize to pointer-sized before passing to the runtime
 				let bits = match typ {
-					Typ::Float => self.b.ins().bitcast(self.int, MemFlags::new(), val),
+					Typ::Float(64) => self.b.ins().bitcast(self.int, MemFlags::new(), val),
+					Typ::Float(w) => panic!("unsupported float width f{w}"),
 					Typ::Int(w) if *w < 64 => self.b.ins().sextend(self.int, val),
 					_ => val,
 				};
