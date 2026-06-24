@@ -87,3 +87,36 @@ fn doc_inside_fn() {
 fn doc_top_level() {
 	check("## a note\n1 + 1", "2");
 }
+
+#[test]
+fn block_comment_before_expr() {
+	check("#{ skipped }# 2 + 3", "5");
+}
+
+#[test]
+fn block_comment_after_expr() {
+	check("2 + 3 #{ skipped }#", "5");
+}
+
+#[test]
+fn block_comment_multiline() {
+	let src = indoc! {"
+		#{
+			this is a
+			block comment
+		}#
+		2 + 3
+	"};
+	check(src, "5");
+}
+
+#[test]
+fn block_comment_brace_inside() {
+	// `}` not followed by `#` is fine inside the comment
+	check("#{ a } b }# 1 + 1", "2");
+}
+
+#[test]
+fn block_comment_inline() {
+	check("1 + #{ skip this }# 1", "2");
+}

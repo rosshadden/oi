@@ -121,21 +121,23 @@ pub enum Token {
 	Semicolon,
 
 	// comments
+	#[regex(r"#\{([^}]|\}[^#])*\}#", logos::skip)]
+	BlockComment,
+	#[regex(r"#([^{#\r\n][^\r\n]*)?", logos::skip)]
+	Comment,
 	#[regex(r"##( [^\r\n]+)?", |lex| {
 		let s = lex.slice();
 		s.get(3..).unwrap_or("").to_owned()
 	}, allow_greedy = true)]
 	Doc(String),
-	#[regex(r"#.*", logos::skip, allow_greedy = true)]
-	Comment,
 }
 
 impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			Token::Error(s) => write!(f, "{s}"),
-			Token::Comment => write!(f, "comment"),
-			Token::Doc(_) => write!(f, "doc-comment"),
+			Token::BlockComment | Token::Comment => write!(f, "comment"),
+			Token::Doc(_) => write!(f, "doc"),
 			Token::Bool(b) => write!(f, "{b}"),
 			Token::Int(n) => write!(f, "{n}"),
 			Token::Float(s) => write!(f, "{s}"),
