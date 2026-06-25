@@ -116,17 +116,25 @@ pub(crate) fn resolve_type(
 	te: &TypeExpr,
 	span: Span,
 	structs: &HashMap<String, Vec<FieldDef>>,
+	aliases: &HashMap<String, TypeExpr>,
 ) -> Result<Typ, Diagnostic> {
 	match te {
-		TypeExpr::Name(name) => typ_from_name(name, span, structs),
+		TypeExpr::Name(name) => typ_from_name(name, span, structs, aliases),
 		TypeExpr::Tuple(elems) => {
 			let fields = elems
 				.iter()
-				.map(|e| Ok((None, resolve_type(e, span, structs)?)))
+				.map(|e| Ok((None, resolve_type(e, span, structs, aliases)?)))
 				.collect::<Result<Vec<_>, _>>()?;
 			Ok(Typ::Tuple(fields))
 		}
-		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(elem, span, structs)?))),
+		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(
+			elem, span, structs, aliases,
+		)?))),
+		TypeExpr::Fn(_, _) => Err(Diagnostic::new(
+			"function types are not yet supported in codegen",
+			span.into_range(),
+		)
+		.with_label("cannot use a function type here yet")),
 	}
 }
 
@@ -134,6 +142,7 @@ pub(crate) fn typ_from_name(
 	name: &str,
 	span: Span,
 	structs: &HashMap<String, Vec<FieldDef>>,
+	aliases: &HashMap<String, TypeExpr>,
 ) -> Result<Typ, Diagnostic> {
 	match name {
 		"int" => return Ok(Typ::Int(32)),
@@ -183,6 +192,9 @@ pub(crate) fn typ_from_name(
 				.with_label("supported widths: f16, f32, f64, f128")),
 			};
 		}
+	}
+	if let Some(te) = aliases.get(name) {
+		return resolve_type(te, span, structs, aliases);
 	}
 	if let Some(fields) = structs.get(name) {
 		return Ok(Typ::Struct(name.to_string(), fields.clone()));
@@ -259,6 +271,7 @@ impl Compiler {
 		let int = self.module.target_config().pointer_type();
 
 		let mut struct_items: Vec<(&str, &[Param])> = vec![];
+		let mut alias_items: Vec<(&str, &TypeExpr)> = vec![];
 		let mut main_body: Option<&[Spanned<Expr>]> = None;
 		let mut others: Vec<FnItem> = vec![];
 		let mut loose: Vec<&Spanned<Expr>> = vec![];
@@ -267,6 +280,7 @@ impl Compiler {
 				Expr::StructDef { name, fields } => {
 					struct_items.push((name.as_str(), fields.as_slice()))
 				}
+				Expr::TypeAlias { name, typ } => alias_items.push((name.as_str(), typ)),
 				Expr::Fn { name, body, .. } if name == "main" => main_body = Some(body),
 				Expr::Fn {
 					name,
@@ -279,13 +293,18 @@ impl Compiler {
 			}
 		}
 
+		let aliases: HashMap<String, TypeExpr> = alias_items
+			.iter()
+			.map(|(name, te)| (name.to_string(), (*te).clone()))
+			.collect();
+
 		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		for (name, fields) in &struct_items {
 			let resolved = fields
 				.iter()
 				.map(|p| {
-					typ_from_name(&p.typ, p.span, &no_structs).map(|t| FieldDef {
+					typ_from_name(&p.typ, p.span, &no_structs, &aliases).map(|t| FieldDef {
 						name: p.name.clone(),
 						typ: t,
 						default: p.default.clone(),
@@ -299,11 +318,18 @@ impl Compiler {
 		for &(name, params, ret, body) in &others {
 			let params: Vec<(String, Typ)> = params
 				.iter()
-				.map(|p| Ok((p.name.clone(), typ_from_name(&p.typ, p.span, &structs)?)))
+				.map(|p| {
+					Ok((
+						p.name.clone(),
+						typ_from_name(&p.typ, p.span, &structs, &aliases)?,
+					))
+				})
 				.collect::<Result<_, Diagnostic>>()?;
 			let ret = ret
 				.as_ref()
-				.map(|(te, span)| Ok::<_, Diagnostic>((resolve_type(te, *span, &structs)?, *span)))
+				.map(|(te, span)| {
+					Ok::<_, Diagnostic>((resolve_type(te, *span, &structs, &aliases)?, *span))
+				})
 				.transpose()?;
 			let stmts: Vec<&Spanned<Expr>> = body.iter().collect();
 			let (id, ret) = self.compile_fn(

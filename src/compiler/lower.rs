@@ -1661,6 +1661,7 @@ impl<'a> Translator<'a> {
 			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),
 			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 			Expr::StructDef { .. } => unreachable!("struct definition in expression position"),
+			Expr::TypeAlias { .. } => unreachable!("type alias in expression position"),
 			Expr::FieldAssign { .. } => unreachable!("field assign in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
 			Expr::Break | Expr::Continue => unreachable!("break/continue in expression position"),

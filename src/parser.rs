@@ -463,11 +463,22 @@ where
 			.delimited_by(just(Token::LParen), just(Token::RParen))
 			.map(TypeExpr::Tuple);
 		let array = te
+			.clone()
 			.delimited_by(just(Token::LBracket), just(Token::RBracket))
 			.map(|elem| TypeExpr::Array(Box::new(elem)));
-		unit.or(name).or(tuple).or(array)
+		let fn_type = just(Token::Fn)
+			.ignore_then(
+				te.clone()
+					.separated_by(just(Token::Comma).or_not())
+					.allow_trailing()
+					.collect::<Vec<_>>()
+					.delimited_by(just(Token::LParen), just(Token::RParen)),
+			)
+			.then(te)
+			.map(|(params, ret)| TypeExpr::Fn(params, Box::new(ret)));
+		unit.or(fn_type).or(name).or(tuple).or(array)
 	});
-	let ret = type_expr.map_with(|t, ex| (t, ex.span())).or_not();
+	let ret = type_expr.clone().map_with(|t, ex| (t, ex.span())).or_not();
 
 	// `fn name(params) ret? { ... }`
 	let func = just(Token::Fn)
@@ -508,7 +519,14 @@ where
 		)
 		.map_with(|(name, fields), ex| (Expr::StructDef { name, fields }, ex.span()));
 
+	let type_alias = just(Token::Type)
+		.ignore_then(select! { Token::Ident(name) => name })
+		.then_ignore(just(Token::Assign))
+		.then(type_expr)
+		.map_with(|(name, typ), ex| (Expr::TypeAlias { name, typ }, ex.span()));
+
 	struct_def
+		.or(type_alias)
 		.or(func)
 		.or(stmt)
 		.repeated()

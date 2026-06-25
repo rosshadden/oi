@@ -124,6 +124,12 @@ pub enum Expr {
 		value: Box<Spanned<Expr>>,
 	},
 
+	// `type Name = TypeExpr`
+	TypeAlias {
+		name: String,
+		typ: TypeExpr,
+	},
+
 	// TODO: enums
 
 	// operators
@@ -164,6 +170,7 @@ pub enum TypeExpr {
 	Name(String),
 	Tuple(Vec<TypeExpr>),
 	Array(Box<TypeExpr>),
+	Fn(Vec<TypeExpr>, Box<TypeExpr>),
 }
 
 #[derive(Debug, Clone)]

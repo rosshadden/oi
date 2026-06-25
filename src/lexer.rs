@@ -55,6 +55,8 @@ pub enum Token {
 	Fn,
 	#[token("struct")]
 	Struct,
+	#[token("type")]
+	Type,
 	#[token("return")]
 	Return,
 	#[token("match")]
@@ -171,6 +173,7 @@ impl fmt::Display for Token {
 			Token::String(s) => write!(f, "\"{s}\""),
 			Token::Fn => write!(f, "fn"),
 			Token::Struct => write!(f, "struct"),
+			Token::Type => write!(f, "type"),
 			Token::Return => write!(f, "return"),
 			Token::Match => write!(f, "match"),
 			Token::If => write!(f, "if"),
