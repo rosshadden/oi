@@ -37,6 +37,13 @@ fn int_cast() {
 }
 
 #[test]
+fn int_alias() {
+	check("int(50_000)", "50000");
+	check("int(10000000000)", &i32::MAX.to_string());
+	check("10_000 == int(10_000)", "true");
+}
+
+#[test]
 fn i64_cast() {
 	check("i64(50_000)", "50000");
 	check("i64(2_000_000_000)", "2000000000");
@@ -64,6 +71,12 @@ fn float_exp() {
 fn f32() {
 	check("f32(123.0)", "123.0");
 	check("f32(123.0) == f32(123.0)", "true");
+}
+
+#[test]
+fn float_alias() {
+	check("float(1.5)", "1.5");
+	check("float(1.5) == f64(1.5)", "true");
 }
 
 #[test]

@@ -1049,6 +1049,22 @@ impl<'a> Translator<'a> {
 				Ok((out, out_typ))
 			}
 
+			Expr::Call { name, args } if name == "int" => self.expr(&(
+				Expr::Call {
+					name: "i32".to_owned(),
+					args: args.clone(),
+				},
+				expr.1,
+			)),
+
+			Expr::Call { name, args } if name == "float" => self.expr(&(
+				Expr::Call {
+					name: "f64".to_owned(),
+					args: args.clone(),
+				},
+				expr.1,
+			)),
+
 			Expr::Call { name, args }
 				if name.starts_with('i')
 					&& name[1..]
