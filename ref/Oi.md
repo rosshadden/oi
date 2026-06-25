@@ -103,6 +103,7 @@
 	- back on the table now that `|x|` lambda fences are gone
 	- that said, `|>` has grown on me
 - mutable `$` by default or opt-in?
+- `loop <expr>` rather than any special case dispatch
 - adding colon before return type sig `fn foo(x int, y int): z int { ... }`
 - [x] `[]` in anon fns turns off implicit capture (non-capturing, not pure). `@pure` is the separate purity annotation; compiler-verified no IO/globals/impure calls. `@pure` implies non-capturing so [] is redundant alongside it.
 - I kind of like Rust's `pub(crate)` concept where you specify what it's public for
