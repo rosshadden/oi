@@ -6,6 +6,7 @@ mod helpers;
 mod arithmetic;
 mod arrays;
 mod assertions;
+mod atoms;
 mod booleans;
 mod comments;
 mod comparisons;
