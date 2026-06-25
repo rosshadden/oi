@@ -163,24 +163,24 @@ where
 			.collect::<Vec<_>>()
 			.delimited_by(just(Token::LBrace), just(Token::RBrace));
 
-		enum VarSuffix {
-			Call(Vec<Spanned<Expr>>),
-			Lit(Vec<(Option<String>, Spanned<Expr>)>),
-		}
+		// pull out struct literals separately (they have title case names) from vars/calls/whatever below
+		let struct_lit = select! { Token::Ident(name) => name }
+			.filter(|name| name.starts_with(char::is_uppercase))
+			.then(struct_body)
+			.map(|(name, fields)| Expr::StructLit { name, fields });
+
 		let var_or_call = select! { Token::Ident(name) => name }
-			.then(
-				args.map(VarSuffix::Call)
-					.or(struct_body.map(VarSuffix::Lit))
-					.or_not(),
-			)
-			.map(|(name, suffix)| match suffix {
-				Some(VarSuffix::Call(args)) => Expr::Call { name, args },
-				Some(VarSuffix::Lit(fields)) => Expr::StructLit { name, fields },
+			.then(args.map(Some).or_not().map(Option::flatten))
+			.map(|(name, args)| match args {
+				Some(args) => Expr::Call { name, args },
 				None => Expr::Ident(name),
 			});
 
 		// leaf atoms pair themselves with their span
-		let leaf = literal.or(var_or_call).map_with(|e, ex| (e, ex.span()));
+		let leaf = literal
+			.or(struct_lit)
+			.or(var_or_call)
+			.map_with(|e, ex| (e, ex.span()));
 
 		// a lexer error token
 		let bad = select! { Token::Error(text) => text }.try_map(|text, span| {
