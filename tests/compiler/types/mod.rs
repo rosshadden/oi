@@ -1,7 +1,9 @@
 mod aliases;
+mod arrays;
 mod atoms;
 mod booleans;
 mod literals;
 mod numbers;
 mod strings;
+mod structs;
 mod tuples;
