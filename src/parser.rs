@@ -327,7 +327,11 @@ where
 			.map(|end| Subscript::Slice(None, end));
 		let with_start = expr
 			.clone()
-			.then(just(Token::DotDot).ignore_then(expr.clone().or_not()).or_not())
+			.then(
+				just(Token::DotDot)
+					.ignore_then(expr.clone().or_not())
+					.or_not(),
+			)
 			.map(|(e, extra)| match (e.0.clone(), extra) {
 				// `start..end`
 				(Expr::Range { start, end }, None) => {

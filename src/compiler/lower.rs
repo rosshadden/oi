@@ -1668,8 +1668,16 @@ impl<'a> Translator<'a> {
 				};
 				let ptr = self.call_alloc(2);
 				let cl = self.b.func.dfg.value_type(start_val);
-				let s_ext = if cl == self.int { start_val } else { self.b.ins().sextend(self.int, start_val) };
-				let e_ext = if cl == self.int { end_val } else { self.b.ins().sextend(self.int, end_val) };
+				let s_ext = if cl == self.int {
+					start_val
+				} else {
+					self.b.ins().sextend(self.int, start_val)
+				};
+				let e_ext = if cl == self.int {
+					end_val
+				} else {
+					self.b.ins().sextend(self.int, end_val)
+				};
 				self.b.ins().store(MemFlags::new(), s_ext, ptr, 0);
 				self.b.ins().store(MemFlags::new(), e_ext, ptr, 8);
 				Ok((ptr, Typ::Range))
