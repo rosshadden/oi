@@ -11,6 +11,31 @@ fn float_literal() {
 }
 
 #[test]
+fn float_sci_e() {
+	check("42e1", "420.0");
+}
+
+#[test]
+fn float_sci_upper_e() {
+	check("42E1", "420.0");
+}
+
+#[test]
+fn float_sci_negative_exp() {
+	check("123e-2", "1.23");
+}
+
+#[test]
+fn float_sci_positive_exp() {
+	check("456e+2", "45600.0");
+}
+
+#[test]
+fn float_sci_decimal_with_exp() {
+	check("1.5e2", "150.0");
+}
+
+#[test]
 fn bool_true() {
 	check("true", "true");
 }
