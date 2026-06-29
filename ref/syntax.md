@@ -426,6 +426,19 @@ fn main() {
 	## variables
 	
 	# assignment
+	
+	# declaration without assignment
+	mut foo int # 0
+	mut bar string # ""
+	mut p Point # Point{}
+	mut grid [3]string # ["", "", ""]
+	
+	# declaration with assignment
+	a int := 2
+	b string := "hi"
+	c Car := Car{}
+
+	# inferred
 	no_mute := "immutable"
 	mut mute := "mutable"
 	mute = "trololololol"

@@ -95,7 +95,7 @@
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [ ] FFI
 - [ ] some sort of `todo`/`unimplemented` macros `rust`
-- [ ] a way to type a var without declaring it, like `var` in Go `go`
+- [x] a way to type a var without declaring it, like `var` in Go `go`
 - [ ] `loop match {...}` `revo`
 - [ ] `Contains` trait that lets any type be used with `in` operator
 ## consider
@@ -117,6 +117,7 @@
 - `noop` macro
 - maybe named tuple args aren't a good thing
 	- just making structs more lightweight to use might be better, idk
+- reconciling `type` for type aliases with var declarations (can maybe share syntax)
 # stdlib
 - `os`
 - `fs`
