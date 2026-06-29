@@ -15,11 +15,12 @@ pub enum Expr {
 	Atom(String),
 	Ident(String),
 
-	// `[mods] name := value`: declares a new binding
+	// `[mods] name [type] := value`: declares a new binding
 	Bind {
 		mutable: bool,
 		name: String,
-		value: Box<Spanned<Expr>>,
+		typ: Option<Spanned<String>>,
+		value: Option<Box<Spanned<Expr>>>,
 	},
 
 	// `name = value`: assigns to an existing mutable binding

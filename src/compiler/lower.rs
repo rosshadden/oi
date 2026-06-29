@@ -7,7 +7,9 @@ use cranelift::prelude::*;
 use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, Linkage, Module};
 
-use super::{FieldDef, FnSig, Local, LoopFrame, Op, Typ, cl_int_for_width, cl_type, elem_size};
+use super::{
+	FieldDef, FnSig, Local, LoopFrame, Op, Typ, cl_int_for_width, cl_type, elem_size, typ_from_name,
+};
 use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
@@ -35,9 +37,29 @@ impl<'a> Translator<'a> {
 				Expr::Bind {
 					mutable,
 					name,
+					typ,
 					value,
 				} => {
-					let (val, typ) = self.expr(value)?;
+					let annot = typ
+						.as_ref()
+						.map(|(t, span)| typ_from_name(t, *span, self.structs, &HashMap::new()))
+						.transpose()?;
+					let (val, typ) = match (value, annot) {
+						(Some(value), Some(target)) => {
+							let (val, found) = self.expr(value)?;
+							if found != target {
+								return Err(Diagnostic::new(
+									format!("expected {target}, got {found}"),
+									value.1.into_range(),
+								)
+								.with_label("does not match the declared type"));
+							}
+							(val, target)
+						}
+						(Some(value), None) => self.expr(value)?,
+						(None, Some(target)) => (self.zero(&target), target),
+						(None, None) => unreachable!("binding has neither a type nor a value"),
+					};
 					let (final_val, cl) = if let Typ::Struct(_, ref fields) = typ {
 						let dst = self.struct_copy(val, fields);
 						(dst, self.int)

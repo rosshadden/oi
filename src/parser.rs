@@ -24,23 +24,27 @@ where
 	let mut expr = Recursive::declare();
 
 	// bindings
+	let annot = select! { Token::Ident(t) => t }.map_with(|t, ex| (t, ex.span()));
 	let bind = just(Token::Mut)
 		.or_not()
-		.then(select! {
-			Token::Ident(name) => name,
+		.then(select! { Token::Ident(name) => name })
+		.then(annot.or_not())
+		.then(just(Token::Bind).ignore_then(expr.clone()).or_not())
+		.try_map(|(((mutable, name), typ), value), span| {
+			if value.is_none() && (typ.is_none() || mutable.is_none()) {
+				return Err(Rich::custom(
+					span,
+					"expected `:=` value, or `mut name type`",
+				));
+			}
+			Ok(Expr::Bind {
+				mutable: mutable.is_some(),
+				name,
+				typ,
+				value: value.map(Box::new),
+			})
 		})
-		.then_ignore(just(Token::Bind))
-		.then(expr.clone())
-		.map_with(|((mutable, name), value), ex| {
-			(
-				Expr::Bind {
-					mutable: mutable.is_some(),
-					name,
-					value: Box::new(value),
-				},
-				ex.span(),
-			)
-		});
+		.map_with(|e, ex| (e, ex.span()));
 
 	// assignment
 	let assign = select! { Token::Ident(name) => name }
