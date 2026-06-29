@@ -19,3 +19,40 @@ fn assign_from_self() {
 fn assign_string() {
 	check(r#"mut s := "old"; s = "new"; s"#, "new");
 }
+
+#[test]
+fn declare_zero_int() {
+	check("mut n int\nn", "0");
+}
+
+#[test]
+fn declare_zero_string() {
+	check("mut s string\ns", "");
+}
+
+#[test]
+fn declare_zero_then_assign() {
+	check("mut n int\nn = 7\nn", "7");
+}
+
+#[test]
+fn declare_zero_struct() {
+	check(
+		"struct Point { x int, y int }
+		mut p Point
+		p.x = 5
+		p.x",
+		"5",
+	);
+}
+
+#[test]
+fn annotated_binding() {
+	check("a int := 2\na", "2");
+	check(r#"b string := "hi"; b"#, "hi");
+}
+
+#[test]
+fn annotation_type_mismatch() {
+	assert!(fail(r#"x int := "hi""#).contains("expected int, got str"));
+}
