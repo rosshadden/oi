@@ -45,17 +45,20 @@ impl<'a> Translator<'a> {
 						.map(|(t, span)| typ_from_name(t, *span, self.structs, &HashMap::new()))
 						.transpose()?;
 					let (val, typ) = match (value, annot) {
-						(Some(value), Some(target)) => {
-							let (val, found) = self.expr(value)?;
-							if found != target {
-								return Err(Diagnostic::new(
-									format!("expected {target}, got {found}"),
-									value.1.into_range(),
-								)
-								.with_label("does not match the declared type"));
+						(Some(value), Some(target)) => match self.coerce_lit(value, &target)? {
+							Some(val) => (val, target),
+							None => {
+								let (val, found) = self.expr(value)?;
+								if found != target {
+									return Err(Diagnostic::new(
+										format!("expected {target}, got {found}"),
+										value.1.into_range(),
+									)
+									.with_label("does not match the declared type"));
+								}
+								(val, target)
 							}
-							(val, target)
-						}
+						},
 						(Some(value), None) => self.expr(value)?,
 						(None, Some(target)) => (self.zero(&target), target),
 						(None, None) => unreachable!("binding has neither a type nor a value"),
@@ -1850,6 +1853,69 @@ impl<'a> Translator<'a> {
 				self.b.ins().store(MemFlags::new(), z, ptr, 8);
 				ptr
 			}
+		}
+	}
+
+	// A numeric literal takes the binding's declared type directly.
+	fn coerce_lit(
+		&mut self,
+		value: &Spanned<Expr>,
+		target: &Typ,
+	) -> Result<Option<Value>, Diagnostic> {
+		let (neg, inner) = match &value.0 {
+			Expr::Negative(e) => (true, &e.0),
+			v => (false, v),
+		};
+		let oob = |n| {
+			Diagnostic::new(
+				format!("{n} is out of range for {target}"),
+				value.1.into_range(),
+			)
+			.with_label(format!("doesn't fit in {target}"))
+		};
+		let v = match (inner, target) {
+			(Expr::Int(n), Typ::Int(w)) => {
+				let n = if neg { -*n } else { *n };
+				if n < int_min(*w) || n > int_max(*w) {
+					return Err(oob(n));
+				}
+				self.b.ins().iconst(cl_int_for_width(*w), n)
+			}
+			(Expr::Int(n), Typ::UInt(w)) => {
+				let n = if neg { -*n } else { *n };
+				if n < 0 || (*w < 64 && n > uint_max(*w)) {
+					return Err(oob(n));
+				}
+				self.b.ins().iconst(cl_int_for_width(*w), n)
+			}
+			(Expr::Int(n), Typ::ISize) => self.b.ins().iconst(self.int, if neg { -*n } else { *n }),
+			(Expr::Int(n), Typ::USize) => {
+				let n = if neg { -*n } else { *n };
+				if n < 0 {
+					return Err(oob(n));
+				}
+				self.b.ins().iconst(self.int, n)
+			}
+			(Expr::Int(n), Typ::Float(w)) => {
+				self.float_lit((if neg { -*n } else { *n }) as f64, *w, value.1)?
+			}
+			(Expr::Float(x), Typ::Float(w)) => {
+				self.float_lit(if neg { -*x } else { *x }, *w, value.1)?
+			}
+			_ => return Ok(None),
+		};
+		Ok(Some(v))
+	}
+
+	fn float_lit(&mut self, x: f64, w: u16, span: Span) -> Result<Value, Diagnostic> {
+		match w {
+			32 => Ok(self.b.ins().f32const(x as f32)),
+			64 => Ok(self.b.ins().f64const(x)),
+			_ => Err(Diagnostic::new(
+				format!("f{w} literals aren't supported by the JIT backend yet"),
+				span.into_range(),
+			)
+			.with_label("not yet implemented")),
 		}
 	}
 

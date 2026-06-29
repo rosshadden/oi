@@ -56,3 +56,20 @@ fn annotated_binding() {
 fn annotation_type_mismatch() {
 	assert!(fail(r#"x int := "hi""#).contains("expected int, got str"));
 }
+
+#[test]
+fn annotation_pins_width() {
+	// the literal fits an i32, but the annotation widens it to i64
+	check("mut big i64 := 50_000\nbig", "50000");
+}
+
+#[test]
+fn annotation_coerces_float() {
+	check("f f32 := 1.5\nf", "1.5");
+	check("x f64 := 5\nx", "5.0");
+}
+
+#[test]
+fn annotation_out_of_range() {
+	assert!(fail("mut x i8 := 9999\nx").contains("out of range for i8"));
+}
