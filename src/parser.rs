@@ -23,8 +23,44 @@ where
 	// Declare `expr` up front so the statement parsers can reference it before it is defined.
 	let mut expr = Recursive::declare();
 
+	// type annotations
+	let type_expr = recursive(|te| {
+		let name = select! { Token::Ident(t) => TypeExpr::Name(t) };
+		let unit = just(Token::LParen)
+			.then(just(Token::RParen))
+			.to(TypeExpr::Tuple(vec![]));
+		let tuple = te
+			.clone()
+			.separated_by(just(Token::Comma).or_not())
+			.allow_trailing()
+			.at_least(1)
+			.collect::<Vec<_>>()
+			.delimited_by(just(Token::LParen), just(Token::RParen))
+			.map(TypeExpr::Tuple);
+		// `[]T` dynamic, `[N]T` fixed
+		let array = just(Token::LBracket)
+			.ignore_then(select! { Token::Int(n) => n }.or_not())
+			.then_ignore(just(Token::RBracket))
+			.then(te.clone())
+			.map(|(n, elem)| match n {
+				Some(n) => TypeExpr::FixedArray(Box::new(elem), n as usize),
+				None => TypeExpr::Array(Box::new(elem)),
+			});
+		let fn_type = just(Token::Fn)
+			.ignore_then(
+				te.clone()
+					.separated_by(just(Token::Comma).or_not())
+					.allow_trailing()
+					.collect::<Vec<_>>()
+					.delimited_by(just(Token::LParen), just(Token::RParen)),
+			)
+			.then(te)
+			.map(|(params, ret)| TypeExpr::Fn(params, Box::new(ret)));
+		unit.or(fn_type).or(name).or(tuple).or(array)
+	});
+
 	// bindings
-	let annot = select! { Token::Ident(t) => t }.map_with(|t, ex| (t, ex.span()));
+	let annot = type_expr.clone().map_with(|t, ex| (t, ex.span()));
 	let bind = just(Token::Mut)
 		.or_not()
 		.then(select! { Token::Ident(name) => name })
@@ -209,6 +245,20 @@ where
 			.delimited_by(just(Token::LParen), just(Token::RParen))
 			.map_with(|elems, ex| (Expr::Tuple(elems), ex.span()));
 
+		let array_init = just(Token::LBracket)
+			.ignore_then(select! { Token::Int(n) => n }.or_not())
+			.then_ignore(just(Token::RBracket))
+			.then(type_expr.clone())
+			.then_ignore(just(Token::LBrace))
+			.then_ignore(just(Token::RBrace))
+			.map_with(|(n, elem), ex| {
+				let te = match n {
+					Some(n) => TypeExpr::FixedArray(Box::new(elem), n as usize),
+					None => TypeExpr::Array(Box::new(elem)),
+				};
+				(Expr::ArrayInit((te, ex.span())), ex.span())
+			});
+
 		// array literal
 		let array = expr
 			.clone()
@@ -309,6 +359,7 @@ where
 		let atom = leaf
 			.or(group)
 			.or(tuple)
+			.or(array_init)
 			.or(array)
 			.or(if_expr)
 			.or(match_expr)
@@ -470,35 +521,6 @@ where
 		.delimited_by(just(Token::LParen), just(Token::RParen));
 
 	// optional return type annotation
-	let type_expr = recursive(|te| {
-		let name = select! { Token::Ident(t) => TypeExpr::Name(t) };
-		let unit = just(Token::LParen)
-			.then(just(Token::RParen))
-			.to(TypeExpr::Tuple(vec![]));
-		let tuple = te
-			.clone()
-			.separated_by(just(Token::Comma).or_not())
-			.allow_trailing()
-			.at_least(1)
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LParen), just(Token::RParen))
-			.map(TypeExpr::Tuple);
-		let array = te
-			.clone()
-			.delimited_by(just(Token::LBracket), just(Token::RBracket))
-			.map(|elem| TypeExpr::Array(Box::new(elem)));
-		let fn_type = just(Token::Fn)
-			.ignore_then(
-				te.clone()
-					.separated_by(just(Token::Comma).or_not())
-					.allow_trailing()
-					.collect::<Vec<_>>()
-					.delimited_by(just(Token::LParen), just(Token::RParen)),
-			)
-			.then(te)
-			.map(|(params, ret)| TypeExpr::Fn(params, Box::new(ret)));
-		unit.or(fn_type).or(name).or(tuple).or(array)
-	});
 	let ret = type_expr.clone().map_with(|t, ex| (t, ex.span())).or_not();
 
 	// `fn name(params) ret? { ... }`

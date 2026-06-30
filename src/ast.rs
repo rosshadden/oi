@@ -19,9 +19,12 @@ pub enum Expr {
 	Bind {
 		mutable: bool,
 		name: String,
-		typ: Option<Spanned<String>>,
+		typ: Option<Spanned<TypeExpr>>,
 		value: Option<Box<Spanned<Expr>>>,
 	},
+
+	// `[]T{}` or `[N]T{}`
+	ArrayInit(Spanned<TypeExpr>),
 
 	// `name = value`: assigns to an existing mutable binding
 	Assign {
@@ -177,6 +180,7 @@ pub enum TypeExpr {
 	Name(String),
 	Tuple(Vec<TypeExpr>),
 	Array(Box<TypeExpr>),
+	FixedArray(Box<TypeExpr>, usize),
 	Fn(Vec<TypeExpr>, Box<TypeExpr>),
 }
 

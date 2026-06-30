@@ -45,7 +45,7 @@ fn alias_tuple_in_param_and_return() {
 #[test]
 fn alias_array_in_param() {
 	let src = indoc! {"
-		type Row = [int]
+		type Row = []int
 		fn first(r Row) int { r[0] }
 		first([10 20 30])
 	"};

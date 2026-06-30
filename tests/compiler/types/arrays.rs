@@ -457,7 +457,7 @@ fn in_type_mismatch_error() {
 #[test]
 fn fn_returns_array_annotation() {
 	let src = indoc! {"
-		fn nums() [int] { [1, 2, 3] }
+		fn nums() []int { [1, 2, 3] }
 		nums()
 	"};
 	check(src, "[1, 2, 3]");
@@ -466,7 +466,7 @@ fn fn_returns_array_annotation() {
 #[test]
 fn fn_returns_array_field() {
 	let src = indoc! {"
-		fn nums() [int] { [10, 20, 30] }
+		fn nums() []int { [10, 20, 30] }
 		a := nums()
 		a[1]
 	"};
@@ -476,7 +476,7 @@ fn fn_returns_array_field() {
 #[test]
 fn fn_return_type_mismatch_array() {
 	let src = indoc! {"
-		fn bad() [int] { 42 }
+		fn bad() []int { 42 }
 		bad()
 	"};
 	assert!(fail(src).contains("wrong return type"));

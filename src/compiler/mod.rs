@@ -33,6 +33,7 @@ pub(crate) enum Typ {
 	Atom,
 	Tuple(Vec<(Option<String>, Typ)>),
 	Array(Box<Typ>),
+	FixedArray(Box<Typ>, usize),
 	Struct(String, Vec<FieldDef>),
 	Range,
 }
@@ -69,7 +70,8 @@ impl fmt::Display for Typ {
 			Typ::Atom => write!(f, "atom"),
 			Typ::Tuple(fields) if fields.is_empty() => write!(f, "()"),
 			Typ::Tuple(_) => write!(f, "tuple"),
-			Typ::Array(e) => write!(f, "[{e}]"),
+			Typ::Array(e) => write!(f, "[]{e}"),
+			Typ::FixedArray(e, n) => write!(f, "[{n}]{e}"),
 			Typ::Struct(name, _) => write!(f, "{name}"),
 			Typ::Range => write!(f, "range"),
 		}
@@ -132,6 +134,10 @@ pub(crate) fn resolve_type(
 		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(
 			elem, span, structs, aliases,
 		)?))),
+		TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(
+			Box::new(resolve_type(elem, span, structs, aliases)?),
+			*n,
+		)),
 		TypeExpr::Fn(_, _) => Err(Diagnostic::new(
 			"function types are not yet supported in codegen",
 			span.into_range(),

@@ -8,7 +8,7 @@ use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, Linkage, Module};
 
 use super::{
-	FieldDef, FnSig, Local, LoopFrame, Op, Typ, cl_int_for_width, cl_type, elem_size, typ_from_name,
+	FieldDef, FnSig, Local, LoopFrame, Op, Typ, cl_int_for_width, cl_type, elem_size, resolve_type,
 };
 use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned};
 use crate::diagnostics::Diagnostic;
@@ -42,7 +42,7 @@ impl<'a> Translator<'a> {
 				} => {
 					let annot = typ
 						.as_ref()
-						.map(|(t, span)| typ_from_name(t, *span, self.structs, &HashMap::new()))
+						.map(|(t, span)| resolve_type(t, *span, self.structs, &HashMap::new()))
 						.transpose()?;
 					let (val, typ) = match (value, annot) {
 						(Some(value), Some(target)) => match self.coerce_lit(value, &target)? {
@@ -63,12 +63,10 @@ impl<'a> Translator<'a> {
 						(None, Some(target)) => (self.zero(&target), target),
 						(None, None) => unreachable!("binding has neither a type nor a value"),
 					};
-					let (final_val, cl) = if let Typ::Struct(_, ref fields) = typ {
-						let dst = self.struct_copy(val, fields);
-						(dst, self.int)
-					} else {
-						let cl = self.b.func.dfg.value_type(val);
-						(val, cl)
+					let (final_val, cl) = match &typ {
+						Typ::Struct(_, fields) => (self.struct_copy(val, fields), self.int),
+						Typ::FixedArray(elem, n) => (self.fixed_copy(val, elem, *n), self.int),
+						_ => (val, self.b.func.dfg.value_type(val)),
 					};
 					// `:=` always declares a fresh binding, shadowing any earlier ones
 					let var = self.b.declare_var(cl);
@@ -142,7 +140,7 @@ impl<'a> Translator<'a> {
 						.with_note(format!("use `mut {name} := ...` to allow assignment")));
 					}
 					let elem = match &local.typ {
-						Typ::Array(e) => (**e).clone(),
+						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						_ => {
 							return Err(Diagnostic::new(
 								format!("`{name}` is not an array"),
@@ -162,7 +160,8 @@ impl<'a> Translator<'a> {
 						)
 						.with_label("type mismatch"));
 					}
-					self.store_index(ptr, &elem, idx, val);
+					let (data, len) = self.array_parts(ptr, &local.typ);
+					self.store_index(data, len, &elem, idx, val);
 				}
 
 				Expr::Append { name, value } => {
@@ -397,20 +396,33 @@ impl<'a> Translator<'a> {
 			}
 			return Ok(());
 		}
-		// structs live on the callee's stack, so copy to heap before returning
-		let final_val = if let Typ::Struct(_, ref fields) = typ {
-			let fields = fields.clone();
-			let heap = self.call_alloc(fields.len());
-			for (i, f) in fields.iter().enumerate() {
-				let cl = cl_type(&f.typ, self.int);
-				let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
-				self.b
-					.ins()
-					.store(MemFlags::new(), fv, heap, (i * 8) as i32);
+		// structs and fixed arrays live on the stack, so copy to heap before returning
+		let final_val = match &typ {
+			Typ::Struct(_, fields) => {
+				let fields = fields.clone();
+				let heap = self.call_alloc(fields.len());
+				for (i, f) in fields.iter().enumerate() {
+					let cl = cl_type(&f.typ, self.int);
+					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
+					self.b
+						.ins()
+						.store(MemFlags::new(), fv, heap, (i * 8) as i32);
+				}
+				heap
 			}
-			heap
-		} else {
-			val
+			Typ::FixedArray(elem, n) => {
+				let (elem, n) = ((**elem).clone(), *n);
+				let stride = elem_size(&elem);
+				let cl = cl_type(&elem, self.int);
+				let heap = self.call_alloc_bytes(n as i64 * stride);
+				for i in 0..n {
+					let off = (i as i64 * stride) as i32;
+					let v = self.b.ins().load(cl, MemFlags::new(), val, off);
+					self.b.ins().store(MemFlags::new(), v, heap, off);
+				}
+				heap
+			}
+			_ => val,
 		};
 		// the cranelift signature takes its return type from the first return
 		if self.b.func.signature.returns.is_empty() {
@@ -1307,17 +1319,17 @@ impl<'a> Translator<'a> {
 				let (ptr, typ) = self.expr(tuple)?;
 
 				// arrays expose `.len` and numeric `.n` (sugar for `arr[n]`)
-				if let Typ::Array(elem) = &typ {
-					let elem = (**elem).clone();
+				if let Typ::Array(_) | Typ::FixedArray(..) = &typ {
+					let elem = array_elem(&typ).clone();
+					let (data, len) = self.array_parts(ptr, &typ);
 					if field == "len" {
-						let raw = self.array_len(ptr);
-						let len = self.b.ins().ireduce(types::I32, raw);
+						let len = self.b.ins().ireduce(types::I32, len);
 						return Ok((len, Typ::Int(32)));
 					}
 					return match field.parse::<i64>() {
 						Ok(n) => {
 							let idx = self.b.ins().iconst(self.int, n);
-							Ok((self.load_index(ptr, &elem, idx), elem))
+							Ok((self.load_index(data, len, &elem, idx), elem))
 						}
 						Err(_) => Err(Diagnostic::new(
 							format!("arrays have no field `{field}`"),
@@ -1412,11 +1424,18 @@ impl<'a> Translator<'a> {
 				Ok((header, Typ::Array(Box::new(elem))))
 			}
 
+			Expr::ArrayInit((te, span)) => {
+				let typ = resolve_type(te, *span, self.structs, &HashMap::new())?;
+				Ok((self.zero(&typ), typ))
+			}
+
 			Expr::Index { collection, index } => {
-				let (ptr, elem) = self.array_operand(collection, "index")?;
+				let (ptr, typ) = self.array_operand(collection, "index")?;
+				let elem = array_elem(&typ).clone();
 				let idx = self.int_value(index, "array index")?;
 				let idx = self.b.ins().sextend(self.int, idx);
-				Ok((self.load_index(ptr, &elem, idx), elem))
+				let (data, len) = self.array_parts(ptr, &typ);
+				Ok((self.load_index(data, len, &elem, idx), elem))
 			}
 
 			Expr::Slice {
@@ -1424,7 +1443,15 @@ impl<'a> Translator<'a> {
 				start,
 				end,
 			} => {
-				let (ptr, elem) = self.array_operand(collection, "slice")?;
+				let (ptr, typ) = self.array_operand(collection, "slice")?;
+				if let Typ::FixedArray(..) = typ {
+					return Err(Diagnostic::new(
+						"slicing fixed arrays is not supported yet",
+						collection.1.into_range(),
+					)
+					.with_label("only dynamic arrays can be sliced for now"));
+				}
+				let elem = array_elem(&typ).clone();
 				let start = match start {
 					Some(e) => {
 						let v = self.int_value(e, "slice start")?;
@@ -1846,6 +1873,23 @@ impl<'a> Translator<'a> {
 				let zero = self.b.ins().iconst(self.int, 0);
 				self.make_array(zero, zero)
 			}
+			Typ::FixedArray(elem, n) => {
+				let elem = (**elem).clone();
+				let stride = elem_size(&elem);
+				let slot = self.b.create_sized_stack_slot(StackSlotData::new(
+					StackSlotKind::ExplicitSlot,
+					(*n as i64 * stride) as u32,
+					0,
+				));
+				let ptr = self.b.ins().stack_addr(self.int, slot, 0);
+				for i in 0..*n {
+					let z = self.zero(&elem);
+					self.b
+						.ins()
+						.store(MemFlags::new(), z, ptr, (i as i64 * stride) as i32);
+				}
+				ptr
+			}
 			Typ::Range => {
 				let ptr = self.call_alloc(2);
 				let z = self.b.ins().iconst(self.int, 0);
@@ -1931,6 +1975,23 @@ impl<'a> Translator<'a> {
 			let cl = cl_type(&f.typ, self.int);
 			let fv = self.b.ins().load(cl, MemFlags::new(), src, (i * 8) as i32);
 			self.b.ins().store(MemFlags::new(), fv, dst, (i * 8) as i32);
+		}
+		dst
+	}
+
+	fn fixed_copy(&mut self, src: Value, elem: &Typ, n: usize) -> Value {
+		let stride = elem_size(elem);
+		let cl = cl_type(elem, self.int);
+		let slot = self.b.create_sized_stack_slot(StackSlotData::new(
+			StackSlotKind::ExplicitSlot,
+			(n as i64 * stride) as u32,
+			0,
+		));
+		let dst = self.b.ins().stack_addr(self.int, slot, 0);
+		for i in 0..n {
+			let off = (i as i64 * stride) as i32;
+			let v = self.b.ins().load(cl, MemFlags::new(), src, off);
+			self.b.ins().store(MemFlags::new(), v, dst, off);
 		}
 		dst
 	}
@@ -2175,6 +2236,7 @@ impl<'a> Translator<'a> {
 		header
 	}
 
+	// Evaluate an array-typed operand, returning its value and type.
 	fn array_operand(
 		&mut self,
 		collection: &Spanned<Expr>,
@@ -2182,11 +2244,19 @@ impl<'a> Translator<'a> {
 	) -> Result<(Value, Typ), Diagnostic> {
 		let (ptr, typ) = self.expr(collection)?;
 		match typ {
-			Typ::Array(elem) => Ok((ptr, *elem)),
+			Typ::Array(_) | Typ::FixedArray(..) => Ok((ptr, typ)),
 			_ => Err(
 				Diagnostic::new(format!("cannot {what} {typ:?}"), collection.1.into_range())
 					.with_label("not an array"),
 			),
+		}
+	}
+
+	// (data pointer, length) for an array.
+	fn array_parts(&mut self, val: Value, typ: &Typ) -> (Value, Value) {
+		match typ {
+			Typ::FixedArray(_, n) => (val, self.b.ins().iconst(self.int, *n as i64)),
+			_ => (self.array_data(val), self.array_len(val)),
 		}
 	}
 
@@ -2203,8 +2273,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Bounds-check `idx` and return the element address.
-	fn elem_addr(&mut self, header: Value, elem: &Typ, idx: Value) -> Value {
-		let len = self.array_len(header);
+	fn elem_addr(&mut self, data: Value, len: Value, elem: &Typ, idx: Value) -> Value {
 		let oob = self
 			.b
 			.ins()
@@ -2222,20 +2291,19 @@ impl<'a> Translator<'a> {
 		self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 
 		self.b.switch_to_block(ok_block);
-		let data = self.array_data(header);
 		let off = self.b.ins().imul_imm(idx, elem_size(elem));
 		self.b.ins().iadd(data, off)
 	}
 
-	fn load_index(&mut self, header: Value, elem: &Typ, idx: Value) -> Value {
-		let addr = self.elem_addr(header, elem, idx);
+	fn load_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value) -> Value {
+		let addr = self.elem_addr(data, len, elem, idx);
 		self.b
 			.ins()
 			.load(cl_type(elem, self.int), MemFlags::new(), addr, 0)
 	}
 
-	fn store_index(&mut self, header: Value, elem: &Typ, idx: Value, val: Value) {
-		let addr = self.elem_addr(header, elem, idx);
+	fn store_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, val: Value) {
+		let addr = self.elem_addr(data, len, elem, idx);
 		self.b.ins().store(MemFlags::new(), val, addr, 0);
 	}
 
@@ -2278,10 +2346,9 @@ impl<'a> Translator<'a> {
 			}
 
 			// array length is only known at runtime, so emit a loop
-			Typ::Array(elem) => {
+			Typ::Array(elem) | Typ::FixedArray(elem, _) => {
 				self.write_lit("[", stderr);
-				let len = self.array_len(val);
-				let data = self.array_data(val);
+				let (data, len) = self.array_parts(val, typ);
 				let i = self.b.declare_var(self.int);
 				let zero = self.b.ins().iconst(self.int, 0);
 				self.b.def_var(i, zero);
@@ -2355,7 +2422,12 @@ impl<'a> Translator<'a> {
 					Typ::UInt(_) | Typ::USize => runtime::Tag::UInt,
 					Typ::Float(_) => runtime::Tag::Float,
 					Typ::Str => runtime::Tag::Str,
-					Typ::Atom | Typ::Tuple(_) | Typ::Array(_) | Typ::Struct(..) | Typ::Range => {
+					Typ::Atom
+					| Typ::Tuple(_)
+					| Typ::Array(_)
+					| Typ::FixedArray(..)
+					| Typ::Struct(..)
+					| Typ::Range => {
 						unreachable!("handled above")
 					}
 				};
@@ -2381,6 +2453,14 @@ impl<'a> Translator<'a> {
 				self.emit_frag(tag, bits, float_width, quote, stderr);
 			}
 		}
+	}
+}
+
+// The element type of an array.
+fn array_elem(typ: &Typ) -> &Typ {
+	match typ {
+		Typ::Array(e) | Typ::FixedArray(e, _) => e,
+		_ => unreachable!("not an array type"),
 	}
 }
 
