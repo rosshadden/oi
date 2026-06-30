@@ -490,3 +490,55 @@ fn if_no_else_array_zero() {
 	"};
 	check(src, "0");
 }
+
+// fixed-size arrays
+
+#[test]
+fn fixed_zeroed() {
+	check("[3]int{}", "[0, 0, 0]");
+}
+
+#[test]
+fn fixed_len_is_constant() {
+	check("a := [4]int{}\na.len", "4");
+}
+
+#[test]
+fn fixed_index_write_read() {
+	check(
+		r#"mut three := [3]string{}
+		three[0] = "larry"
+		three[1] = "curly"
+		three"#,
+		r#"["larry", "curly", ""]"#,
+	);
+}
+
+#[test]
+fn fixed_dot_index() {
+	check("mut a := [2]int{}\na[0] = 9\na.0", "9");
+}
+
+#[test]
+fn fixed_annotated_zero_decl() {
+	check(
+		r#"mut grid [3]string
+grid"#,
+		r#"["", "", ""]"#,
+	);
+}
+
+#[test]
+fn fixed_value_semantics() {
+	check("mut a := [2]int{}\nmut b := a\na[0] = 9\nb[0]", "0");
+}
+
+#[test]
+fn fixed_index_out_of_range() {
+	assert!(fail("a := [2]int{}\na[5]").contains("out of range"));
+}
+
+#[test]
+fn empty_dynamic_via_init() {
+	check("a := []int{}\na.len", "0");
+}
