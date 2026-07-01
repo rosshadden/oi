@@ -151,7 +151,11 @@ pub enum Expr {
 		end: Option<Box<Spanned<Expr>>>,
 	},
 
-	// TODO: enums
+	// `enum Name {}`
+	EnumDef {
+		name: String,
+		variants: Vec<String>,
+	},
 
 	// operators
 

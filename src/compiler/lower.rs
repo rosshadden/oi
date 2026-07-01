@@ -21,6 +21,7 @@ pub(super) struct Translator<'a> {
 	pub module: &'a mut JITModule,
 	pub funcs: &'a HashMap<String, FnSig>,
 	pub structs: &'a HashMap<String, Vec<FieldDef>>,
+	pub enums: &'a HashMap<String, Vec<String>>,
 	pub string_idx: &'a mut usize,
 	pub atoms: &'a mut HashMap<String, ()>,
 	pub ret: Option<(Typ, Span)>,
@@ -43,7 +44,9 @@ impl<'a> Translator<'a> {
 				} => {
 					let annot = typ
 						.as_ref()
-						.map(|(t, span)| resolve_type(t, *span, self.structs, &HashMap::new()))
+						.map(|(t, span)| {
+							resolve_type(t, *span, self.structs, self.enums, &HashMap::new())
+						})
 						.transpose()?;
 					let (val, typ) = match (value, annot) {
 						(Some(value), Some(target)) => match self.coerce_lit(value, &target)? {
@@ -1318,6 +1321,22 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::Field { tuple, field } => {
+				// enum variants
+				if let Expr::Ident(name) = &tuple.0
+					&& !self.vars.contains_key(name)
+					&& let Some(variants) = self.enums.get(name)
+				{
+					let disc = variants.iter().position(|v| v == field).ok_or_else(|| {
+						Diagnostic::new(
+							format!("enum `{name}` has no variant `{field}`"),
+							expr.1.into_range(),
+						)
+						.with_label("no such variant")
+					})?;
+					let v = self.b.ins().iconst(self.int, disc as i64);
+					return Ok((v, Typ::Enum(name.clone())));
+				}
+
 				let (ptr, typ) = self.expr(tuple)?;
 
 				// arrays expose `.len` and numeric `.n` (sugar for `arr[n]`)
@@ -1427,7 +1446,7 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::ArrayInit((te, span)) => {
-				let typ = resolve_type(te, *span, self.structs, &HashMap::new())?;
+				let typ = resolve_type(te, *span, self.structs, self.enums, &HashMap::new())?;
 				Ok((self.zero(&typ), typ))
 			}
 
@@ -1753,6 +1772,7 @@ impl<'a> Translator<'a> {
 			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),
 			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 			Expr::StructDef { .. } => unreachable!("struct definition in expression position"),
+			Expr::EnumDef { .. } => unreachable!("enum definition in expression position"),
 			Expr::Impl { .. } => unreachable!("impl block in expression position"),
 			Expr::TypeAlias { .. } => unreachable!("type alias in expression position"),
 			Expr::FieldAssign { .. } => unreachable!("field assign in expression position"),
@@ -1858,6 +1878,8 @@ impl<'a> Translator<'a> {
 			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
 			Typ::Bool | Typ::ISize | Typ::USize => self.b.ins().iconst(self.int, 0),
+			// default to first variant
+			Typ::Enum(_) => self.b.ins().iconst(self.int, 0),
 			Typ::Tuple(fields) if fields.is_empty() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
 				let fields = fields.clone();
@@ -2126,6 +2148,7 @@ impl<'a> Translator<'a> {
 			| (Typ::USize, Typ::USize)
 			| (Typ::Bool, Typ::Bool)
 			| (Typ::Atom, Typ::Atom) => self.b.ins().icmp(icc, lv, rv),
+			(Typ::Enum(a), Typ::Enum(b)) if a == b => self.b.ins().icmp(icc, lv, rv),
 			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
 			(Typ::Str, Typ::Str) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
 				let eq = self.emit_eq(lv, rv, &Typ::Str);
@@ -2469,6 +2492,18 @@ impl<'a> Translator<'a> {
 				self.emit_frag(runtime::Tag::Raw, val, 0, false, stderr);
 			}
 
+			Typ::Enum(name) => {
+				let variants = self.enums.get(name).cloned().unwrap_or_default();
+				let mut ptr = self.str_const("");
+				for (i, variant) in variants.iter().enumerate() {
+					let s = self.str_const(variant);
+					let disc = self.b.ins().iconst(self.int, i as i64);
+					let hit = self.b.ins().icmp(IntCC::Equal, val, disc);
+					ptr = self.b.ins().select(hit, s, ptr);
+				}
+				self.emit_frag(runtime::Tag::Raw, ptr, 0, false, stderr);
+			}
+
 			Typ::Range => {
 				let cl = cl_int_for_width(32);
 				let start = self.b.ins().load(cl, MemFlags::new(), val, 0);
@@ -2490,6 +2525,7 @@ impl<'a> Translator<'a> {
 					| Typ::Array(_)
 					| Typ::FixedArray(..)
 					| Typ::Struct(..)
+					| Typ::Enum(_)
 					| Typ::Range => {
 						unreachable!("handled above")
 					}

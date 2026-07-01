@@ -588,6 +588,18 @@ where
 		)
 		.map_with(|(name, fields), ex| (Expr::StructDef { name, fields }, ex.span()));
 
+	// `enum Name {}`
+	let enum_def = just(Token::Enum)
+		.ignore_then(select! { Token::Ident(name) => name })
+		.then(
+			select! { Token::Ident(v) => v }
+				.separated_by(just(Token::Comma).or_not())
+				.allow_trailing()
+				.collect::<Vec<_>>()
+				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
+		)
+		.map_with(|(name, variants), ex| (Expr::EnumDef { name, variants }, ex.span()));
+
 	let type_alias = just(Token::Type)
 		.ignore_then(select! { Token::Ident(name) => name })
 		.then_ignore(just(Token::Assign))
@@ -605,6 +617,7 @@ where
 		.map_with(|(typ, methods), ex| (Expr::Impl { typ, methods }, ex.span()));
 
 	struct_def
+		.or(enum_def)
 		.or(type_alias)
 		.or(func)
 		.or(impl_block)

@@ -35,6 +35,7 @@ pub(crate) enum Typ {
 	Array(Box<Typ>),
 	FixedArray(Box<Typ>, usize),
 	Struct(String, Vec<FieldDef>),
+	Enum(String),
 	Range,
 }
 
@@ -73,6 +74,7 @@ impl fmt::Display for Typ {
 			Typ::Array(e) => write!(f, "[]{e}"),
 			Typ::FixedArray(e, n) => write!(f, "[{n}]{e}"),
 			Typ::Struct(name, _) => write!(f, "{name}"),
+			Typ::Enum(name) => write!(f, "{name}"),
 			Typ::Range => write!(f, "range"),
 		}
 	}
@@ -120,22 +122,23 @@ pub(crate) fn resolve_type(
 	te: &TypeExpr,
 	span: Span,
 	structs: &HashMap<String, Vec<FieldDef>>,
+	enums: &HashMap<String, Vec<String>>,
 	aliases: &HashMap<String, TypeExpr>,
 ) -> Result<Typ, Diagnostic> {
 	match te {
-		TypeExpr::Name(name) => typ_from_name(name, span, structs, aliases),
+		TypeExpr::Name(name) => typ_from_name(name, span, structs, enums, aliases),
 		TypeExpr::Tuple(elems) => {
 			let fields = elems
 				.iter()
-				.map(|e| Ok((None, resolve_type(e, span, structs, aliases)?)))
+				.map(|e| Ok((None, resolve_type(e, span, structs, enums, aliases)?)))
 				.collect::<Result<Vec<_>, _>>()?;
 			Ok(Typ::Tuple(fields))
 		}
 		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(
-			elem, span, structs, aliases,
+			elem, span, structs, enums, aliases,
 		)?))),
 		TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(
-			Box::new(resolve_type(elem, span, structs, aliases)?),
+			Box::new(resolve_type(elem, span, structs, enums, aliases)?),
 			*n,
 		)),
 		TypeExpr::Fn(_, _) => Err(Diagnostic::new(
@@ -150,6 +153,7 @@ pub(crate) fn typ_from_name(
 	name: &str,
 	span: Span,
 	structs: &HashMap<String, Vec<FieldDef>>,
+	enums: &HashMap<String, Vec<String>>,
 	aliases: &HashMap<String, TypeExpr>,
 ) -> Result<Typ, Diagnostic> {
 	match name {
@@ -203,10 +207,13 @@ pub(crate) fn typ_from_name(
 		}
 	}
 	if let Some(te) = aliases.get(name) {
-		return resolve_type(te, span, structs, aliases);
+		return resolve_type(te, span, structs, enums, aliases);
 	}
 	if let Some(fields) = structs.get(name) {
 		return Ok(Typ::Struct(name.to_string(), fields.clone()));
+	}
+	if enums.contains_key(name) {
+		return Ok(Typ::Enum(name.to_string()));
 	}
 	Err(
 		Diagnostic::new(format!("unknown type `{name}`"), span.into_range())
@@ -280,6 +287,7 @@ impl Compiler {
 		let int = self.module.target_config().pointer_type();
 
 		let mut struct_items: Vec<(&str, &[Param])> = vec![];
+		let mut enum_items: Vec<(&str, &[String])> = vec![];
 		let mut alias_items: Vec<(&str, &TypeExpr)> = vec![];
 		let mut main_body: Option<&[Spanned<Expr>]> = None;
 		let mut others: Vec<FnItem> = vec![];
@@ -288,6 +296,9 @@ impl Compiler {
 			match &item.0 {
 				Expr::StructDef { name, fields } => {
 					struct_items.push((name.as_str(), fields.as_slice()))
+				}
+				Expr::EnumDef { name, variants } => {
+					enum_items.push((name.as_str(), variants.as_slice()))
 				}
 				Expr::TypeAlias { name, typ } => alias_items.push((name.as_str(), typ)),
 				Expr::Impl { typ, methods } => {
@@ -320,13 +331,18 @@ impl Compiler {
 			.map(|(name, te)| (name.to_string(), (*te).clone()))
 			.collect();
 
+		let enums: HashMap<String, Vec<String>> = enum_items
+			.iter()
+			.map(|(name, variants)| (name.to_string(), variants.to_vec()))
+			.collect();
+
 		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		for (name, fields) in &struct_items {
 			let resolved = fields
 				.iter()
 				.map(|p| {
-					typ_from_name(&p.typ, p.span, &no_structs, &aliases).map(|t| FieldDef {
+					typ_from_name(&p.typ, p.span, &no_structs, &enums, &aliases).map(|t| FieldDef {
 						name: p.name.clone(),
 						typ: t,
 						default: p.default.clone(),
@@ -348,7 +364,7 @@ impl Compiler {
 				.map(|p| {
 					Ok((
 						p.name.clone(),
-						typ_from_name(&p.typ, p.span, &structs, &aliases)?,
+						typ_from_name(&p.typ, p.span, &structs, &enums, &aliases)?,
 						p.mutable,
 					))
 				})
@@ -356,12 +372,17 @@ impl Compiler {
 			let ret = ret
 				.as_ref()
 				.map(|(te, span)| {
-					Ok::<_, Diagnostic>((resolve_type(te, *span, &structs, &aliases)?, *span))
+					Ok::<_, Diagnostic>((
+						resolve_type(te, *span, &structs, &enums, &aliases)?,
+						*span,
+					))
 				})
 				.transpose()?;
 			let stmts: Vec<&Spanned<Expr>> = body.iter().collect();
 			let sym = format!("oi_{}", key.replace('.', "__"));
-			let ret = self.translate(int, &params, ret, &stmts, &funcs, &structs, self_type)?;
+			let ret = self.translate(
+				int, &params, ret, &stmts, &funcs, &structs, &enums, self_type,
+			)?;
 			let id = self.finish_fn(&sym);
 			let param_typs = params.iter().map(|(_, t, _)| t.clone()).collect();
 			funcs.insert(
@@ -391,9 +412,9 @@ impl Compiler {
 			None => loose,
 		};
 
-		let typ = self.translate(int, &[], None, &entry, &funcs, &structs, None)?;
+		let typ = self.translate(int, &[], None, &entry, &funcs, &structs, &enums, None)?;
 		let entry_id = self.finish_fn("oi_main");
-		let id = self.compile_entry(int, entry_id, typ, &funcs, &structs);
+		let id = self.compile_entry(int, entry_id, typ, &funcs, &structs, &enums);
 
 		self.module
 			.finalize_definitions()
@@ -408,6 +429,7 @@ impl Compiler {
 		typ: Typ,
 		funcs: &HashMap<String, FnSig>,
 		structs: &HashMap<String, Vec<FieldDef>>,
+		enums: &HashMap<String, Vec<String>>,
 	) -> FuncId {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		let block = b.create_block();
@@ -421,6 +443,7 @@ impl Compiler {
 			module: &mut self.module,
 			funcs,
 			structs,
+			enums,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,
 			ret: None,
@@ -460,6 +483,7 @@ impl Compiler {
 		stmts: &[&Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
 		structs: &HashMap<String, Vec<FieldDef>>,
+		enums: &HashMap<String, Vec<String>>,
 		self_type: Option<&str>,
 	) -> Result<Typ, Diagnostic> {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
@@ -484,6 +508,7 @@ impl Compiler {
 			module: &mut self.module,
 			funcs,
 			structs,
+			enums,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,
 			ret,
