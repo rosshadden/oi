@@ -338,6 +338,11 @@ impl Compiler {
 
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();
 		for (key, params, ret, body) in &others {
+			let self_type = key.rsplit_once('.').map(|(t, _)| t);
+			let mut aliases = aliases.clone();
+			if let Some(t) = self_type {
+				aliases.insert("Self".into(), TypeExpr::Name(t.into()));
+			}
 			let params: Vec<(String, Typ)> = params
 				.iter()
 				.map(|p| {
@@ -355,7 +360,8 @@ impl Compiler {
 				.transpose()?;
 			let stmts: Vec<&Spanned<Expr>> = body.iter().collect();
 			let sym = format!("oi_{}", key.replace('.', "__"));
-			let (id, ret) = self.compile_fn(int, &sym, &params, ret, &stmts, &funcs, &structs)?;
+			let ret = self.translate(int, &params, ret, &stmts, &funcs, &structs, self_type)?;
+			let id = self.finish_fn(&sym);
 			let param_typs = params.iter().map(|(_, t)| t.clone()).collect();
 			funcs.insert(
 				key.clone(),
@@ -384,29 +390,14 @@ impl Compiler {
 			None => loose,
 		};
 
-		let (entry_id, typ) =
-			self.compile_fn(int, "oi_main", &[], None, &entry, &funcs, &structs)?;
+		let typ = self.translate(int, &[], None, &entry, &funcs, &structs, None)?;
+		let entry_id = self.finish_fn("oi_main");
 		let id = self.compile_entry(int, entry_id, typ, &funcs, &structs);
 
 		self.module
 			.finalize_definitions()
 			.expect("finalize definitions");
 		Ok(self.module.get_finalized_function(id))
-	}
-
-	fn compile_fn(
-		&mut self,
-		int: types::Type,
-		name: &str,
-		params: &[(String, Typ)],
-		ret: Option<(Typ, Span)>,
-		stmts: &[&Spanned<Expr>],
-		funcs: &HashMap<String, FnSig>,
-		structs: &HashMap<String, Vec<FieldDef>>,
-	) -> Result<(FuncId, Typ), Diagnostic> {
-		let typ = self.translate(int, params, ret, stmts, funcs, structs)?;
-		let id = self.finish_fn(name);
-		Ok((id, typ))
 	}
 
 	fn compile_entry(
@@ -433,6 +424,7 @@ impl Compiler {
 			atoms: &mut self.atoms,
 			ret: None,
 			loops: vec![],
+			self_type: None,
 		};
 
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
@@ -467,6 +459,7 @@ impl Compiler {
 		stmts: &[&Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
 		structs: &HashMap<String, Vec<FieldDef>>,
+		self_type: Option<&str>,
 	) -> Result<Typ, Diagnostic> {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		// declare param types before the entry block claims them
@@ -494,6 +487,7 @@ impl Compiler {
 			atoms: &mut self.atoms,
 			ret,
 			loops: vec![],
+			self_type: self_type.map(str::to_owned),
 		};
 
 		let param_vals: Vec<Value> = trans.b.block_params(block).to_vec();

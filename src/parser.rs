@@ -598,17 +598,7 @@ where
 				.collect::<Vec<_>>()
 				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
 		)
-		.map_with(|(typ, mut methods), ex| {
-			for (m, _) in &mut methods {
-				if let Expr::Fn { params, .. } = m
-					&& let Some(recv) = params.first_mut()
-					&& recv.name == "self"
-				{
-					recv.typ = typ.clone();
-				}
-			}
-			(Expr::Impl { typ, methods }, ex.span())
-		});
+		.map_with(|(typ, methods), ex| (Expr::Impl { typ, methods }, ex.span()));
 
 	struct_def
 		.or(type_alias)

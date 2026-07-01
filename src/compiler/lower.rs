@@ -25,6 +25,7 @@ pub(super) struct Translator<'a> {
 	pub atoms: &'a mut HashMap<String, ()>,
 	pub ret: Option<(Typ, Span)>,
 	pub loops: Vec<LoopFrame>,
+	pub self_type: Option<String>,
 }
 
 impl<'a> Translator<'a> {
@@ -1611,6 +1612,14 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::StructLit { name, fields } => {
+				// `Self {}` inside a method resolves to the impl's type
+				let name = match name.as_str() {
+					"Self" => self.self_type.clone().ok_or_else(|| {
+						Diagnostic::new("`Self` is only valid in an impl block", expr.1.into_range())
+							.with_label("no enclosing impl")
+					})?,
+					_ => name.clone(),
+				};
 				let struct_fields = self.structs.get(name.as_str()).cloned().ok_or_else(|| {
 					Diagnostic::new(format!("unknown struct `{name}`"), expr.1.into_range())
 						.with_label("not defined")
