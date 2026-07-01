@@ -156,6 +156,8 @@ pub enum Expr {
 		name: String,
 		variants: Vec<String>,
 	},
+	// `.variant`
+	EnumShorthand(String),
 
 	// operators
 

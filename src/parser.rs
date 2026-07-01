@@ -229,6 +229,11 @@ where
 			.or(var_or_call)
 			.map_with(|e, ex| (e, ex.span()));
 
+		// enum shorthand
+		let enum_shorthand = just(Token::Dot)
+			.ignore_then(select! { Token::Ident(v) => v })
+			.map_with(|v, ex| (Expr::EnumShorthand(v), ex.span()));
+
 		// a lexer error token
 		let bad = select! { Token::Error(text) => text }.try_map(|text, span| {
 			Err(Rich::custom(span, format!("unexpected character `{text}`")))
@@ -363,6 +368,7 @@ where
 
 		// atoms
 		let atom = leaf
+			.or(enum_shorthand)
 			.or(group)
 			.or(tuple)
 			.or(array_init)

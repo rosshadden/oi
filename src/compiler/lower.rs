@@ -86,7 +86,6 @@ impl<'a> Translator<'a> {
 				}
 
 				Expr::Assign { name, value } => {
-					let (val, typ) = self.expr(value)?;
 					let local = self.vars.get(name).cloned().ok_or_else(|| {
 						Diagnostic::new(
 							format!("cannot assign to undefined variable `{name}`"),
@@ -103,6 +102,7 @@ impl<'a> Translator<'a> {
 						.with_label("declared without `mut`")
 						.with_note(format!("use `mut {name} := ...` to allow assignment")));
 					}
+					let (val, typ) = self.check_expr(value, &local.typ)?;
 					if typ != local.typ {
 						return Err(Diagnostic::new(
 							format!(
@@ -568,7 +568,7 @@ impl<'a> Translator<'a> {
 
 			for (j, pat) in arm.patterns.iter().enumerate() {
 				let sv = self.b.use_var(sv_var);
-				let (pv, pt) = self.expr(pat)?;
+				let (pv, pt) = self.check_expr(pat, &st)?;
 				if pt != st {
 					return Err(Diagnostic::new(
 						format!("match pattern ({pt:?}) does not match subject ({st:?})"),
@@ -875,6 +875,13 @@ impl<'a> Translator<'a> {
 			Expr::Float(x) => Ok((self.b.ins().f64const(*x), Typ::Float(64))),
 			Expr::String(s) => Ok((self.str_const(s), Typ::Str)),
 			Expr::Atom(name) => Ok((self.atom_const(name), Typ::Atom)),
+
+			Expr::EnumShorthand(name) => Err(Diagnostic::new(
+				format!("cannot infer the enum type of `.{name}` here"),
+				expr.1.into_range(),
+			)
+			.with_label("no enum type is expected in this position")
+			.with_note(format!("qualify it, e.g. `Color.{name}`"))),
 
 			Expr::Ident(name) => {
 				let local = self.vars.get(name).cloned().ok_or_else(|| {
@@ -1324,16 +1331,10 @@ impl<'a> Translator<'a> {
 				// enum variants
 				if let Expr::Ident(name) = &tuple.0
 					&& !self.vars.contains_key(name)
-					&& let Some(variants) = self.enums.get(name)
+					&& self.enums.contains_key(name)
 				{
-					let disc = variants.iter().position(|v| v == field).ok_or_else(|| {
-						Diagnostic::new(
-							format!("enum `{name}` has no variant `{field}`"),
-							expr.1.into_range(),
-						)
-						.with_label("no such variant")
-					})?;
-					let v = self.b.ins().iconst(self.int, disc as i64);
+					let disc = self.variant_disc(name, field, expr.1)?;
+					let v = self.b.ins().iconst(self.int, disc);
 					return Ok((v, Typ::Enum(name.clone())));
 				}
 
@@ -1691,9 +1692,9 @@ impl<'a> Translator<'a> {
 							.with_label("wrong number of fields"));
 						}
 						for (i, (_, value)) in fields.iter().enumerate() {
-							let (val, vtyp) = self.expr(value)?;
-							let expected = &struct_fields[i].typ;
-							if &vtyp != expected {
+							let expected = struct_fields[i].typ.clone();
+							let (val, vtyp) = self.check_expr(value, &expected)?;
+							if vtyp != expected {
 								return Err(Diagnostic::new(
 									format!("expected {expected:?}, got {vtyp:?}"),
 									value.1.into_range(),
@@ -1723,9 +1724,9 @@ impl<'a> Translator<'a> {
 									)
 									.with_label("no such field")
 								})?;
-							let (val, vtyp) = self.expr(value)?;
-							let expected = &struct_fields[idx].typ;
-							if &vtyp != expected {
+							let expected = struct_fields[idx].typ.clone();
+							let (val, vtyp) = self.check_expr(value, &expected)?;
+							if vtyp != expected {
 								return Err(Diagnostic::new(
 									format!("expected {expected:?}, got {vtyp:?}"),
 									value.1.into_range(),
@@ -1982,9 +1983,42 @@ impl<'a> Translator<'a> {
 			(Expr::Float(x), Typ::Float(w)) => {
 				self.float_lit(if neg { -*x } else { *x }, *w, value.1)?
 			}
+			(Expr::EnumShorthand(name), Typ::Enum(typ)) => {
+				let disc = self.variant_disc(typ, name, value.1)?;
+				self.b.ins().iconst(self.int, disc)
+			}
 			_ => return Ok(None),
 		};
 		Ok(Some(v))
+	}
+
+	// The discriminant of `variant` in enum `typ`.
+	fn variant_disc(&self, typ: &str, variant: &str, span: Span) -> Result<i64, Diagnostic> {
+		self.enums
+			.get(typ)
+			.and_then(|vs| vs.iter().position(|v| v == variant))
+			.map(|d| d as i64)
+			.ok_or_else(|| {
+				Diagnostic::new(
+					format!("enum `{typ}` has no variant `{variant}`"),
+					span.into_range(),
+				)
+				.with_label("no such variant")
+			})
+	}
+
+	// Evaluate `value` against an expected type, resolving `.variant` shorthands via coercion.
+	fn check_expr(
+		&mut self,
+		value: &Spanned<Expr>,
+		target: &Typ,
+	) -> Result<(Value, Typ), Diagnostic> {
+		if let Expr::EnumShorthand(_) = &value.0
+			&& let Some(v) = self.coerce_lit(value, target)?
+		{
+			return Ok((v, target.clone()));
+		}
+		self.expr(value)
 	}
 
 	fn float_lit(&mut self, x: f64, w: u16, span: Span) -> Result<Value, Diagnostic> {
@@ -2112,8 +2146,15 @@ impl<'a> Translator<'a> {
 		r: &Spanned<Expr>,
 		span: Span,
 	) -> Result<(Value, Typ), Diagnostic> {
-		let (lv, lt) = self.expr(l)?;
-		let (rv, rt) = self.expr(r)?;
+		// evaluate the typed/pinned side first so a `.variant` shorthand can borrow its enum type
+		let ((lv, lt), (rv, rt)) = if let Expr::EnumShorthand(_) = &l.0 {
+			let (rv, rt) = self.expr(r)?;
+			(self.check_expr(l, &rt)?, (rv, rt))
+		} else {
+			let (lv, lt) = self.expr(l)?;
+			let rhs = self.check_expr(r, &lt)?;
+			((lv, lt), rhs)
+		};
 
 		// () == ()
 		if let (Typ::Tuple(lf), Typ::Tuple(rf)) = (&lt, &rt) {
