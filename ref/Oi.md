@@ -98,6 +98,7 @@
 - [x] a way to type a var without declaring it, like `var` in Go `go`
 - [ ] `loop match {...}` `revo`
 - [ ] `Contains` trait that lets any type be used with `in` operator
+- [ ] Algebraic Data Types (ADT) `rust`
 ## consider
 - C++20 uses `operator|`, a naked `|` for pipelines
 	- back on the table now that `|x|` lambda fences are gone

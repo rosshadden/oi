@@ -353,30 +353,35 @@ assert!(Point{1, 0} + Point{2, 3} == Point{3, 3})
 
 ## traits
 
-struct Dog {
-	kind string
-}
-impl Dog {
-	fn speak(self) string { "woof" }
-}
-
-struct Cat {
-	kind string
-}
-impl Cat {
-	fn speak(self) string { "meow" }
-}
-
+# a trait is a set of behaviors and/or data
 trait Animal {
+	# field requirement
 	kind string
-	speak() string
-}
-impl Animal {
-	# traits can have their own methods that use other defined fields and methods
+
+	# method requirement
+	fn speak(self) string
+
+	# default methods build on the requirements
+	# may be overridden
 	fn shout(self) string {
 		self.speak().upper()
 	}
 }
+
+struct Dog { kind string }
+struct Cat { kind string }
+
+# traits are satisfied by an explicit `impl`
+impl Animal for Dog { fn speak(self) string { "woof" } }
+impl Animal for Cat { fn speak(self) string { "meow" } }
+
+# an embedded struct can satisfy requirements too
+struct Meta { kind string, id int }
+struct Enemy {
+	Meta
+	hp int
+}
+impl Animal for Enemy { fn speak(self) string { "rawr" } }
 
 fn demo_traits() {
 	dog := Dog{"Collie"}
@@ -398,7 +403,8 @@ impl Animal for Person {
 # TODO: nail down syntax for trait checking. this is english for clarity, not final form
 assert!(Person is of Animal)
 
-# you can optionally make traits implicit with @implicit
+# traits can use `@implicit` to opt-in to structural / duck typing
+# any type with the right shape satisfies it even without an impl block
 @implicit
 trait Fruit {
 	seeds bool
@@ -419,6 +425,122 @@ impl Fruit for Apple
 assert!(Kiwi is of Fruit)
 assert!(Apple is of Fruit)
 assert!(Bike is not of Fruit)
+
+## static vs dynamic dispatch
+
+# A trait used as a bound is static: monomorphized per concrete type.
+# no vtable, no indirection, no allocation
+fn greet<A: Animal>(a A) { print(a.shout()) }
+
+# A trait used directly as a type is dynamic: a trait object behind a vtable.
+zoo := []Animal{ Dog{"collie"}, Cat{"mau"}, Enemy{ kind: "boss", hp: 9 } }
+loop a in zoo { print "a {a.kind} says {a.speak()}" }
+
+## associated types
+
+# a related type chosen per impl
+trait Iterator {
+	type Item
+	fn next(mut self) ?Item
+}
+struct Range { mut cur int, end int }
+impl Iterator for Range {
+	type Item = int
+	fn next(mut self) ?int {
+		if self.cur >= self.end { return none }
+		defer self.cur += 1
+		self.cur
+	}
+}
+
+## supertraits
+
+# require another trait alongside this one
+# every Ord is also an Eq
+trait Ord: Eq {
+	fn cmp(self, other Self) Ordering
+}
+fn max<T: Ord>(a T, b T) T {
+	if a.cmp(b) == .greater { a } else { b }
+}
+
+## associated constants
+
+trait Bounded {
+	const min Self
+	const max Self
+}
+impl Bounded for i8 {
+	const min = -128
+	const max = 127
+}
+
+## blanket impls
+
+# implement a trait for every type that already meets a bound
+trait ToString {
+	fn to_string(self) string
+}
+impl<T: Display> ToString for T {
+	fn to_string(self) string { self.display() }
+}
+
+## marker traits
+
+# traits don't have to have methods or fields or anything
+trait Copy {}
+impl Copy for Point {}
+
+## composite types
+
+#{
+	every type constructor composes with every other, to any depth
+	
+	| Oi Syntax | Meaning | Rust Equivalent |
+	| --- | --- | --- |
+	| `[]T` | Dynamic array | `Vec<T>` |
+	| `[N]T` | Fixed array | `[T; N]` |
+	| `map[K]V` | Map | `HashMap<K, V>` |
+	| `(A, B)` | Tuple | `(A, B)` |
+	| `?T` | Optional | `Option<T>` |
+	| `!T` | Result | `Result<T, _>` (error is any `Error`) |
+	| `&T` | Reference / heap | `&T` |
+	| `fn (A) R` | Function | `fn(A) -> R` |
+	| `Foo<T>` | Generic instance | `Foo<T>` |
+	
+	the prefix constructors (`[]` `[N]` `map[K]` `?` `!` `&`) nest ltr
+	leftmost is outermost, the same way you read Rust's A<B<C>> from the outside in
+}#
+
+# Rust: Result<Vec<Option<String>>, io.Error>
+type Parsed = ![]?string
+
+# order matters
+# these are different types:
+| --- | --- | --- |
+| ?[]int | Option<Vec<i32>> | the whole list may be absent
+| []?int | Vec<Option<i32>> | each slot may be absent
+
+# nest as deep as you like, no special grouping needed
+struct Stress {
+	groups map[string][]User
+	cache map[string]?[]u8
+	handlers []fn (Request) !Response
+	matrix [4][4]f32
+	maybe ?&User
+	tree Tree<![]?string>
+}
+
+# ?T and !T are the ergonomic default. drop to the explicit enum forms (see enums)
+# when you need to name or constrain the wrapped / error type:
+# - `?T  ==  Option<T>`
+# - `!T  ==  Result<T, E>`   for some E: Error
+fn read(path string) Result<[]u8, io.Error> { ... } # error pinned
+fn slurp(path string) ![]u8 { ... } # error left open
+
+# user generics nest exactly like the built-ins, they aren't special
+type Grid<T> = [][]T
+type Lookup<V> = map[string]?V
 
 ## main entrypoint
 
