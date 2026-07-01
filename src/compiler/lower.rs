@@ -1269,15 +1269,23 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::MethodCall { recv, method, args } => {
-				let (recv_val, recv_typ) = self.expr(recv)?;
-				let sname = match &recv_typ {
-					Typ::Struct(name, _) => name.clone(),
-					_ => {
-						return Err(Diagnostic::new(
-							format!("`{recv_typ}` has no methods"),
-							recv.1.into_range(),
-						)
-						.with_label("methods are only defined on structs"));
+				// method call is static when `recv` names a struct
+				let (sname, recv_val) = if let Expr::Ident(name) = &recv.0
+					&& !self.vars.contains_key(name)
+					&& self.structs.contains_key(name)
+				{
+					(name.clone(), None)
+				} else {
+					let (recv_val, recv_typ) = self.expr(recv)?;
+					match &recv_typ {
+						Typ::Struct(name, _) => (name.clone(), Some(recv_val)),
+						_ => {
+							return Err(Diagnostic::new(
+								format!("`{recv_typ}` has no methods"),
+								recv.1.into_range(),
+							)
+							.with_label("methods are only defined on structs"));
+						}
 					}
 				};
 				let key = format!("{sname}.{method}");
@@ -1288,7 +1296,7 @@ impl<'a> Translator<'a> {
 					)
 					.with_label("no such method")
 				})?;
-				self.call_sig(&key, sig, Some(recv_val), args, expr.1)
+				self.call_sig(&key, sig, recv_val, args, expr.1)
 			}
 
 			// a tuple is a heap block of pointer-sized slots, one per field
