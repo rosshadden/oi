@@ -71,6 +71,37 @@ fn static_method_with_args() {
 }
 
 #[test]
+fn self_type_and_literal() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		impl Point {
+			fn new() Self { Self {} }
+			fn sum(self) int { self.x + self.y }
+		}
+		Point.new().sum()
+	"};
+	check(src, "0");
+}
+
+#[test]
+fn self_param_and_fields() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		impl Point {
+			fn add(self, other Self) Self { Self{self.x + other.x, self.y + other.y} }
+		}
+		Point{1, 2}.add(Point{3, 4}).x
+	"};
+	check(src, "4");
+}
+
+#[test]
+fn self_outside_impl() {
+	let err = fail("Self{}");
+	assert!(err.contains("no enclosing impl"), "{err}");
+}
+
+#[test]
 fn no_such_method() {
 	let err = fail(indoc! {"
 		struct P { x int }
