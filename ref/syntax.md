@@ -874,7 +874,12 @@ fn main() {
 	# on a later pass, despite nothing at the callsites changing, adding this enum definition would add strong typing and copiler checking
 	# STYLE: if an enum exists, prefer `.foo`
 	enum State { loading ready error }
+
+	# atoms work in type position
+	fn status() :ok { :ok }
 	
+	# TODO: add example with union types
+
 	## types
 	
 	# type aliases

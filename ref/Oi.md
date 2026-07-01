@@ -91,6 +91,7 @@
 - [ ] `@nozero`
 - [ ] ownership / memory model
 - [ ] `discard` and/or `pass`
+- [ ] union types
 - [ ] async
 	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
 - [ ] FFI
