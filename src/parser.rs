@@ -13,6 +13,12 @@ enum Subscript {
 	Slice(Option<Spanned<Expr>>, Option<Spanned<Expr>>),
 }
 
+// field/tuple/method access
+enum Access {
+	Fields(Vec<String>),
+	Method(String, Vec<Spanned<Expr>>),
+}
+
 pub fn parser<'token, I>()
 -> impl Parser<'token, I, Vec<Spanned<Expr>>, extra::Err<Rich<'token, Token>>>
 where
@@ -211,7 +217,7 @@ where
 			.map(|(name, fields)| Expr::StructLit { name, fields });
 
 		let var_or_call = select! { Token::Ident(name) => name }
-			.then(args.map(Some).or_not().map(Option::flatten))
+			.then(args.clone().map(Some).or_not().map(Option::flatten))
 			.map(|(name, args)| match args {
 				Some(args) => Expr::Call { name, args },
 				None => Expr::Ident(name),
@@ -369,12 +375,17 @@ where
 			.or(continue_expr)
 			.or(bad);
 
-		let field_access = select! {
-			Token::Int(n) => vec![n.to_string()],
-			Token::Ident(name) => vec![name],
-			// split at `.` and fold left, like rustc does
-			Token::Float(s) => s.split('.').map(String::from).collect(),
-		};
+		// field/tuple/method access
+		let access = choice((
+			select! { Token::Int(n) => Access::Fields(vec![n.to_string()]) },
+			select! { Token::Float(s) => Access::Fields(s.split('.').map(String::from).collect()) },
+			select! { Token::Ident(name) => name }
+				.then(args.clone().or_not())
+				.map(|(name, call)| match call {
+					Some(args) => Access::Method(name, args),
+					None => Access::Fields(vec![name]),
+				}),
+		));
 
 		// array subscripts
 		let no_start_range = just(Token::DotDot)
@@ -402,11 +413,9 @@ where
 			.delimited_by(just(Token::LBracket), just(Token::RBracket));
 
 		atom.pratt((
-			// fields
-			postfix(
-				8,
-				just(Token::Dot).ignore_then(field_access),
-				|lhs, parts, ex| {
+			// field/tuple/method access
+			postfix(8, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
+				Access::Fields(parts) => {
 					let mut cur = lhs;
 					for field in parts {
 						cur = (
@@ -418,8 +427,16 @@ where
 						);
 					}
 					cur
-				},
-			),
+				}
+				Access::Method(method, args) => (
+					Expr::MethodCall {
+						recv: Box::new(lhs),
+						method,
+						args,
+					},
+					ex.span(),
+				),
+			}),
 			// indexing and slicing
 			postfix(8, subscript, |lhs, sub, ex| {
 				let collection = Box::new(lhs);
@@ -506,11 +523,12 @@ where
 	expr.define(definition);
 
 	// param type is kept for the compiler to resolve
+	// a bare `self` receiver gets the type `Self`
 	let param = select! { Token::Ident(name) => name }
-		.then(select! { Token::Ident(typ) => typ })
+		.then(select! { Token::Ident(typ) => typ }.or_not())
 		.map_with(|(name, typ), ex| Param {
+			typ: typ.unwrap_or_else(|| "Self".into()),
 			name,
-			typ,
 			span: ex.span(),
 			default: None,
 		});
@@ -568,9 +586,30 @@ where
 		.then(type_expr)
 		.map_with(|(name, typ), ex| (Expr::TypeAlias { name, typ }, ex.span()));
 
+	let impl_block = just(Token::Impl)
+		.ignore_then(select! { Token::Ident(name) => name })
+		.then(
+			func.clone()
+				.repeated()
+				.collect::<Vec<_>>()
+				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
+		)
+		.map_with(|(typ, mut methods), ex| {
+			for (m, _) in &mut methods {
+				if let Expr::Fn { params, .. } = m
+					&& let Some(recv) = params.first_mut()
+					&& recv.name == "self"
+				{
+					recv.typ = typ.clone();
+				}
+			}
+			(Expr::Impl { typ, methods }, ex.span())
+		});
+
 	struct_def
 		.or(type_alias)
 		.or(func)
+		.or(impl_block)
 		.or(stmt)
 		.repeated()
 		.collect()

@@ -14,7 +14,7 @@ mod lower;
 use lower::Translator;
 
 type FnItem<'a> = (
-	&'a str,
+	String,
 	&'a [Param],
 	&'a Option<Spanned<TypeExpr>>,
 	&'a [Spanned<Expr>],
@@ -290,13 +290,20 @@ impl Compiler {
 					struct_items.push((name.as_str(), fields.as_slice()))
 				}
 				Expr::TypeAlias { name, typ } => alias_items.push((name.as_str(), typ)),
+				Expr::Impl { typ, methods } => {
+					for m in methods {
+						if let Expr::Fn { name, params, ret, body } = &m.0 {
+							others.push((format!("{typ}.{name}"), params, ret, body));
+						}
+					}
+				}
 				Expr::Fn { name, body, .. } if name == "main" => main_body = Some(body),
 				Expr::Fn {
 					name,
 					params,
 					ret,
 					body,
-				} => others.push((name.as_str(), params, ret, body)),
+				} => others.push((name.clone(), params, ret, body)),
 				Expr::Doc(_) => {}
 				_ => loose.push(item),
 			}
@@ -324,7 +331,7 @@ impl Compiler {
 		}
 
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();
-		for &(name, params, ret, body) in &others {
+		for (key, params, ret, body) in &others {
 			let params: Vec<(String, Typ)> = params
 				.iter()
 				.map(|p| {
@@ -341,18 +348,11 @@ impl Compiler {
 				})
 				.transpose()?;
 			let stmts: Vec<&Spanned<Expr>> = body.iter().collect();
-			let (id, ret) = self.compile_fn(
-				int,
-				&format!("oi_{name}"),
-				&params,
-				ret,
-				&stmts,
-				&funcs,
-				&structs,
-			)?;
+			let sym = format!("oi_{}", key.replace('.', "__"));
+			let (id, ret) = self.compile_fn(int, &sym, &params, ret, &stmts, &funcs, &structs)?;
 			let param_typs = params.iter().map(|(_, t)| t.clone()).collect();
 			funcs.insert(
-				name.to_string(),
+				key.clone(),
 				FnSig {
 					id,
 					params: param_typs,

@@ -44,6 +44,12 @@ pub enum Expr {
 		args: Vec<Spanned<Expr>>,
 	},
 
+	MethodCall {
+		recv: Box<Spanned<Expr>>,
+		method: String,
+		args: Vec<Spanned<Expr>>,
+	},
+
 	Return(Option<Box<Spanned<Expr>>>),
 
 	// control flow
@@ -126,6 +132,11 @@ pub enum Expr {
 		name: String,
 		field: String,
 		value: Box<Spanned<Expr>>,
+	},
+
+	Impl {
+		typ: String,
+		methods: Vec<Spanned<Expr>>,
 	},
 
 	// `type Name = TypeExpr`

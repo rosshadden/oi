@@ -1265,37 +1265,30 @@ impl<'a> Translator<'a> {
 					Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
 						.with_label("not defined")
 				})?;
-				if args.len() != sig.params.len() {
-					return Err(Diagnostic::new(
-						format!(
-							"`{name}` expects {} argument(s), got {}",
-							sig.params.len(),
-							args.len()
-						),
+				self.call_sig(name, sig, None, args, expr.1)
+			}
+
+			Expr::MethodCall { recv, method, args } => {
+				let (recv_val, recv_typ) = self.expr(recv)?;
+				let sname = match &recv_typ {
+					Typ::Struct(name, _) => name.clone(),
+					_ => {
+						return Err(Diagnostic::new(
+							format!("`{recv_typ}` has no methods"),
+							recv.1.into_range(),
+						)
+						.with_label("methods are only defined on structs"));
+					}
+				};
+				let key = format!("{sname}.{method}");
+				let sig = self.funcs.get(&key).cloned().ok_or_else(|| {
+					Diagnostic::new(
+						format!("`{sname}` has no method `{method}`"),
 						expr.1.into_range(),
 					)
-					.with_label("wrong number of arguments"));
-				}
-				let mut vals = Vec::with_capacity(args.len());
-				for (arg, expected) in args.iter().zip(&sig.params) {
-					let (val, typ) = self.expr(arg)?;
-					if &typ != expected {
-						return Err(Diagnostic::new(
-							format!("expected {expected} argument, got {typ}"),
-							arg.1.into_range(),
-						)
-						.with_label("wrong argument type"));
-					}
-					vals.push(val);
-				}
-				let func = self.module.declare_func_in_func(sig.id, self.b.func);
-				let call = self.b.ins().call(func, &vals);
-				let ret_val = if matches!(sig.ret, Typ::Tuple(ref f) if f.is_empty()) {
-					self.b.ins().iconst(self.int, 0)
-				} else {
-					self.b.inst_results(call)[0]
-				};
-				Ok((ret_val, sig.ret))
+					.with_label("no such method")
+				})?;
+				self.call_sig(&key, sig, Some(recv_val), args, expr.1)
 			}
 
 			// a tuple is a heap block of pointer-sized slots, one per field
@@ -1740,6 +1733,7 @@ impl<'a> Translator<'a> {
 			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),
 			Expr::Fn { .. } => unreachable!("fn definition in expression position"),
 			Expr::StructDef { .. } => unreachable!("struct definition in expression position"),
+			Expr::Impl { .. } => unreachable!("impl block in expression position"),
 			Expr::TypeAlias { .. } => unreachable!("type alias in expression position"),
 			Expr::FieldAssign { .. } => unreachable!("field assign in expression position"),
 			Expr::Return(..) => unreachable!("return in expression position"),
@@ -2199,6 +2193,55 @@ impl<'a> Translator<'a> {
 			.declare_function(name, Linkage::Import, &sig)
 			.unwrap();
 		self.module.declare_func_in_func(id, self.b.func)
+	}
+
+	// Emit a call to a resolved fn.
+	fn call_sig(
+		&mut self,
+		name: &str,
+		sig: FnSig,
+		recv: Option<Value>,
+		args: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		let self_n = recv.is_some() as usize;
+		if args.len() + self_n != sig.params.len() {
+			return Err(Diagnostic::new(
+				format!(
+					"`{name}` expects {} argument(s), got {}",
+					sig.params.len() - self_n,
+					args.len()
+				),
+				span.into_range(),
+			)
+			.with_label("wrong number of arguments"));
+		}
+		let mut vals = Vec::with_capacity(args.len() + self_n);
+		let mut expected = sig.params.iter();
+		if let Some(recv) = recv {
+			expected.next();
+			vals.push(recv);
+		}
+		for arg in args {
+			let (val, typ) = self.expr(arg)?;
+			let want = expected.next().unwrap();
+			if &typ != want {
+				return Err(Diagnostic::new(
+					format!("expected {want} argument, got {typ}"),
+					arg.1.into_range(),
+				)
+				.with_label("wrong argument type"));
+			}
+			vals.push(val);
+		}
+		let func = self.module.declare_func_in_func(sig.id, self.b.func);
+		let call = self.b.ins().call(func, &vals);
+		let ret_val = if matches!(sig.ret, Typ::Tuple(ref f) if f.is_empty()) {
+			self.b.ins().iconst(self.int, 0)
+		} else {
+			self.b.inst_results(call)[0]
+		};
+		Ok((ret_val, sig.ret))
 	}
 
 	fn call_concat(&mut self, a: Value, b: Value) -> Value {
