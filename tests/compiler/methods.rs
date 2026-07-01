@@ -48,6 +48,29 @@ fn method_returns_struct_field() {
 }
 
 #[test]
+fn static_method() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		impl Point {
+			fn origin() Point { Point{0, 0} }
+			fn sum(self) int { self.x + self.y }
+		}
+		Point.origin().sum()
+	"};
+	check(src, "0");
+}
+
+#[test]
+fn static_method_with_args() {
+	let src = indoc! {"
+		struct Point { x int, y int }
+		impl Point { fn make(a int, b int) Point { Point{a, b} } }
+		Point.make(3, 4).x
+	"};
+	check(src, "3");
+}
+
+#[test]
 fn no_such_method() {
 	let err = fail(indoc! {"
 		struct P { x int }
