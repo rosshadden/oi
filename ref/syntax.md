@@ -430,7 +430,7 @@ assert!(Bike is not of Fruit)
 
 # A trait used as a bound is static: monomorphized per concrete type.
 # no vtable, no indirection, no allocation
-fn greet<A: Animal>(a A) { print(a.shout()) }
+fn greet[A: Animal](a A) { print(a.shout()) }
 
 # A trait used directly as a type is dynamic: a trait object behind a vtable.
 zoo := []Animal{ Dog{"collie"}, Cat{"mau"}, Enemy{ kind: "boss", hp: 9 } }
@@ -460,7 +460,7 @@ impl Iterator for Range {
 trait Ord: Eq {
 	fn cmp(self, other Self) Ordering
 }
-fn max<T: Ord>(a T, b T) T {
+fn max[T: Ord](a T, b T) T {
 	if a.cmp(b) == .greater { a } else { b }
 }
 
@@ -481,7 +481,7 @@ impl Bounded for i8 {
 trait ToString {
 	fn to_string(self) string
 }
-impl<T: Display> ToString for T {
+impl[T: Display] ToString for T {
 	fn to_string(self) string { self.display() }
 }
 
@@ -500,47 +500,51 @@ impl Copy for Point {}
 	| --- | --- | --- |
 	| `[]T` | Dynamic array | `Vec<T>` |
 	| `[N]T` | Fixed array | `[T; N]` |
-	| `map[K]V` | Map | `HashMap<K, V>` |
+	| `Map[K, V]` | Map | `HashMap<K, V>` |
 	| `(A, B)` | Tuple | `(A, B)` |
 	| `?T` | Optional | `Option<T>` |
 	| `!T` | Result | `Result<T, _>` (error is any `Error`) |
 	| `&T` | Reference / heap | `&T` |
 	| `fn (A) R` | Function | `fn(A) -> R` |
-	| `Foo<T>` | Generic instance | `Foo<T>` |
+	| `Foo[T]` | Generic instance | `Foo<T>` |
+	| `Trait` | Trait object | `&dyn Trait` |
 	
-	the prefix constructors (`[]` `[N]` `map[K]` `?` `!` `&`) nest ltr
-	leftmost is outermost, the same way you read Rust's A<B<C>> from the outside in
+	the prefix shorthands (`[]` `[N]` `?` `!` `&`) read left-to-right
+	everything else nests in brackets
 }#
 
-# Rust: Result<Vec<Option<String>>, io.Error>
-type Parsed = ![]?string
+# nests to any depth
+type Parsed = Result[[]?Token, ParseError]
 
-# order matters
-# these are different types:
-| --- | --- | --- |
-| ?[]int | Option<Vec<i32>> | the whole list may be absent
-| []?int | Vec<Option<i32>> | each slot may be absent
+# order matters. these are different types
+# `?[]int` -> `Option[[]int]` -> the whole list may be absent
+# `[]?int` -> `[]Option[int]` -> each slot may be absent
 
-# nest as deep as you like, no special grouping needed
-struct Stress {
-	groups map[string][]User
-	cache map[string]?[]u8
+struct World {
+	entities []Entity
+	sessions Map[UserId, []Session]
+	cache Map[string, ?[]u8]
 	handlers []fn (Request) !Response
-	matrix [4][4]f32
-	maybe ?&User
-	tree Tree<![]?string>
+	grid [16][16]Tile
 }
 
-# ?T and !T are the ergonomic default. drop to the explicit enum forms (see enums)
-# when you need to name or constrain the wrapped / error type:
-# - `?T  ==  Option<T>`
-# - `!T  ==  Result<T, E>`   for some E: Error
-fn read(path string) Result<[]u8, io.Error> { ... } # error pinned
+# ?T and !T are shorthands
+# `?T` -> `Option[T]`
+# `!T` -> `Result[T, Error]`
+# the long form may be used to naming / constraining the error, or clearer nesting
+fn read(path string) Result[[]u8, io.Error] { ... } # error pinned
 fn slurp(path string) ![]u8 { ... } # error left open
 
-# user generics nest exactly like the built-ins, they aren't special
-type Grid<T> = [][]T
-type Lookup<V> = map[string]?V
+# user generics nest exactly like the built-ins
+type Grid[T] = [][]T
+type Lookup[V] = Map[string, ?V]
+
+# in expression position a bracket is always an index
+grid[x][y] = 0
+
+# name type args on a value with `as`, for when there's nothing to infer from
+empty := Stack{} as Stack[int]
+meters := Tagged{ value: 5.0 } as Tagged[Meters]
 
 ## main entrypoint
 
@@ -559,6 +563,7 @@ fn main() {
 	a int := 2
 	b string := "hi"
 	c Car := Car{}
+	m Map[int, string] := Map{}
 
 	# inferred
 	no_mute := "immutable"
@@ -709,7 +714,7 @@ fn main() {
 		two: 2
 	}
 	print(num_map["one"])
-	mut typed_map := map[string]int{}
+	mut typed_map Map[string, int]
 	typed_map["three"] = 4
 	typed_map.delete["three"]
 	
@@ -1142,11 +1147,11 @@ fn main() {
 	}
 	
 	# ?T and !T are syntax suger for these:
-	enum Option<T> {
+	enum Option[T] {
 		some(T)
 		none
 	}
-	enum Result<T, E> {
+	enum Result[T, E] {
 		ok(T)
 		err(E)
 	}
@@ -1523,15 +1528,15 @@ fn main() {
 	# function calls can have comptime args
 	fn open_typed(comp T type, path string) !T {
 		raw := open(path)!
-		deserialize<T>(raw)
+		deserialize(T, raw)
 	}
 	
 	# generics are sugar for comp type params
-	fn first<T>(xs []T) ?T {
+	fn first[T](xs []T) ?T {
 		if xs.len() == 0 { none } else { Some(xs[0]) }
 	}
 	# generics can have trait guards
-	fn max<T: Ord>(a T, b T) T {
+	fn max[T: Ord](a T, b T) T {
 		if a > b { a } else { b }
 	}
 	fn max(comp T type, a T, b T) T where T: Ord { ... }
@@ -1577,7 +1582,7 @@ fn main() {
 	vec!(1, 2, 3)
 
 	# reflection in `comp`
-	fn debug_print<T>(value T) {
+	fn debug_print[T](value T) {
 		comp for field in type_info(T).fields {
 			println("{field.name} = {value.(field.name)}")
 		}
@@ -1599,7 +1604,7 @@ assert! foo.bar() == 5
 ## stdlib
 
 # this is stdlib print
-fn print<T: Display>(value T)
+fn print[T: Display](value T)
 
 # I'm honestly not yet sure which of these should be macros vs functions
 print(value) # stdout, with newline
