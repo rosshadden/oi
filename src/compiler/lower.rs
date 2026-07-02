@@ -1290,6 +1290,17 @@ impl<'a> Translator<'a> {
 					(name.clone(), None)
 				} else {
 					let (recv_val, recv_typ) = self.expr(recv)?;
+					if let Typ::Enum(ename) = &recv_typ {
+						if method == "str" && args.is_empty() {
+							let s = self.enum_name_str(ename, recv_val);
+							return Ok((s, Typ::Str));
+						}
+						return Err(Diagnostic::new(
+							format!("enum `{ename}` has no method `{method}`"),
+							expr.1.into_range(),
+						)
+						.with_label("no such method"));
+					}
 					match &recv_typ {
 						Typ::Struct(name, _) => (name.clone(), Some(recv_val)),
 						_ => {
@@ -2462,6 +2473,19 @@ impl<'a> Translator<'a> {
 			.call(func, &[tag, bits, width, quote, stderr_v]);
 	}
 
+	// Enum `Display`
+	fn enum_name_str(&mut self, name: &str, val: Value) -> Value {
+		let variants = self.enums.get(name).cloned().unwrap_or_default();
+		let mut ptr = self.str_const("");
+		for (variant, disc) in &variants {
+			let s = self.str_const(variant);
+			let disc = self.b.ins().iconst(self.int, *disc);
+			let hit = self.b.ins().icmp(IntCC::Equal, val, disc);
+			ptr = self.b.ins().select(hit, s, ptr);
+		}
+		ptr
+	}
+
 	pub fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool, stderr: bool) {
 		match typ {
 			Typ::Tuple(fields) => {
@@ -2542,14 +2566,7 @@ impl<'a> Translator<'a> {
 			}
 
 			Typ::Enum(name) => {
-				let variants = self.enums.get(name).cloned().unwrap_or_default();
-				let mut ptr = self.str_const("");
-				for (variant, disc) in &variants {
-					let s = self.str_const(variant);
-					let disc = self.b.ins().iconst(self.int, *disc);
-					let hit = self.b.ins().icmp(IntCC::Equal, val, disc);
-					ptr = self.b.ins().select(hit, s, ptr);
-				}
+				let ptr = self.enum_name_str(name, val);
 				self.emit_frag(runtime::Tag::Raw, ptr, 0, false, stderr);
 			}
 

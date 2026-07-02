@@ -252,3 +252,23 @@ fn compare_via_int() {
 		"true",
 	);
 }
+
+#[test]
+fn str_method() {
+	check("enum Color { red green blue }\nColor.blue.str()", "blue");
+}
+
+#[test]
+fn str_method_concat() {
+	check(
+		r#"enum Color { red green blue }
+		"the color is " + Color.green.str()"#,
+		"the color is green",
+	);
+}
+
+#[test]
+fn no_such_method() {
+	let err = fail("enum Color { red green blue }\nColor.red.hex()");
+	assert!(err.contains("has no method `hex`"), "got: {err}");
+}
