@@ -1152,6 +1152,8 @@ impl<'a> Translator<'a> {
 							self.b.ins().ireduce(target_cl, v)
 						}
 					}
+					Typ::Enum(_) if target_cl == types::I64 => val,
+					Typ::Enum(_) => self.b.ins().ireduce(target_cl, val),
 					_ => {
 						return Err(Diagnostic::new(
 							format!("cannot cast {typ:?} to i{target}"),
