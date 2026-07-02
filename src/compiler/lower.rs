@@ -1990,7 +1990,7 @@ impl<'a> Translator<'a> {
 			(Expr::Float(x), Typ::Float(w)) => {
 				self.float_lit(if neg { -*x } else { *x }, *w, value.1)?
 			}
-			(Expr::EnumShorthand(name), Typ::Enum(typ)) => {
+			(Expr::EnumShorthand(name) | Expr::Atom(name), Typ::Enum(typ)) => {
 				let disc = self.variant_disc(typ, name, value.1)?;
 				self.b.ins().iconst(self.int, disc)
 			}
@@ -2013,13 +2013,13 @@ impl<'a> Translator<'a> {
 			})
 	}
 
-	// Evaluate `value` against an expected type, resolving `.variant` shorthands via coercion.
+	// Evaluate `value` against an expected type, resolving `.variant` shorthands and atoms via coercion.
 	fn check_expr(
 		&mut self,
 		value: &Spanned<Expr>,
 		target: &Typ,
 	) -> Result<(Value, Typ), Diagnostic> {
-		if let Expr::EnumShorthand(_) = &value.0
+		if matches!(value.0, Expr::EnumShorthand(_) | Expr::Atom(_))
 			&& let Some(v) = self.coerce_lit(value, target)?
 		{
 			return Ok((v, target.clone()));

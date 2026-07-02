@@ -190,3 +190,44 @@ fn negative_disc() {
 fn explicit_disc_default_is_first() {
 	check("enum E { a = 5, b c }\nmut x E\nx", "a");
 }
+
+#[test]
+fn atom_coerces_in_annotated_binding() {
+	check("enum Color { red green blue }\nc Color := :blue\nc", "blue");
+}
+
+#[test]
+fn atom_coerces_in_assignment() {
+	check(
+		"enum Color { red green blue }\nmut c := Color.green\nc = :red\nc",
+		"red",
+	);
+}
+
+#[test]
+fn atom_coerces_in_comparison() {
+	check(
+		"enum Color { red green blue }\nc := Color.red\nc == :red",
+		"true",
+	);
+	check("enum Color { red green blue }\nColor.blue == :blue", "true");
+}
+
+#[test]
+fn atom_coerces_in_struct_field() {
+	check(
+		indoc! {"
+			enum Stat { health mana stamina }
+			struct User { s Stat }
+			u := User{ s: :mana }
+			u.s
+		"},
+		"mana",
+	);
+}
+
+#[test]
+fn atom_unknown_variant() {
+	let err = fail("enum Color { red green blue }\nc Color := :purple");
+	assert!(err.contains("no variant `purple`"), "got: {err}");
+}
