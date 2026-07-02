@@ -611,7 +611,20 @@ where
 				.collect::<Vec<_>>()
 				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
 		)
-		.map_with(|(name, variants), ex| (Expr::EnumDef { name, variants }, ex.span()));
+		.try_map_with(|(name, variants), ex| {
+			let mut next = 0;
+			let mut seen = Vec::new();
+			for (_, val) in &variants {
+				let d = val.unwrap_or(next);
+				if seen.contains(&d) {
+					let msg = format!("discriminant value `{d}` assigned more than once");
+					return Err(Rich::custom(ex.span(), msg));
+				}
+				seen.push(d);
+				next = d + 1;
+			}
+			Ok((Expr::EnumDef { name, variants }, ex.span()))
+		});
 
 	let type_alias = just(Token::Type)
 		.ignore_then(select! { Token::Ident(name) => name })
