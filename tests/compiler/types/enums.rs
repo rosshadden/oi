@@ -187,6 +187,48 @@ fn negative_disc() {
 }
 
 #[test]
+fn payload_construct() {
+	check(
+		"enum Shape { point triangle(f64, f64, f64) }\nShape.triangle(3.0, 4.0, 5.0)",
+		"triangle",
+	);
+}
+
+#[test]
+fn payloadless_variant_of_boxed_enum() {
+	check("enum Opt { none some(int) }\nOpt.none", "none");
+	check("enum Opt { none some(int) }\no Opt := .none\no", "none");
+}
+
+#[test]
+fn payload_enum_default_is_first() {
+	check("enum Opt { none some(int) }\nmut o Opt\no", "none");
+}
+
+#[test]
+fn payload_int_cast_gives_tag() {
+	check("enum Opt { none some(int) }\nint(Opt.some(1))", "1");
+}
+
+#[test]
+fn payload_field_type_mismatch() {
+	let err = fail("enum Opt { none some(int) }\nOpt.some(3.0)");
+	assert!(err.contains("expected int, got float"), "got: {err}");
+}
+
+#[test]
+fn payload_wrong_arity() {
+	let err = fail("enum Opt { none some(int) }\nOpt.some()");
+	assert!(err.contains("takes 1 field(s), got 0"), "got: {err}");
+}
+
+#[test]
+fn payload_eq_deferred() {
+	let err = fail("enum Opt { none some(int) }\nOpt.none == Opt.none");
+	assert!(err.contains("isn't supported yet"), "got: {err}");
+}
+
+#[test]
 fn explicit_disc_default_is_first() {
 	check("enum E { a = 5, b c }\nmut x E\nx", "a");
 }
