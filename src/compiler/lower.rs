@@ -8,7 +8,8 @@ use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, Linkage, Module};
 
 use super::{
-	FieldDef, FnSig, Local, LoopFrame, Op, Typ, cl_int_for_width, cl_type, elem_size, resolve_type,
+	FieldDef, FnSig, Local, LoopFrame, Op, Typ, VariantInfo, cl_int_for_width, cl_type, elem_size,
+	enum_boxed, enum_slots, resolve_type,
 };
 use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned};
 use crate::diagnostics::Diagnostic;
@@ -21,7 +22,7 @@ pub(super) struct Translator<'a> {
 	pub module: &'a mut JITModule,
 	pub funcs: &'a HashMap<String, FnSig>,
 	pub structs: &'a HashMap<String, Vec<FieldDef>>,
-	pub enums: &'a HashMap<String, Vec<(String, i64)>>,
+	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
 	pub string_idx: &'a mut usize,
 	pub atoms: &'a mut HashMap<String, ()>,
 	pub ret: Option<(Typ, Span)>,
@@ -1152,8 +1153,14 @@ impl<'a> Translator<'a> {
 							self.b.ins().ireduce(target_cl, v)
 						}
 					}
-					Typ::Enum(_) if target_cl == types::I64 => val,
-					Typ::Enum(_) => self.b.ins().ireduce(target_cl, val),
+					Typ::Enum(ename) => {
+						let tag = self.enum_tag(ename, val);
+						if target_cl == types::I64 {
+							tag
+						} else {
+							self.b.ins().ireduce(target_cl, tag)
+						}
+					}
 					_ => {
 						return Err(Diagnostic::new(
 							format!("cannot cast {typ:?} to i{target}"),
@@ -1282,6 +1289,14 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::MethodCall { recv, method, args } => {
+				// enum payload
+				if let Expr::Ident(name) = &recv.0
+					&& !self.vars.contains_key(name)
+					&& self.enums.contains_key(name)
+				{
+					return self.construct_variant(name, method, args, expr.1);
+				}
+
 				// method call is static when `recv` names a struct
 				let (sname, recv_val) = if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
@@ -1346,9 +1361,7 @@ impl<'a> Translator<'a> {
 					&& !self.vars.contains_key(name)
 					&& self.enums.contains_key(name)
 				{
-					let disc = self.variant_disc(name, field, expr.1)?;
-					let v = self.b.ins().iconst(self.int, disc);
-					return Ok((v, Typ::Enum(name.clone())));
+					return self.construct_variant(name, field, &[], expr.1);
 				}
 
 				let (ptr, typ) = self.expr(tuple)?;
@@ -1898,8 +1911,8 @@ impl<'a> Translator<'a> {
 					.enums
 					.get(name)
 					.and_then(|vs| vs.first())
-					.map_or(0, |(_, d)| *d);
-				self.b.ins().iconst(self.int, disc)
+					.map_or(0, |v| v.disc);
+				self.make_enum(name, disc, &[])
 			}
 			Typ::Tuple(fields) if fields.is_empty() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
@@ -2004,26 +2017,81 @@ impl<'a> Translator<'a> {
 				self.float_lit(if neg { -*x } else { *x }, *w, value.1)?
 			}
 			(Expr::EnumShorthand(name) | Expr::Atom(name), Typ::Enum(typ)) => {
-				let disc = self.variant_disc(typ, name, value.1)?;
-				self.b.ins().iconst(self.int, disc)
+				self.construct_variant(typ, name, &[], value.1)?.0
 			}
 			_ => return Ok(None),
 		};
 		Ok(Some(v))
 	}
 
-	// The discriminant of `variant` in enum `typ`.
-	fn variant_disc(&self, typ: &str, variant: &str, span: Span) -> Result<i64, Diagnostic> {
-		self.enums
-			.get(typ)
-			.and_then(|vs| vs.iter().find(|(v, _)| v == variant).map(|(_, d)| *d))
+	// The tag of an enum value.
+	fn enum_tag(&mut self, name: &str, val: Value) -> Value {
+		if enum_boxed(self.enums.get(name).map(Vec::as_slice).unwrap_or(&[])) {
+			self.b.ins().load(self.int, MemFlags::new(), val, 0)
+		} else {
+			val
+		}
+	}
+
+	// Build a variant value.
+	// A bare discriminant for fieldless enums, and a heap where that's not possible.
+	fn make_enum(&mut self, name: &str, disc: i64, fields: &[Value]) -> Value {
+		let slots = enum_slots(self.enums.get(name).map(Vec::as_slice).unwrap_or(&[]));
+		if slots == 1 {
+			return self.b.ins().iconst(self.int, disc);
+		}
+		let ptr = self.call_alloc(slots);
+		let tag = self.b.ins().iconst(self.int, disc);
+		self.b.ins().store(MemFlags::new(), tag, ptr, 0);
+		for (i, fv) in fields.iter().enumerate() {
+			self.b
+				.ins()
+				.store(MemFlags::new(), *fv, ptr, ((i + 1) * 8) as i32);
+		}
+		ptr
+	}
+
+	// Make and check enum variant.
+	fn construct_variant(
+		&mut self,
+		name: &str,
+		variant: &str,
+		args: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		let v = self
+			.enums
+			.get(name)
+			.and_then(|vs| vs.iter().find(|v| v.name == variant))
 			.ok_or_else(|| {
 				Diagnostic::new(
-					format!("enum `{typ}` has no variant `{variant}`"),
+					format!("enum `{name}` has no variant `{variant}`"),
 					span.into_range(),
 				)
 				.with_label("no such variant")
-			})
+			})?;
+		let (disc, payload) = (v.disc, v.payload.clone());
+		if args.len() != payload.len() {
+			let msg = format!(
+				"`{name}.{variant}` takes {} field(s), got {}",
+				payload.len(),
+				args.len()
+			);
+			return Err(
+				Diagnostic::new(msg, span.into_range()).with_label("wrong number of fields")
+			);
+		}
+		let mut fields = Vec::with_capacity(args.len());
+		for (arg, ft) in args.iter().zip(&payload) {
+			let (fv, at) = self.check_expr(arg, ft)?;
+			if at != *ft {
+				let msg = format!("expected {ft}, got {at}");
+				return Err(Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"));
+			}
+			fields.push(fv);
+		}
+		let val = self.make_enum(name, disc, &fields);
+		Ok((val, Typ::Enum(name.to_string())))
 	}
 
 	// Evaluate `value` against an expected type, resolving `.variant` shorthands and atoms via coercion.
@@ -2208,7 +2276,16 @@ impl<'a> Translator<'a> {
 			| (Typ::USize, Typ::USize)
 			| (Typ::Bool, Typ::Bool)
 			| (Typ::Atom, Typ::Atom) => self.b.ins().icmp(icc, lv, rv),
-			(Typ::Enum(a), Typ::Enum(b)) if a == b => self.b.ins().icmp(icc, lv, rv),
+			(Typ::Enum(a), Typ::Enum(b)) if a == b => {
+				if enum_boxed(self.enums.get(a).map(Vec::as_slice).unwrap_or(&[])) {
+					return Err(Diagnostic::new(
+						format!("`{a}` has payloads, so `==` isn't supported yet"),
+						span.into_range(),
+					)
+					.with_label("match on the variant instead"));
+				}
+				self.b.ins().icmp(icc, lv, rv)
+			}
 			(Typ::Float(_), Typ::Float(_)) => self.b.ins().fcmp(fcc, lv, rv),
 			(Typ::Str, Typ::Str) if icc == IntCC::Equal || icc == IntCC::NotEqual => {
 				let eq = self.emit_eq(lv, rv, &Typ::Str);
@@ -2473,14 +2550,15 @@ impl<'a> Translator<'a> {
 			.call(func, &[tag, bits, width, quote, stderr_v]);
 	}
 
-	// Enum `Display`
+	// Enum `Display`.
 	fn enum_name_str(&mut self, name: &str, val: Value) -> Value {
+		let tag = self.enum_tag(name, val);
 		let variants = self.enums.get(name).cloned().unwrap_or_default();
 		let mut ptr = self.str_const("");
-		for (variant, disc) in &variants {
-			let s = self.str_const(variant);
-			let disc = self.b.ins().iconst(self.int, *disc);
-			let hit = self.b.ins().icmp(IntCC::Equal, val, disc);
+		for v in &variants {
+			let s = self.str_const(&v.name);
+			let disc = self.b.ins().iconst(self.int, v.disc);
+			let hit = self.b.ins().icmp(IntCC::Equal, tag, disc);
 			ptr = self.b.ins().select(hit, s, ptr);
 		}
 		ptr

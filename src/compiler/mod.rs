@@ -120,15 +120,44 @@ pub(crate) fn elem_size(typ: &Typ) -> i64 {
 	}
 }
 
-// Assign each variant its discriminant.
-fn assign_discs(variants: &[EnumVariant]) -> Vec<(String, i64)> {
+#[derive(Clone)]
+pub(crate) struct VariantInfo {
+	pub name: String,
+	pub disc: i64,
+	pub payload: Vec<Typ>,
+}
+
+// An enum is a tagged union if any variant has fields.
+pub(crate) fn enum_boxed(variants: &[VariantInfo]) -> bool {
+	variants.iter().any(|v| !v.payload.is_empty())
+}
+
+// Slot count of a boxed enum.
+pub(crate) fn enum_slots(variants: &[VariantInfo]) -> usize {
+	// the tag plus the widest variant's fields
+	1 + variants.iter().map(|v| v.payload.len()).max().unwrap_or(0)
+}
+
+// Assign discriminants and resolve payload types.
+// TODO: only primitive payloads work right now
+fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnostic> {
+	let (structs, enums, aliases) = (HashMap::new(), HashMap::new(), HashMap::new());
 	let mut next = 0;
 	variants
 		.iter()
 		.map(|v| {
-			let d = v.disc.unwrap_or(next);
-			next = d + 1;
-			(v.name.clone(), d)
+			let disc = v.disc.unwrap_or(next);
+			next = disc + 1;
+			let payload = v
+				.payload
+				.iter()
+				.map(|(te, span)| resolve_type(te, *span, &structs, &enums, &aliases))
+				.collect::<Result<Vec<_>, _>>()?;
+			Ok(VariantInfo {
+				name: v.name.clone(),
+				disc,
+				payload,
+			})
 		})
 		.collect()
 }
@@ -137,7 +166,7 @@ pub(crate) fn resolve_type(
 	te: &TypeExpr,
 	span: Span,
 	structs: &HashMap<String, Vec<FieldDef>>,
-	enums: &HashMap<String, Vec<(String, i64)>>,
+	enums: &HashMap<String, Vec<VariantInfo>>,
 	aliases: &HashMap<String, TypeExpr>,
 ) -> Result<Typ, Diagnostic> {
 	match te {
@@ -168,7 +197,7 @@ pub(crate) fn typ_from_name(
 	name: &str,
 	span: Span,
 	structs: &HashMap<String, Vec<FieldDef>>,
-	enums: &HashMap<String, Vec<(String, i64)>>,
+	enums: &HashMap<String, Vec<VariantInfo>>,
 	aliases: &HashMap<String, TypeExpr>,
 ) -> Result<Typ, Diagnostic> {
 	match name {
@@ -346,19 +375,10 @@ impl Compiler {
 			.map(|(name, te)| (name.to_string(), (*te).clone()))
 			.collect();
 
-		for (name, variants) in &enum_items {
-			if let Some(v) = variants.iter().find(|v| !v.payload.is_empty()) {
-				return Err(Diagnostic::new(
-					format!("enum payloads aren't implemented yet (`{name}.{}`)", v.name),
-					v.payload[0].1.into_range(),
-				)
-				.with_label("payloads are parsed but not yet lowered"));
-			}
-		}
-		let enums: HashMap<String, Vec<(String, i64)>> = enum_items
+		let enums: HashMap<String, Vec<VariantInfo>> = enum_items
 			.iter()
-			.map(|(name, variants)| (name.to_string(), assign_discs(variants)))
-			.collect();
+			.map(|(name, variants)| Ok((name.to_string(), build_variants(variants)?)))
+			.collect::<Result<_, _>>()?;
 
 		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
@@ -453,7 +473,7 @@ impl Compiler {
 		typ: Typ,
 		funcs: &HashMap<String, FnSig>,
 		structs: &HashMap<String, Vec<FieldDef>>,
-		enums: &HashMap<String, Vec<(String, i64)>>,
+		enums: &HashMap<String, Vec<VariantInfo>>,
 	) -> FuncId {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		let block = b.create_block();
@@ -507,7 +527,7 @@ impl Compiler {
 		stmts: &[&Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
 		structs: &HashMap<String, Vec<FieldDef>>,
-		enums: &HashMap<String, Vec<(String, i64)>>,
+		enums: &HashMap<String, Vec<VariantInfo>>,
 		self_type: Option<&str>,
 	) -> Result<Typ, Diagnostic> {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
