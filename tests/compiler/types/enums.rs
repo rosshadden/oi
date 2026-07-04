@@ -223,6 +223,59 @@ fn payload_wrong_arity() {
 }
 
 #[test]
+fn payload_match_binds_fields() {
+	check(
+		indoc! {r#"
+			enum Opt { none some(int) }
+			o := Opt.some(7)
+			match o {
+				.some(n) { n }
+				.none { -1 }
+			}
+		"#},
+		"7",
+	);
+}
+
+#[test]
+fn payload_match_fieldless_arm() {
+	check(
+		indoc! {r#"
+			enum Opt { none some(int) }
+			o Opt := .none
+			match o {
+				.some(n) { n }
+				.none { -1 }
+			}
+		"#},
+		"-1",
+	);
+}
+
+#[test]
+fn payload_match_multiple_fields() {
+	check(
+		indoc! {r#"
+			enum Shape { rect(int, int) tri(int, int, int) }
+			s := Shape.rect(3, 4)
+			match s {
+				.rect(w, h) { w * h }
+				.tri(a, b, c) { a + b + c }
+			}
+		"#},
+		"12",
+	);
+}
+
+#[test]
+fn shorthand_payload_construct() {
+	check(
+		"enum Opt { none some(int) }\no Opt := .some(5)\nmatch o { .some(n) { n } .none { 0 } }",
+		"5",
+	);
+}
+
+#[test]
 fn payload_eq_deferred() {
 	let err = fail("enum Opt { none some(int) }\nOpt.none == Opt.none");
 	assert!(err.contains("isn't supported yet"), "got: {err}");
