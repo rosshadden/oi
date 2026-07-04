@@ -570,7 +570,10 @@ impl<'a> Translator<'a> {
 			// bindings
 			let mut binds = vec![];
 			for (j, pat) in arm.patterns.iter().enumerate() {
-				let eq = if let Typ::Enum(enum_name) = &st {
+				let eq = if matches!(&pat.0, Expr::Ident(w) if w == "_") {
+					// `_` wildcard
+					self.b.ins().iconst(types::I8, 1)
+				} else if let Typ::Enum(enum_name) = &st {
 					let (disc, b) = self.enum_pattern(pat, enum_name)?;
 					if arm.patterns.len() == 1 {
 						binds = b;

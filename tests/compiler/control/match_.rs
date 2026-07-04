@@ -129,6 +129,15 @@ fn match_true_as_if_chain() {
 	check(src, "medium");
 }
 
+#[test]
+fn match_wildcard() {
+	check(r#"match 5 { 1 { "one" } _ { "other" } }"#, "other");
+	check(
+		"enum Color { red green blue }\nmatch Color.blue { .red { 1 } _ { 9 } }",
+		"9",
+	);
+}
+
 // arms must yield the same type
 #[test]
 fn match_mismatched_arm_types() {
