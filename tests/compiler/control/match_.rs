@@ -171,6 +171,29 @@ fn match_tuple_arity_mismatch() {
 	assert!(fail("match (1, 2) { (a, b, c) { a } }").contains("tuple pattern has 3"));
 }
 
+#[test]
+fn match_struct_destructure() {
+	let src = indoc! {r#"
+		struct Point { x int, y int }
+		p := Point{ x: 3, y: 4 }
+		match p {
+			Point{ y: b, x } { x + b }
+		}
+	"#};
+	check(src, "7");
+}
+
+#[test]
+fn match_struct_unknown_field() {
+	let src = indoc! {r#"
+		struct Point { x int, y int }
+		match Point{ x: 1, y: 2 } {
+			Point { z } { z }
+		}
+	"#};
+	assert!(fail(src).contains("no field `z`"));
+}
+
 // arms must yield the same type
 #[test]
 fn match_mismatched_arm_types() {
