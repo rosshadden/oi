@@ -550,6 +550,28 @@ impl<'a> Translator<'a> {
 		let sv_var = self.b.declare_var(cl_type(&st, self.int));
 		self.b.def_var(sv_var, sv);
 
+		// ensure enum match covers every variant
+		if let Typ::Enum(ename) = &st {
+			let pats = || arms.iter().flat_map(|a| &a.patterns);
+			let catch_all =
+				else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
+			if !catch_all {
+				let covered = pats()
+					.map(|p| self.enum_pattern(p, ename).map(|(d, _)| d))
+					.collect::<Result<Vec<_>, _>>()?;
+				let missing: Vec<_> = self.enums[ename]
+					.iter()
+					.filter(|v| !covered.contains(&v.disc))
+					.map(|v| v.name.clone())
+					.collect();
+				if !missing.is_empty() {
+					let msg = format!("non-exhaustive match, missing: {}", missing.join(", "));
+					return Err(Diagnostic::new(msg, span.into_range())
+						.with_label("cover these variants or add `else`"));
+				}
+			}
+		}
+
 		let merge = self.b.create_block();
 		let mut result: Option<(Variable, Typ)> = None;
 

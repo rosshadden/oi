@@ -132,10 +132,14 @@ fn match_true_as_if_chain() {
 #[test]
 fn match_wildcard() {
 	check(r#"match 5 { 1 { "one" } _ { "other" } }"#, "other");
-	check(
-		"enum Color { red green blue }\nmatch Color.blue { .red { 1 } _ { 9 } }",
-		"9",
-	);
+	let src = indoc! {r#"
+		enum Color { red green blue }
+		match Color.blue {
+			.red { 1 }
+			_ { 9 }
+		}
+	"#};
+	check(src, "9");
 }
 
 #[test]
@@ -215,6 +219,19 @@ fn match_array_length_guard() {
 		}
 	"#};
 	check(src, "99");
+}
+
+#[test]
+fn match_enum_non_exhaustive() {
+	let src = indoc! {r#"
+		enum Color { red green blue }
+		c := Color.red
+		match c {
+			.red { 1 }
+			.green { 2 }
+		}
+	"#};
+	assert!(fail(src).contains("non-exhaustive match, missing: blue"));
 }
 
 // arms must yield the same type
