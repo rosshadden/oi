@@ -592,11 +592,25 @@ impl<'a> Translator<'a> {
 							elems.len(),
 							fields.len()
 						);
-						return Err(Diagnostic::new(msg, pat.1.into_range()).with_label("arity mismatch"));
+						return Err(
+							Diagnostic::new(msg, pat.1.into_range()).with_label("arity mismatch")
+						);
 					}
 					if arm.patterns.len() == 1 {
 						let pairs = elems.iter().zip(fields).map(|((_, e), (_, t))| (e, t));
 						binds = field_binds(pairs, 0)?;
+					}
+					self.b.ins().iconst(types::I8, 1)
+				} else if let (
+					Typ::Struct(sname, fdefs),
+					Expr::StructLit {
+						name: pname,
+						fields,
+					},
+				) = (&st, &pat.0)
+				{
+					if arm.patterns.len() == 1 {
+						binds = struct_pattern(fdefs, pname, sname, fields, pat.1)?;
 					}
 					self.b.ins().iconst(types::I8, 1)
 				} else {
@@ -2815,8 +2829,44 @@ fn field_binds<'a>(
 		.enumerate()
 		.map(|(i, (e, t))| match &e.0 {
 			Expr::Ident(n) => Ok((n.clone(), t.clone(), base + i as i32 * 8)),
-			_ => Err(Diagnostic::new("patterns must bind names", e.1.into_range())
-				.with_label("not a name")),
+			_ => Err(
+				Diagnostic::new("patterns must bind names", e.1.into_range())
+					.with_label("not a name"),
+			),
+		})
+		.collect()
+}
+
+// A struct pattern's field bindings.
+fn struct_pattern(
+	fdefs: &[FieldDef],
+	pname: &str,
+	sname: &str,
+	entries: &[(Option<String>, Spanned<Expr>)],
+	span: Span,
+) -> Result<Vec<Bind>, Diagnostic> {
+	if pname != sname {
+		let msg = format!("pattern is `{pname}` but subject is `{sname}`");
+		return Err(Diagnostic::new(msg, span.into_range()).with_label("type mismatch"));
+	}
+	entries
+		.iter()
+		.map(|(fname, e)| {
+			let Expr::Ident(local) = &e.0 else {
+				return Err(
+					Diagnostic::new("struct patterns must bind names", e.1.into_range())
+						.with_label("not a name"),
+				);
+			};
+			let field = fname.as_deref().unwrap_or(local);
+			let idx = fdefs.iter().position(|f| f.name == field).ok_or_else(|| {
+				Diagnostic::new(
+					format!("struct `{sname}` has no field `{field}`"),
+					e.1.into_range(),
+				)
+				.with_label("no such field")
+			})?;
+			Ok((local.clone(), fdefs[idx].typ.clone(), idx as i32 * 8))
 		})
 		.collect()
 }
