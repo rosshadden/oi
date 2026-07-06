@@ -9,10 +9,10 @@ use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, Linkage, Module};
 
 use super::{
-	FieldDef, FnSig, Local, LoopFrame, Op, Typ, VariantInfo, cl_int_for_width, cl_type, elem_size, enum_boxed,
-	enum_slots, resolve_type,
+	FieldDef, FnSig, Local, LoopFrame, Op, Typ, TypeCtx, VariantInfo, cl_int_for_width, cl_type, elem_size, enum_boxed,
+	enum_slots,
 };
-use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned};
+use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned, TypeExpr};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
 
@@ -24,6 +24,7 @@ pub(super) struct Translator<'a> {
 	pub funcs: &'a HashMap<String, FnSig>,
 	pub structs: &'a HashMap<String, Vec<FieldDef>>,
 	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
+	pub aliases: &'a HashMap<String, TypeExpr>,
 	pub string_idx: &'a mut usize,
 	pub atoms: &'a mut HashSet<String>,
 	pub ret: Option<(Typ, Span)>,
@@ -32,6 +33,15 @@ pub(super) struct Translator<'a> {
 }
 
 impl<'a> Translator<'a> {
+	// The named types in scope, bundled for resolving type annotations.
+	fn types(&self) -> TypeCtx<'a> {
+		TypeCtx {
+			structs: self.structs,
+			enums: self.enums,
+			aliases: self.aliases,
+		}
+	}
+
 	// Look up a mutable local.
 	fn mutable_local(
 		&self,
@@ -73,10 +83,7 @@ impl<'a> Translator<'a> {
 					typ,
 					value,
 				} => {
-					let annot = typ
-						.as_ref()
-						.map(|(t, span)| resolve_type(t, *span, self.structs, self.enums, &HashMap::new()))
-						.transpose()?;
+					let annot = typ.as_ref().map(|(t, span)| self.types().resolve(t, *span)).transpose()?;
 					let (val, typ) = match (value, annot) {
 						(Some(value), Some(target)) => match self.coerce_lit(value, &target)? {
 							Some(val) => (val, target),
@@ -1177,7 +1184,7 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::ArrayInit((te, span)) => {
-				let typ = resolve_type(te, *span, self.structs, self.enums, &HashMap::new())?;
+				let typ = self.types().resolve(te, *span)?;
 				Ok((self.zero(&typ), typ))
 			}
 

@@ -137,6 +137,11 @@ pub(crate) fn enum_slots(variants: &[VariantInfo]) -> usize {
 // TODO: only primitive payloads work right now
 fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnostic> {
 	let (structs, enums, aliases) = (HashMap::new(), HashMap::new(), HashMap::new());
+	let types = TypeCtx {
+		structs: &structs,
+		enums: &enums,
+		aliases: &aliases,
+	};
 	let mut next = 0;
 	variants
 		.iter()
@@ -146,7 +151,7 @@ fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnost
 			let payload = v
 				.payload
 				.iter()
-				.map(|(te, span)| resolve_type(te, *span, &structs, &enums, &aliases))
+				.map(|(te, span)| types.resolve(te, *span))
 				.collect::<Result<Vec<_>, _>>()?;
 			Ok(VariantInfo {
 				name: v.name.clone(),
@@ -157,99 +162,96 @@ fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnost
 		.collect()
 }
 
-pub(crate) fn resolve_type(
-	te: &TypeExpr,
-	span: Span,
-	structs: &HashMap<String, Vec<FieldDef>>,
-	enums: &HashMap<String, Vec<VariantInfo>>,
-	aliases: &HashMap<String, TypeExpr>,
-) -> Result<Typ, Diagnostic> {
-	match te {
-		TypeExpr::Name(name) => typ_from_name(name, span, structs, enums, aliases),
-		TypeExpr::Tuple(elems) => {
-			let fields = elems
-				.iter()
-				.map(|e| Ok((None, resolve_type(e, span, structs, enums, aliases)?)))
-				.collect::<Result<Vec<_>, _>>()?;
-			Ok(Typ::Tuple(fields))
-		}
-		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(elem, span, structs, enums, aliases)?))),
-		TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(
-			Box::new(resolve_type(elem, span, structs, enums, aliases)?),
-			*n,
-		)),
-		TypeExpr::Fn(_, _) => Err(Diagnostic::new(
-			"function types are not yet supported in codegen",
-			span.into_range(),
-		)
-		.with_label("cannot use a function type here yet")),
-	}
+// The named types in scope for resolution.
+#[derive(Clone, Copy)]
+pub(crate) struct TypeCtx<'a> {
+	pub structs: &'a HashMap<String, Vec<FieldDef>>,
+	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
+	pub aliases: &'a HashMap<String, TypeExpr>,
 }
 
-pub(crate) fn typ_from_name(
-	name: &str,
-	span: Span,
-	structs: &HashMap<String, Vec<FieldDef>>,
-	enums: &HashMap<String, Vec<VariantInfo>>,
-	aliases: &HashMap<String, TypeExpr>,
-) -> Result<Typ, Diagnostic> {
-	match name {
-		"int" => return Ok(Typ::Int(32)),
-		"isize" => return Ok(Typ::ISize),
-		"usize" => return Ok(Typ::USize),
-		"float" => return Ok(Typ::Float(64)),
-		"bool" => return Ok(Typ::Bool),
-		"string" | "str" => return Ok(Typ::Str),
-		"range" => return Ok(Typ::Range),
-		"()" => return Ok(Typ::Tuple(vec![])),
-		_ => {}
-	}
-	if let Some(rest) = name.strip_prefix('i')
-		&& let Ok(w) = rest.parse::<u16>()
-	{
-		if w == 0 || w > 64 {
-			return Err(
-				Diagnostic::new(format!("integer width {w} out of range"), span.into_range())
-					.with_label("width must be 1-64"),
-			);
+impl TypeCtx<'_> {
+	// Resolve a type expression to a concrete `Typ`.
+	pub fn resolve(&self, te: &TypeExpr, span: Span) -> Result<Typ, Diagnostic> {
+		match te {
+			TypeExpr::Name(name) => self.named(name, span),
+			TypeExpr::Tuple(elems) => {
+				let fields = elems
+					.iter()
+					.map(|e| Ok((None, self.resolve(e, span)?)))
+					.collect::<Result<Vec<_>, _>>()?;
+				Ok(Typ::Tuple(fields))
+			}
+			TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(self.resolve(elem, span)?))),
+			TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(Box::new(self.resolve(elem, span)?), *n)),
+			TypeExpr::Fn(_, _) => Err(Diagnostic::new(
+				"function types are not yet supported in codegen",
+				span.into_range(),
+			)
+			.with_label("cannot use a function type here yet")),
 		}
-		return Ok(Typ::Int(w));
 	}
-	if let Some(rest) = name.strip_prefix('u')
-		&& let Ok(w) = rest.parse::<u16>()
-	{
-		if w == 0 || w > 64 {
-			return Err(
-				Diagnostic::new(format!("unsigned integer width {w} out of range"), span.into_range())
-					.with_label("width must be 1-64"),
-			);
+
+	// Resolve a named type.
+	pub fn named(&self, name: &str, span: Span) -> Result<Typ, Diagnostic> {
+		match name {
+			"int" => return Ok(Typ::Int(32)),
+			"isize" => return Ok(Typ::ISize),
+			"usize" => return Ok(Typ::USize),
+			"float" => return Ok(Typ::Float(64)),
+			"bool" => return Ok(Typ::Bool),
+			"string" | "str" => return Ok(Typ::Str),
+			"range" => return Ok(Typ::Range),
+			"()" => return Ok(Typ::Tuple(vec![])),
+			_ => {}
 		}
-		return Ok(Typ::UInt(w));
+		if let Some(rest) = name.strip_prefix('i')
+			&& let Ok(w) = rest.parse::<u16>()
+		{
+			if w == 0 || w > 64 {
+				return Err(
+					Diagnostic::new(format!("integer width {w} out of range"), span.into_range())
+						.with_label("width must be 1-64"),
+				);
+			}
+			return Ok(Typ::Int(w));
+		}
+		if let Some(rest) = name.strip_prefix('u')
+			&& let Ok(w) = rest.parse::<u16>()
+		{
+			if w == 0 || w > 64 {
+				return Err(
+					Diagnostic::new(format!("unsigned integer width {w} out of range"), span.into_range())
+						.with_label("width must be 1-64"),
+				);
+			}
+			return Ok(Typ::UInt(w));
+		}
+		if let Some(rest) = name.strip_prefix('f')
+			&& let Ok(w) = rest.parse::<u16>()
+		{
+			return match w {
+				16 => Ok(Typ::Float(16)),
+				32 => Ok(Typ::Float(32)),
+				64 => Ok(Typ::Float(64)),
+				128 => Ok(Typ::Float(128)),
+				_ => Err(
+					Diagnostic::new(format!("unsupported float width f{w}"), span.into_range())
+						.with_label("supported widths: f16, f32, f64, f128"),
+				),
+			};
+		}
+		if let Some(te) = self.aliases.get(name) {
+			return self.resolve(te, span);
+		}
+		if let Some(fields) = self.structs.get(name) {
+			return Ok(Typ::Struct(name.to_string(), fields.clone()));
+		}
+		if self.enums.contains_key(name) {
+			return Ok(Typ::Enum(name.to_string()));
+		}
+		Err(Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type"))
 	}
-	if let Some(rest) = name.strip_prefix('f')
-		&& let Ok(w) = rest.parse::<u16>()
-	{
-		return match w {
-			16 => Ok(Typ::Float(16)),
-			32 => Ok(Typ::Float(32)),
-			64 => Ok(Typ::Float(64)),
-			128 => Ok(Typ::Float(128)),
-			_ => Err(
-				Diagnostic::new(format!("unsupported float width f{w}"), span.into_range())
-					.with_label("supported widths: f16, f32, f64, f128"),
-			),
-		};
-	}
-	if let Some(te) = aliases.get(name) {
-		return resolve_type(te, span, structs, enums, aliases);
-	}
-	if let Some(fields) = structs.get(name) {
-		return Ok(Typ::Struct(name.to_string(), fields.clone()));
-	}
-	if enums.contains_key(name) {
-		return Ok(Typ::Enum(name.to_string()));
-	}
-	Err(Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type"))
 }
 
 #[derive(Clone)]
@@ -315,8 +317,6 @@ impl Default for Compiler {
 
 impl Compiler {
 	pub fn compile(&mut self, program: &[Spanned<Expr>]) -> Result<*const u8, Diagnostic> {
-		let int = self.module.target_config().pointer_type();
-
 		let mut struct_items: Vec<(&str, &[Param])> = vec![];
 		let mut enum_items: Vec<EnumItem> = vec![];
 		let mut alias_items: Vec<(&str, &TypeExpr)> = vec![];
@@ -362,12 +362,18 @@ impl Compiler {
 			.collect::<Result<_, _>>()?;
 
 		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
+		// TODO: struct fields can't reference other structs yet, so resolve against none
 		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
+		let field_types = TypeCtx {
+			structs: &no_structs,
+			enums: &enums,
+			aliases: &aliases,
+		};
 		for (name, fields) in &struct_items {
 			let resolved = fields
 				.iter()
 				.map(|p| {
-					typ_from_name(&p.typ, p.span, &no_structs, &enums, &aliases).map(|t| FieldDef {
+					field_types.named(&p.typ, p.span).map(|t| FieldDef {
 						name: p.name.clone(),
 						typ: t,
 						default: p.default.clone(),
@@ -384,22 +390,21 @@ impl Compiler {
 			if let Some(t) = self_type {
 				aliases.insert("Self".into(), TypeExpr::Name(t.into()));
 			}
+			let types = TypeCtx {
+				structs: &structs,
+				enums: &enums,
+				aliases: &aliases,
+			};
 			let params: Vec<(String, Typ, bool)> = params
 				.iter()
-				.map(|p| {
-					Ok((
-						p.name.clone(),
-						typ_from_name(&p.typ, p.span, &structs, &enums, &aliases)?,
-						p.mutable,
-					))
-				})
+				.map(|p| Ok((p.name.clone(), types.named(&p.typ, p.span)?, p.mutable)))
 				.collect::<Result<_, Diagnostic>>()?;
 			let ret = ret
 				.as_ref()
-				.map(|(te, span)| Ok::<_, Diagnostic>((resolve_type(te, *span, &structs, &enums, &aliases)?, *span)))
+				.map(|(te, span)| Ok::<_, Diagnostic>((types.resolve(te, *span)?, *span)))
 				.transpose()?;
 			let sym = format!("oi_{}", key.replace('.', "__"));
-			let ret = self.translate(int, &params, ret, body, &funcs, &structs, &enums, self_type)?;
+			let ret = self.translate(&params, ret, body, &funcs, types, self_type)?;
 			let id = self.finish_fn(&sym);
 			let param_typs = params.iter().map(|(_, t, _)| t.clone()).collect();
 			funcs.insert(
@@ -432,23 +437,21 @@ impl Compiler {
 			}
 		};
 
-		let typ = self.translate(int, &[], None, entry, &funcs, &structs, &enums, None)?;
+		let types = TypeCtx {
+			structs: &structs,
+			enums: &enums,
+			aliases: &aliases,
+		};
+		let typ = self.translate(&[], None, entry, &funcs, types, None)?;
 		let entry_id = self.finish_fn("oi_main");
-		let id = self.compile_entry(int, entry_id, typ, &funcs, &structs, &enums);
+		let id = self.compile_entry(entry_id, typ, &funcs, types);
 
 		self.module.finalize_definitions().expect("finalize definitions");
 		Ok(self.module.get_finalized_function(id))
 	}
 
-	fn compile_entry(
-		&mut self,
-		int: types::Type,
-		entry: FuncId,
-		typ: Typ,
-		funcs: &HashMap<String, FnSig>,
-		structs: &HashMap<String, Vec<FieldDef>>,
-		enums: &HashMap<String, Vec<VariantInfo>>,
-	) -> FuncId {
+	fn compile_entry(&mut self, entry: FuncId, typ: Typ, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> FuncId {
+		let int = self.module.target_config().pointer_type();
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		let block = b.create_block();
 		b.switch_to_block(block);
@@ -460,8 +463,9 @@ impl Compiler {
 			vars: HashMap::new(),
 			module: &mut self.module,
 			funcs,
-			structs,
-			enums,
+			structs: types.structs,
+			enums: types.enums,
+			aliases: types.aliases,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,
 			ret: None,
@@ -493,15 +497,14 @@ impl Compiler {
 
 	fn translate(
 		&mut self,
-		int: types::Type,
 		params: &[(String, Typ, bool)],
 		ret: Option<(Typ, Span)>,
 		stmts: &[Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
-		structs: &HashMap<String, Vec<FieldDef>>,
-		enums: &HashMap<String, Vec<VariantInfo>>,
+		types: TypeCtx,
 		self_type: Option<&str>,
 	) -> Result<Typ, Diagnostic> {
+		let int = self.module.target_config().pointer_type();
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		// declare param types before the entry block claims them
 		for (_, typ, _) in params {
@@ -520,8 +523,9 @@ impl Compiler {
 			vars: HashMap::new(),
 			module: &mut self.module,
 			funcs,
-			structs,
-			enums,
+			structs: types.structs,
+			enums: types.enums,
+			aliases: types.aliases,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,
 			ret,
