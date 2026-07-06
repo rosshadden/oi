@@ -972,6 +972,53 @@ impl<'a> Translator<'a> {
 		Ok(())
 	}
 
+	// Widen/narrow integers.
+	// Sign-extend `val` to i64, clamp to `[low, hi]`.
+	fn clamp_to_width(
+		&mut self,
+		val: Value,
+		extend_signed: bool,
+		low: Option<(i64, bool)>,
+		hi: i64,
+		hi_unsigned: bool,
+		target_cl: types::Type,
+	) -> Value {
+		let src_cl = self.b.func.dfg.value_type(val);
+		let v64 = if src_cl == types::I64 {
+			val
+		} else if extend_signed {
+			self.b.ins().sextend(types::I64, val)
+		} else {
+			self.b.ins().uextend(types::I64, val)
+		};
+		let v64 = match low {
+			Some((low, lo_unsigned)) => {
+				let lo_c = self.b.ins().iconst(types::I64, low);
+				let cc = if lo_unsigned {
+					IntCC::UnsignedLessThan
+				} else {
+					IntCC::SignedLessThan
+				};
+				let lt = self.b.ins().icmp(cc, v64, lo_c);
+				self.b.ins().select(lt, lo_c, v64)
+			}
+			None => v64,
+		};
+		let hi_c = self.b.ins().iconst(types::I64, hi);
+		let cc = if hi_unsigned {
+			IntCC::UnsignedGreaterThan
+		} else {
+			IntCC::SignedGreaterThan
+		};
+		let gt = self.b.ins().icmp(cc, v64, hi_c);
+		let v64 = self.b.ins().select(gt, hi_c, v64);
+		if target_cl == types::I64 {
+			v64
+		} else {
+			self.b.ins().ireduce(target_cl, v64)
+		}
+	}
+
 	pub fn expr(&mut self, expr: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
 		match &expr.0 {
 			Expr::Int(n) => {
@@ -1243,25 +1290,14 @@ impl<'a> Translator<'a> {
 				let target_cl = cl_type(&Typ::Int(target), self.int);
 				let out = match &typ {
 					Typ::Int(w) if *w == target => val,
-					Typ::Int(w) => {
-						let src_cl = cl_type(&Typ::Int(*w), self.int);
-						let v64 = if src_cl == types::I64 {
-							val
-						} else {
-							self.b.ins().sextend(types::I64, val)
-						};
-						let lo = self.b.ins().iconst(types::I64, int_min(target));
-						let hi = self.b.ins().iconst(types::I64, int_max(target));
-						let lt = self.b.ins().icmp(IntCC::SignedLessThan, v64, lo);
-						let v = self.b.ins().select(lt, lo, v64);
-						let gt = self.b.ins().icmp(IntCC::SignedGreaterThan, v, hi);
-						let v = self.b.ins().select(gt, hi, v);
-						if target_cl == types::I64 {
-							v
-						} else {
-							self.b.ins().ireduce(target_cl, v)
-						}
-					}
+					Typ::Int(_) => self.clamp_to_width(
+						val,
+						true,
+						Some((int_min(target), false)),
+						int_max(target),
+						false,
+						target_cl,
+					),
 					Typ::Enum(enum_name) => {
 						let tag = self.enum_tag(enum_name, val);
 						if target_cl == types::I64 {
@@ -1300,43 +1336,17 @@ impl<'a> Translator<'a> {
 				let target_cl = cl_type(&Typ::UInt(target), self.int);
 				let out = match &typ {
 					Typ::UInt(w) if *w == target => val,
-					Typ::UInt(w) => {
-						// widen/narrow
-						// sign-extend to i64, clamp to [0, target_max], ireduce
-						let src_cl = cl_type(&Typ::UInt(*w), self.int);
-						let v64 = if src_cl == types::I64 {
-							val
-						} else {
-							self.b.ins().uextend(types::I64, val)
-						};
-						let max_v = self.b.ins().iconst(types::I64, uint_max(target));
-						let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, v64, max_v);
-						let v = self.b.ins().select(gt, max_v, v64);
-						if target_cl == types::I64 {
-							v
-						} else {
-							self.b.ins().ireduce(target_cl, v)
-						}
+					Typ::UInt(_) => {
+						self.clamp_to_width(val, false, None, uint_max(target), true, target_cl)
 					}
-					Typ::Int(w) => {
-						let src_cl = cl_type(&Typ::Int(*w), self.int);
-						let v64 = if src_cl == types::I64 {
-							val
-						} else {
-							self.b.ins().sextend(types::I64, val)
-						};
-						let zero = self.b.ins().iconst(types::I64, 0);
-						let max_v = self.b.ins().iconst(types::I64, uint_max(target));
-						let lt = self.b.ins().icmp(IntCC::SignedLessThan, v64, zero);
-						let v = self.b.ins().select(lt, zero, v64);
-						let gt = self.b.ins().icmp(IntCC::UnsignedGreaterThan, v, max_v);
-						let v = self.b.ins().select(gt, max_v, v);
-						if target_cl == types::I64 {
-							v
-						} else {
-							self.b.ins().ireduce(target_cl, v)
-						}
-					}
+					Typ::Int(_) => self.clamp_to_width(
+						val,
+						true,
+						Some((0, false)),
+						uint_max(target),
+						true,
+						target_cl,
+					),
 					_ => {
 						return Err(Diagnostic::new(
 							format!("cannot cast {typ:?} to u{target}"),
