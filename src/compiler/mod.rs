@@ -211,44 +211,43 @@ pub(crate) fn typ_from_name(
 		"()" => return Ok(Typ::Tuple(vec![])),
 		_ => {}
 	}
-	if let Some(rest) = name.strip_prefix('i') {
-		if let Ok(w) = rest.parse::<u16>() {
-			if w == 0 || w > 64 {
-				return Err(Diagnostic::new(
-					format!("integer width {w} out of range"),
-					span.into_range(),
-				)
-				.with_label("width must be 1-64"));
-			}
-			return Ok(Typ::Int(w));
+	if let Some(rest) = name.strip_prefix('i')
+		&& let Ok(w) = rest.parse::<u16>()
+	{
+		if w == 0 || w > 64 {
+			return Err(Diagnostic::new(
+				format!("integer width {w} out of range"),
+				span.into_range(),
+			)
+			.with_label("width must be 1-64"));
 		}
+		return Ok(Typ::Int(w));
 	}
-	if let Some(rest) = name.strip_prefix('u') {
-		if let Ok(w) = rest.parse::<u16>() {
-			if w == 0 || w > 64 {
-				return Err(Diagnostic::new(
-					format!("unsigned integer width {w} out of range"),
-					span.into_range(),
-				)
-				.with_label("width must be 1-64"));
-			}
-			return Ok(Typ::UInt(w));
+	if let Some(rest) = name.strip_prefix('u')
+		&& let Ok(w) = rest.parse::<u16>()
+	{
+		if w == 0 || w > 64 {
+			return Err(Diagnostic::new(
+				format!("unsigned integer width {w} out of range"),
+				span.into_range(),
+			)
+			.with_label("width must be 1-64"));
 		}
+		return Ok(Typ::UInt(w));
 	}
-	if let Some(rest) = name.strip_prefix('f') {
-		if let Ok(w) = rest.parse::<u16>() {
-			return match w {
-				16 => Ok(Typ::Float(16)),
-				32 => Ok(Typ::Float(32)),
-				64 => Ok(Typ::Float(64)),
-				128 => Ok(Typ::Float(128)),
-				_ => Err(Diagnostic::new(
-					format!("unsupported float width f{w}"),
-					span.into_range(),
-				)
-				.with_label("supported widths: f16, f32, f64, f128")),
-			};
-		}
+	if let Some(rest) = name.strip_prefix('f')
+		&& let Ok(w) = rest.parse::<u16>()
+	{
+		return match w {
+			16 => Ok(Typ::Float(16)),
+			32 => Ok(Typ::Float(32)),
+			64 => Ok(Typ::Float(64)),
+			128 => Ok(Typ::Float(128)),
+			_ => Err(
+				Diagnostic::new(format!("unsupported float width f{w}"), span.into_range())
+					.with_label("supported widths: f16, f32, f64, f128"),
+			),
+		};
 	}
 	if let Some(te) = aliases.get(name) {
 		return resolve_type(te, span, structs, enums, aliases);
