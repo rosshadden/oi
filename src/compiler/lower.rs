@@ -724,10 +724,9 @@ impl<'a> Translator<'a> {
 			self.match_contribute(vt, &mut result, merge, span)?;
 		}
 
-		Ok(if result.is_some() {
+		Ok(if let Some((var, typ)) = result {
 			self.b.switch_to_block(merge);
 			self.b.seal_block(merge);
-			let (var, typ) = result.unwrap();
 			Some((self.b.use_var(var), typ))
 		} else {
 			None
