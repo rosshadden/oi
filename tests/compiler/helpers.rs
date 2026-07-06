@@ -41,9 +41,7 @@ pub(crate) fn run_streams(src: &str) -> (String, String) {
 /// Run provided file.
 #[allow(dead_code)]
 pub(crate) fn run_file(name: &str) -> String {
-	let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-		.join("tests/cases")
-		.join(name);
+	let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/cases").join(name);
 	exec(&path)
 }
 

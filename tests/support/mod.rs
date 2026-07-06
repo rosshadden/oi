@@ -10,12 +10,7 @@ pub fn oi(args: &[&str], stdin: Option<&str>) -> Output {
 	}
 	let mut child = cmd.spawn().unwrap();
 	if let Some(input) = stdin {
-		child
-			.stdin
-			.take()
-			.unwrap()
-			.write_all(input.as_bytes())
-			.unwrap();
+		child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
 	}
 	child.wait_with_output().unwrap()
 }

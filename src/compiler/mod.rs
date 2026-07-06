@@ -13,12 +13,7 @@ use crate::runtime;
 mod lower;
 use lower::Translator;
 
-type FnItem<'a> = (
-	String,
-	&'a [Param],
-	&'a Option<Spanned<TypeExpr>>,
-	&'a [Spanned<Expr>],
-);
+type FnItem<'a> = (String, &'a [Param], &'a Option<Spanned<TypeExpr>>, &'a [Spanned<Expr>]);
 
 type EnumItem<'a> = (&'a str, &'a [EnumVariant]);
 
@@ -178,9 +173,7 @@ pub(crate) fn resolve_type(
 				.collect::<Result<Vec<_>, _>>()?;
 			Ok(Typ::Tuple(fields))
 		}
-		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(
-			elem, span, structs, enums, aliases,
-		)?))),
+		TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(resolve_type(elem, span, structs, enums, aliases)?))),
 		TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(
 			Box::new(resolve_type(elem, span, structs, enums, aliases)?),
 			*n,
@@ -215,11 +208,10 @@ pub(crate) fn typ_from_name(
 		&& let Ok(w) = rest.parse::<u16>()
 	{
 		if w == 0 || w > 64 {
-			return Err(Diagnostic::new(
-				format!("integer width {w} out of range"),
-				span.into_range(),
-			)
-			.with_label("width must be 1-64"));
+			return Err(
+				Diagnostic::new(format!("integer width {w} out of range"), span.into_range())
+					.with_label("width must be 1-64"),
+			);
 		}
 		return Ok(Typ::Int(w));
 	}
@@ -227,11 +219,10 @@ pub(crate) fn typ_from_name(
 		&& let Ok(w) = rest.parse::<u16>()
 	{
 		if w == 0 || w > 64 {
-			return Err(Diagnostic::new(
-				format!("unsigned integer width {w} out of range"),
-				span.into_range(),
-			)
-			.with_label("width must be 1-64"));
+			return Err(
+				Diagnostic::new(format!("unsigned integer width {w} out of range"), span.into_range())
+					.with_label("width must be 1-64"),
+			);
 		}
 		return Ok(Typ::UInt(w));
 	}
@@ -258,10 +249,7 @@ pub(crate) fn typ_from_name(
 	if enums.contains_key(name) {
 		return Ok(Typ::Enum(name.to_string()));
 	}
-	Err(
-		Diagnostic::new(format!("unknown type `{name}`"), span.into_range())
-			.with_label("not a known type"),
-	)
+	Err(Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type"))
 }
 
 #[derive(Clone)]
@@ -337,12 +325,8 @@ impl Compiler {
 		let mut loose_refs: Vec<&Spanned<Expr>> = vec![];
 		for item in program {
 			match &item.0 {
-				Expr::StructDef { name, fields } => {
-					struct_items.push((name.as_str(), fields.as_slice()))
-				}
-				Expr::EnumDef { name, variants } => {
-					enum_items.push((name.as_str(), variants.as_slice()))
-				}
+				Expr::StructDef { name, fields } => struct_items.push((name.as_str(), fields.as_slice())),
+				Expr::EnumDef { name, variants } => enum_items.push((name.as_str(), variants.as_slice())),
 				Expr::TypeAlias { name, typ } => alias_items.push((name.as_str(), typ)),
 				Expr::Impl { typ, methods } => {
 					for m in methods {
@@ -414,16 +398,10 @@ impl Compiler {
 				.collect::<Result<_, Diagnostic>>()?;
 			let ret = ret
 				.as_ref()
-				.map(|(te, span)| {
-					Ok::<_, Diagnostic>((
-						resolve_type(te, *span, &structs, &enums, &aliases)?,
-						*span,
-					))
-				})
+				.map(|(te, span)| Ok::<_, Diagnostic>((resolve_type(te, *span, &structs, &enums, &aliases)?, *span)))
 				.transpose()?;
 			let sym = format!("oi_{}", key.replace('.', "__"));
-			let ret =
-				self.translate(int, &params, ret, body, &funcs, &structs, &enums, self_type)?;
+			let ret = self.translate(int, &params, ret, body, &funcs, &structs, &enums, self_type)?;
 			let id = self.finish_fn(&sym);
 			let param_typs = params.iter().map(|(_, t, _)| t.clone()).collect();
 			funcs.insert(
@@ -446,9 +424,7 @@ impl Compiler {
 						first.1.into_range(),
 					)
 					.with_label("move this inside a function")
-					.with_note(
-						"`fn main` is the entrypoint, so loose statements have nowhere to run",
-					));
+					.with_note("`fn main` is the entrypoint, so loose statements have nowhere to run"));
 				}
 				body
 			}
@@ -462,9 +438,7 @@ impl Compiler {
 		let entry_id = self.finish_fn("oi_main");
 		let id = self.compile_entry(int, entry_id, typ, &funcs, &structs, &enums);
 
-		self.module
-			.finalize_definitions()
-			.expect("finalize definitions");
+		self.module.finalize_definitions().expect("finalize definitions");
 		Ok(self.module.get_finalized_function(id))
 	}
 
@@ -514,9 +488,7 @@ impl Compiler {
 			.module
 			.declare_function(name, Linkage::Local, &self.ctx.func.signature)
 			.expect("declare function");
-		self.module
-			.define_function(id, &mut self.ctx)
-			.expect("define function");
+		self.module.define_function(id, &mut self.ctx).expect("define function");
 		self.module.clear_context(&mut self.ctx);
 		id
 	}
@@ -535,10 +507,7 @@ impl Compiler {
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
 		// declare param types before the entry block claims them
 		for (_, typ, _) in params {
-			b.func
-				.signature
-				.params
-				.push(AbiParam::new(cl_type(typ, int)));
+			b.func.signature.params.push(AbiParam::new(cl_type(typ, int)));
 		}
 		let block = b.create_block();
 		b.append_block_params_for_function_params(block);
@@ -578,11 +547,7 @@ impl Compiler {
 		}
 
 		if let Some((val, typ)) = trans.block(stmts)? {
-			let span = stmts
-				.last()
-				.map(|s| s.1)
-				.or(decl_span)
-				.unwrap_or((0..0).into());
+			let span = stmts.last().map(|s| s.1).or(decl_span).unwrap_or((0..0).into());
 			trans.emit_return(val, typ, span)?;
 		}
 		trans.b.finalize();

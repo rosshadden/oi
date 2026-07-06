@@ -13,10 +13,7 @@ fn oneliner() {
 
 #[test]
 fn bind() {
-	check(
-		"enum Color { red green blue }\nc := Color.green\nc",
-		"green",
-	);
+	check("enum Color { red green blue }\nc := Color.green\nc", "green");
 }
 
 #[test]
@@ -34,26 +31,17 @@ fn first_variant_is_default() {
 
 #[test]
 fn eq_same() {
-	check(
-		"enum Color { red green blue }\nColor.red == Color.red",
-		"true",
-	);
+	check("enum Color { red green blue }\nColor.red == Color.red", "true");
 }
 
 #[test]
 fn eq_different() {
-	check(
-		"enum Color { red green blue }\nColor.red == Color.blue",
-		"false",
-	);
+	check("enum Color { red green blue }\nColor.red == Color.blue", "false");
 }
 
 #[test]
 fn ne() {
-	check(
-		"enum Color { red green blue }\nColor.red != Color.blue",
-		"true",
-	);
+	check("enum Color { red green blue }\nColor.red != Color.blue", "true");
 }
 
 #[test]
@@ -112,14 +100,8 @@ fn shorthand_in_annotated_binding() {
 
 #[test]
 fn shorthand_in_comparison() {
-	check(
-		"enum Color { red green blue }\nc := Color.red\nc == .red",
-		"true",
-	);
-	check(
-		"enum Color { red green blue }\nc := Color.red\nc != .blue",
-		"true",
-	);
+	check("enum Color { red green blue }\nc := Color.red\nc == .red", "true");
+	check("enum Color { red green blue }\nc := Color.red\nc != .blue", "true");
 }
 
 #[test]
@@ -301,10 +283,7 @@ fn atom_coerces_in_assignment() {
 
 #[test]
 fn atom_coerces_in_comparison() {
-	check(
-		"enum Color { red green blue }\nc := Color.red\nc == :red",
-		"true",
-	);
+	check("enum Color { red green blue }\nc := Color.red\nc == :red", "true");
 	check("enum Color { red green blue }\nColor.blue == :blue", "true");
 }
 
@@ -334,18 +313,12 @@ fn cast_to_int() {
 
 #[test]
 fn cast_to_int_explicit_disc() {
-	check(
-		"enum Status { ok = 200, err = 500 }\nint(Status.err)",
-		"500",
-	);
+	check("enum Status { ok = 200, err = 500 }\nint(Status.err)", "500");
 }
 
 #[test]
 fn compare_via_int() {
-	check(
-		"enum Color { red green blue }\nint(Color.green) == 1",
-		"true",
-	);
+	check("enum Color { red green blue }\nint(Color.green) == 1", "true");
 }
 
 #[test]

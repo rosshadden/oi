@@ -52,21 +52,13 @@ fn render(tag: Tag, bits: i64, width: i64, quote: bool) -> String {
 // Write a rendered value fragment.
 pub extern "C" fn write(tag: Tag, bits: i64, width: i64, quote: i64, stderr: i64) {
 	let s = render(tag, bits, width, quote != 0);
-	if stderr != 0 {
-		eprint!("{s}")
-	} else {
-		print!("{s}")
-	}
+	if stderr != 0 { eprint!("{s}") } else { print!("{s}") }
 }
 
 // Write the ", " separator before every element but the first.
 pub extern "C" fn write_sep(i: i64, stderr: i64) {
 	if i > 0 {
-		if stderr != 0 {
-			eprint!(", ")
-		} else {
-			print!(", ")
-		}
+		if stderr != 0 { eprint!(", ") } else { print!(", ") }
 	}
 }
 
@@ -163,11 +155,7 @@ pub extern "C" fn array_extend(dst: *mut i64, src: *const i64, elem_size: i64) {
 	unsafe {
 		let dst_data = *dst as *mut u8;
 		let dst_tail = dst_data.add((dst_len * elem_size) as usize);
-		std::ptr::copy_nonoverlapping(
-			src_data as *const u8,
-			dst_tail,
-			(src_len * elem_size) as usize,
-		);
+		std::ptr::copy_nonoverlapping(src_data as *const u8, dst_tail, (src_len * elem_size) as usize);
 		*dst.add(1) = new_len;
 	}
 }

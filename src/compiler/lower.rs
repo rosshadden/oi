@@ -9,8 +9,8 @@ use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, Linkage, Module};
 
 use super::{
-	FieldDef, FnSig, Local, LoopFrame, Op, Typ, VariantInfo, cl_int_for_width, cl_type, elem_size,
-	enum_boxed, enum_slots, resolve_type,
+	FieldDef, FnSig, Local, LoopFrame, Op, Typ, VariantInfo, cl_int_for_width, cl_type, elem_size, enum_boxed,
+	enum_slots, resolve_type,
 };
 use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned};
 use crate::diagnostics::Diagnostic;
@@ -43,11 +43,8 @@ impl<'a> Translator<'a> {
 		suggest_declare: bool,
 	) -> Result<Local, Diagnostic> {
 		let local = self.vars.get(name).cloned().ok_or_else(|| {
-			let d = Diagnostic::new(
-				format!("cannot {verb} undefined variable `{name}`"),
-				span.clone(),
-			)
-			.with_label("not found in scope");
+			let d = Diagnostic::new(format!("cannot {verb} undefined variable `{name}`"), span.clone())
+				.with_label("not found in scope");
 			if suggest_declare {
 				d.with_note(format!("declare it first with `{name} := ...`"))
 			} else {
@@ -55,12 +52,11 @@ impl<'a> Translator<'a> {
 			}
 		})?;
 		if !local.mutable {
-			return Err(Diagnostic::new(
-				format!("cannot {immutable_verb} immutable `{name}`"),
-				span,
-			)
-			.with_label("declared without `mut`")
-			.with_note(format!("use `mut {name} := ...` to allow {allow}")));
+			return Err(
+				Diagnostic::new(format!("cannot {immutable_verb} immutable `{name}`"), span)
+					.with_label("declared without `mut`")
+					.with_note(format!("use `mut {name} := ...` to allow {allow}")),
+			);
 		}
 		Ok(local)
 	}
@@ -79,9 +75,7 @@ impl<'a> Translator<'a> {
 				} => {
 					let annot = typ
 						.as_ref()
-						.map(|(t, span)| {
-							resolve_type(t, *span, self.structs, self.enums, &HashMap::new())
-						})
+						.map(|(t, span)| resolve_type(t, *span, self.structs, self.enums, &HashMap::new()))
 						.transpose()?;
 					let (val, typ) = match (value, annot) {
 						(Some(value), Some(target)) => match self.coerce_lit(value, &target)? {
@@ -121,21 +115,12 @@ impl<'a> Translator<'a> {
 				}
 
 				Expr::Assign { name, value } => {
-					let local = self.mutable_local(
-						name,
-						stmt.1.into_range(),
-						"assign to",
-						"assign to",
-						"assignment",
-						true,
-					)?;
+					let local =
+						self.mutable_local(name, stmt.1.into_range(), "assign to", "assign to", "assignment", true)?;
 					let (val, typ) = self.check_expr(value, &local.typ)?;
 					if typ != local.typ {
 						return Err(Diagnostic::new(
-							format!(
-								"cannot assign {typ:?} to `{name}`, which is {:?}",
-								local.typ
-							),
+							format!("cannot assign {typ:?} to `{name}`, which is {:?}", local.typ),
 							value.1.into_range(),
 						)
 						.with_label("type mismatch"));
@@ -165,11 +150,10 @@ impl<'a> Translator<'a> {
 					let elem = match &local.typ {
 						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						_ => {
-							return Err(Diagnostic::new(
-								format!("`{name}` is not an array"),
-								stmt.1.into_range(),
-							)
-							.with_label("not an array"));
+							return Err(
+								Diagnostic::new(format!("`{name}` is not an array"), stmt.1.into_range())
+									.with_label("not an array"),
+							);
 						}
 					};
 					let ptr = self.b.use_var(local.var);
@@ -188,22 +172,15 @@ impl<'a> Translator<'a> {
 				}
 
 				Expr::Append { name, value } => {
-					let local = self.mutable_local(
-						name,
-						stmt.1.into_range(),
-						"append to",
-						"append to",
-						"append",
-						false,
-					)?;
+					let local =
+						self.mutable_local(name, stmt.1.into_range(), "append to", "append to", "append", false)?;
 					let elem = match &local.typ {
 						Typ::Array(e) => (**e).clone(),
 						_ => {
-							return Err(Diagnostic::new(
-								format!("`{name}` is not an array"),
-								stmt.1.into_range(),
-							)
-							.with_label("not an array"));
+							return Err(
+								Diagnostic::new(format!("`{name}` is not an array"), stmt.1.into_range())
+									.with_label("not an array"),
+							);
 						}
 					};
 					let (val, vtyp) = self.expr(value)?;
@@ -222,11 +199,7 @@ impl<'a> Translator<'a> {
 
 						self.b.switch_to_block(grow_block);
 						let min_cap = self.b.ins().iadd_imm(len, 1);
-						let func = self.import_fn(
-							runtime::ARRAY_RESERVE,
-							&[self.int, self.int, self.int],
-							None,
-						);
+						let func = self.import_fn(runtime::ARRAY_RESERVE, &[self.int, self.int, self.int], None);
 						self.b.ins().call(func, &[ptr, min_cap, size]);
 						self.b.ins().jump(ok_block, &[]);
 						self.b.seal_block(ok_block);
@@ -240,11 +213,7 @@ impl<'a> Translator<'a> {
 						let new_len = self.b.ins().iadd_imm(len, 1);
 						self.b.ins().store(MemFlags::new(), new_len, ptr, 8);
 					} else if vtyp == Typ::Array(Box::new(elem.clone())) {
-						let func = self.import_fn(
-							runtime::ARRAY_EXTEND,
-							&[self.int, self.int, self.int],
-							None,
-						);
+						let func = self.import_fn(runtime::ARRAY_EXTEND, &[self.int, self.int, self.int], None);
 						self.b.ins().call(func, &[ptr, val, size]);
 					} else {
 						return Err(Diagnostic::new(
@@ -259,10 +228,7 @@ impl<'a> Translator<'a> {
 					let (val, typ) = match value {
 						Some(e) => self.expr(e)?,
 						None => {
-							let typ = self
-								.ret
-								.as_ref()
-								.map_or(Typ::Tuple(vec![]), |(t, _)| t.clone());
+							let typ = self.ret.as_ref().map_or(Typ::Tuple(vec![]), |(t, _)| t.clone());
 							(self.zero(&typ), typ)
 						}
 					};
@@ -270,12 +236,10 @@ impl<'a> Translator<'a> {
 					return Ok(None);
 				}
 
-				Expr::If { cond, then, els } => {
-					match self.conditional(cond, then, els.as_deref(), stmt.1)? {
-						Some((v, t)) => last = (v, t),
-						None => return Ok(None),
-					}
-				}
+				Expr::If { cond, then, els } => match self.conditional(cond, then, els.as_deref(), stmt.1)? {
+					Some((v, t)) => last = (v, t),
+					None => return Ok(None),
+				},
 
 				Expr::Match {
 					subject,
@@ -306,23 +270,16 @@ impl<'a> Translator<'a> {
 					let fields = match &local.typ {
 						Typ::Struct(_, fields) => fields.clone(),
 						_ => {
-							return Err(Diagnostic::new(
-								format!("`{name}` is not a struct"),
-								stmt.1.into_range(),
-							)
-							.with_label("not a struct"));
+							return Err(
+								Diagnostic::new(format!("`{name}` is not a struct"), stmt.1.into_range())
+									.with_label("not a struct"),
+							);
 						}
 					};
-					let idx = fields
-						.iter()
-						.position(|f| &f.name == field)
-						.ok_or_else(|| {
-							Diagnostic::new(
-								format!("struct has no field `{field}`"),
-								stmt.1.into_range(),
-							)
+					let idx = fields.iter().position(|f| &f.name == field).ok_or_else(|| {
+						Diagnostic::new(format!("struct has no field `{field}`"), stmt.1.into_range())
 							.with_label("no such field")
-						})?;
+					})?;
 					let (val, vtyp) = self.expr(value)?;
 					if vtyp != fields[idx].typ {
 						return Err(Diagnostic::new(
@@ -335,20 +292,15 @@ impl<'a> Translator<'a> {
 						.with_label("type mismatch"));
 					}
 					let ptr = self.b.use_var(local.var);
-					self.b
-						.ins()
-						.store(MemFlags::new(), val, ptr, (idx * 8) as i32);
+					self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
 				}
 
 				Expr::Break => {
 					let exit = match self.loops.last() {
 						Some(frame) => frame.exit,
 						None => {
-							return Err(Diagnostic::new(
-								"`break` outside of a loop",
-								stmt.1.into_range(),
-							)
-							.with_label("not inside a loop"));
+							return Err(Diagnostic::new("`break` outside of a loop", stmt.1.into_range())
+								.with_label("not inside a loop"));
 						}
 					};
 					// the first `break` creates the exit block
@@ -368,11 +320,8 @@ impl<'a> Translator<'a> {
 					let top = match self.loops.last() {
 						Some(frame) => frame.top,
 						None => {
-							return Err(Diagnostic::new(
-								"`continue` outside of a loop",
-								stmt.1.into_range(),
-							)
-							.with_label("not inside a loop"));
+							return Err(Diagnostic::new("`continue` outside of a loop", stmt.1.into_range())
+								.with_label("not inside a loop"));
 						}
 					};
 					self.b.ins().jump(top, &[]);
@@ -413,9 +362,7 @@ impl<'a> Translator<'a> {
 				for (i, f) in fields.iter().enumerate() {
 					let cl = cl_type(&f.typ, self.int);
 					let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
-					self.b
-						.ins()
-						.store(MemFlags::new(), fv, heap, (i * 8) as i32);
+					self.b.ins().store(MemFlags::new(), fv, heap, (i * 8) as i32);
 				}
 				heap
 			}
@@ -460,11 +407,10 @@ impl<'a> Translator<'a> {
 	) -> Result<Option<(Value, Typ)>, Diagnostic> {
 		let (cv, ct) = self.expr(cond)?;
 		if ct != Typ::Bool {
-			return Err(Diagnostic::new(
-				format!("`if` condition must be Bool, got {ct:?}"),
-				cond.1.into_range(),
-			)
-			.with_label("not a Bool"));
+			return Err(
+				Diagnostic::new(format!("`if` condition must be Bool, got {ct:?}"), cond.1.into_range())
+					.with_label("not a Bool"),
+			);
 		}
 
 		let then_block = self.b.create_block();
@@ -553,8 +499,7 @@ impl<'a> Translator<'a> {
 		// ensure enum match covers every variant
 		if let Typ::Enum(ename) = &st {
 			let pats = || arms.iter().flat_map(|a| &a.patterns);
-			let catch_all =
-				else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
+			let catch_all = else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
 			if !catch_all {
 				let covered = pats()
 					.map(|p| self.enum_pattern(p, ename).map(|(d, _)| d))
@@ -566,8 +511,9 @@ impl<'a> Translator<'a> {
 					.collect();
 				if !missing.is_empty() {
 					let msg = format!("non-exhaustive match, missing: {}", missing.join(", "));
-					return Err(Diagnostic::new(msg, span.into_range())
-						.with_label("cover these variants or add `else`"));
+					return Err(
+						Diagnostic::new(msg, span.into_range()).with_label("cover these variants or add `else`")
+					);
 				}
 			}
 		}
@@ -578,9 +524,7 @@ impl<'a> Translator<'a> {
 		// pre-create each arm's entry block so each arm knows where to fall through to on failure
 		let arm_entries: Vec<Block> = arms.iter().map(|_| self.b.create_block()).collect();
 		let else_blk = self.b.create_block();
-		self.b
-			.ins()
-			.jump(arm_entries.first().copied().unwrap_or(else_blk), &[]);
+		self.b.ins().jump(arm_entries.first().copied().unwrap_or(else_blk), &[]);
 
 		for (i, arm) in arms.iter().enumerate() {
 			let arm_body = self.b.create_block();
@@ -614,30 +558,19 @@ impl<'a> Translator<'a> {
 							elems.len(),
 							fields.len()
 						);
-						return Err(
-							Diagnostic::new(msg, pat.1.into_range()).with_label("arity mismatch")
-						);
+						return Err(Diagnostic::new(msg, pat.1.into_range()).with_label("arity mismatch"));
 					}
 					if arm.patterns.len() == 1 {
 						let pairs = elems.iter().zip(fields).map(|((_, e), (_, t))| (e, t));
 						binds = field_binds(pairs, 0, 8)?;
 					}
 					self.b.ins().iconst(types::I8, 1)
-				} else if let (
-					Typ::Struct(sname, fdefs),
-					Expr::StructLit {
-						name: pname,
-						fields,
-					},
-				) = (&st, &pat.0)
-				{
+				} else if let (Typ::Struct(sname, fdefs), Expr::StructLit { name: pname, fields }) = (&st, &pat.0) {
 					if arm.patterns.len() == 1 {
 						binds = struct_pattern(fdefs, pname, sname, fields, pat.1)?;
 					}
 					self.b.ins().iconst(types::I8, 1)
-				} else if let (Typ::Array(elem) | Typ::FixedArray(elem, _), Expr::Array(elems)) =
-					(&st, &pat.0)
-				{
+				} else if let (Typ::Array(elem) | Typ::FixedArray(elem, _), Expr::Array(elems)) = (&st, &pat.0) {
 					if arm.patterns.len() == 1 {
 						let pairs = elems.iter().map(|e| (e, elem.as_ref()));
 						binds = field_binds(pairs, 0, elem_size(elem) as i32)?;
@@ -711,9 +644,7 @@ impl<'a> Translator<'a> {
 			self.vars = saved;
 			flow
 		} else {
-			let t = result
-				.as_ref()
-				.map_or(Typ::Tuple(vec![]), |(_, t)| t.clone());
+			let t = result.as_ref().map_or(Typ::Tuple(vec![]), |(_, t)| t.clone());
 			Some((self.zero(&t), t))
 		};
 		if let Some(vt) = else_flow {
@@ -839,11 +770,10 @@ impl<'a> Translator<'a> {
 				(v, len, Some((data, *elem)))
 			}
 			_ => {
-				return Err(Diagnostic::new(
-					format!("cannot iterate over {typ}"),
-					iter.1.into_range(),
-				)
-				.with_label("not iterable"));
+				return Err(
+					Diagnostic::new(format!("cannot iterate over {typ}"), iter.1.into_range())
+						.with_label("not iterable"),
+				);
 			}
 		};
 
@@ -869,9 +799,7 @@ impl<'a> Translator<'a> {
 				let off = self.b.ins().imul_imm(iv, elem_size(elem));
 				let addr = self.b.ins().iadd(*data, off);
 				(
-					self.b
-						.ins()
-						.load(cl_type(elem, self.int), MemFlags::new(), addr, 0),
+					self.b.ins().load(cl_type(elem, self.int), MemFlags::new(), addr, 0),
 					elem.clone(),
 				)
 			}
@@ -903,13 +831,7 @@ impl<'a> Translator<'a> {
 		Ok((self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![])))
 	}
 
-	fn bind_pattern(
-		&mut self,
-		pat: &Pattern,
-		val: Value,
-		typ: &Typ,
-		span: Span,
-	) -> Result<(), Diagnostic> {
+	fn bind_pattern(&mut self, pat: &Pattern, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {
 		match pat {
 			Pattern::Name(name) => {
 				let var = self.b.declare_var(cl_type(typ, self.int));
@@ -943,12 +865,10 @@ impl<'a> Translator<'a> {
 					.with_label("wrong number of fields"));
 				}
 				for (i, (name, (_, ftyp))) in names.iter().zip(fields).enumerate() {
-					let fv = self.b.ins().load(
-						cl_type(ftyp, self.int),
-						MemFlags::new(),
-						val,
-						(i * 8) as i32,
-					);
+					let fv = self
+						.b
+						.ins()
+						.load(cl_type(ftyp, self.int), MemFlags::new(), val, (i * 8) as i32);
 					let var = self.b.declare_var(cl_type(ftyp, self.int));
 					self.b.def_var(var, fv);
 					self.vars.insert(
@@ -1047,11 +967,8 @@ impl<'a> Translator<'a> {
 					Typ::Int(_) => self.b.ins().ineg(v),
 					Typ::Float(_) => self.b.ins().fneg(v),
 					_ => {
-						return Err(Diagnostic::new(
-							format!("cannot negate {typ:?}"),
-							expr.1.into_range(),
-						)
-						.with_label(format!("this is {typ:?}")));
+						return Err(Diagnostic::new(format!("cannot negate {typ:?}"), expr.1.into_range())
+							.with_label(format!("this is {typ:?}")));
 					}
 				};
 				Ok((out, typ))
@@ -1066,16 +983,8 @@ impl<'a> Translator<'a> {
 			Expr::Eq(l, r) => self.cmp(IntCC::Equal, FloatCC::Equal, l, r, expr.1),
 			Expr::Ne(l, r) => self.cmp(IntCC::NotEqual, FloatCC::NotEqual, l, r, expr.1),
 			Expr::Lt(l, r) => self.cmp(IntCC::SignedLessThan, FloatCC::LessThan, l, r, expr.1),
-			Expr::Gt(l, r) => {
-				self.cmp(IntCC::SignedGreaterThan, FloatCC::GreaterThan, l, r, expr.1)
-			}
-			Expr::Le(l, r) => self.cmp(
-				IntCC::SignedLessThanOrEqual,
-				FloatCC::LessThanOrEqual,
-				l,
-				r,
-				expr.1,
-			),
+			Expr::Gt(l, r) => self.cmp(IntCC::SignedGreaterThan, FloatCC::GreaterThan, l, r, expr.1),
+			Expr::Le(l, r) => self.cmp(IntCC::SignedLessThanOrEqual, FloatCC::LessThanOrEqual, l, r, expr.1),
 			Expr::Ge(l, r) => self.cmp(
 				IntCC::SignedGreaterThanOrEqual,
 				FloatCC::GreaterThanOrEqual,
@@ -1089,11 +998,10 @@ impl<'a> Translator<'a> {
 			Expr::Not(e) => {
 				let (v, typ) = self.expr(e)?;
 				if typ != Typ::Bool {
-					return Err(Diagnostic::new(
-						format!("expected Bool, got {typ:?}"),
-						expr.1.into_range(),
-					)
-					.with_label("`!` needs a Bool operand"));
+					return Err(
+						Diagnostic::new(format!("expected Bool, got {typ:?}"), expr.1.into_range())
+							.with_label("`!` needs a Bool operand"),
+					);
 				}
 				// a bool is always 0 or 1, so flipping the low bit negates it
 				Ok((self.b.ins().bxor_imm(v, 1), Typ::Bool))
@@ -1141,21 +1049,17 @@ impl<'a> Translator<'a> {
 					match &recv_typ {
 						Typ::Struct(name, _) => (name.clone(), Some(recv_val)),
 						_ => {
-							return Err(Diagnostic::new(
-								format!("`{recv_typ}` has no methods"),
-								recv.1.into_range(),
-							)
-							.with_label("methods are only defined on structs"));
+							return Err(
+								Diagnostic::new(format!("`{recv_typ}` has no methods"), recv.1.into_range())
+									.with_label("methods are only defined on structs"),
+							);
 						}
 					}
 				};
 				let key = format!("{sname}.{method}");
 				let sig = self.funcs.get(&key).cloned().ok_or_else(|| {
-					Diagnostic::new(
-						format!("`{sname}` has no method `{method}`"),
-						expr.1.into_range(),
-					)
-					.with_label("no such method")
+					Diagnostic::new(format!("`{sname}` has no method `{method}`"), expr.1.into_range())
+						.with_label("no such method")
 				})?;
 				self.call_sig(&key, sig, recv_val, args, expr.1)
 			}
@@ -1169,9 +1073,7 @@ impl<'a> Translator<'a> {
 				let mut fields = Vec::with_capacity(elems.len());
 				for (i, (name, value)) in elems.iter().enumerate() {
 					let (val, typ) = self.expr(value)?;
-					self.b
-						.ins()
-						.store(MemFlags::new(), val, ptr, (i * 8) as i32);
+					self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
 					fields.push((name.clone(), typ));
 				}
 				Ok((ptr, Typ::Tuple(fields)))
@@ -1201,11 +1103,10 @@ impl<'a> Translator<'a> {
 							let idx = self.b.ins().iconst(self.int, n);
 							Ok((self.load_index(data, len, &elem, idx), elem))
 						}
-						Err(_) => Err(Diagnostic::new(
-							format!("arrays have no field `{field}`"),
-							expr.1.into_range(),
-						)
-						.with_label("arrays only have `.len` and numeric indices")),
+						Err(_) => Err(
+							Diagnostic::new(format!("arrays have no field `{field}`"), expr.1.into_range())
+								.with_label("arrays only have `.len` and numeric indices"),
+						),
 					};
 				}
 
@@ -1219,11 +1120,10 @@ impl<'a> Translator<'a> {
 				let fields = match &typ {
 					Typ::Tuple(fields) => fields,
 					_ => {
-						return Err(Diagnostic::new(
-							format!("cannot access a field of {typ:?}"),
-							tuple.1.into_range(),
-						)
-						.with_label("not a tuple"));
+						return Err(
+							Diagnostic::new(format!("cannot access a field of {typ:?}"), tuple.1.into_range())
+								.with_label("not a tuple"),
+						);
 					}
 				};
 				let idx = match field.parse::<usize>() {
@@ -1239,29 +1139,22 @@ impl<'a> Translator<'a> {
 						.iter()
 						.position(|(name, _)| name.as_deref() == Some(field.as_str()))
 						.ok_or_else(|| {
-							Diagnostic::new(
-								format!("tuple has no field `{field}`"),
-								expr.1.into_range(),
-							)
-							.with_label("no such field")
+							Diagnostic::new(format!("tuple has no field `{field}`"), expr.1.into_range())
+								.with_label("no such field")
 						})?,
 				};
 				let field_typ = fields[idx].1.clone();
 				let cl = cl_type(&field_typ, self.int);
-				let v = self
-					.b
-					.ins()
-					.load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
+				let v = self.b.ins().load(cl, MemFlags::new(), ptr, (idx * 8) as i32);
 				Ok((v, field_typ))
 			}
 
 			Expr::Array(elems) => {
 				if elems.is_empty() {
-					return Err(Diagnostic::new(
-						"empty array literals aren't supported yet",
-						expr.1.into_range(),
-					)
-					.with_label("needs at least one element to infer its type"));
+					return Err(
+						Diagnostic::new("empty array literals aren't supported yet", expr.1.into_range())
+							.with_label("needs at least one element to infer its type"),
+					);
 				}
 				let mut elem_typ: Option<Typ> = None;
 				let mut vals = Vec::with_capacity(elems.len());
@@ -1270,9 +1163,7 @@ impl<'a> Translator<'a> {
 					match &elem_typ {
 						Some(t) if t != &typ => {
 							return Err(Diagnostic::new(
-								format!(
-									"array elements must share a type: expected {t:?}, got {typ:?}"
-								),
+								format!("array elements must share a type: expected {t:?}, got {typ:?}"),
 								e.1.into_range(),
 							)
 							.with_label("mismatched element type"));
@@ -1285,9 +1176,7 @@ impl<'a> Translator<'a> {
 				let size = elem_size(&elem);
 				let data = self.call_alloc_bytes(elems.len() as i64 * size);
 				for (i, val) in vals.into_iter().enumerate() {
-					self.b
-						.ins()
-						.store(MemFlags::new(), val, data, (i as i64 * size) as i32);
+					self.b.ins().store(MemFlags::new(), val, data, (i as i64 * size) as i32);
 				}
 				let len = self.b.ins().iconst(self.int, elems.len() as i64);
 				let header = self.make_array(data, len);
@@ -1308,11 +1197,7 @@ impl<'a> Translator<'a> {
 				Ok((self.load_index(data, len, &elem, idx), elem))
 			}
 
-			Expr::Slice {
-				collection,
-				start,
-				end,
-			} => {
+			Expr::Slice { collection, start, end } => {
 				let (ptr, typ) = self.array_operand(collection, "slice")?;
 				if let Typ::FixedArray(..) = typ {
 					return Err(Diagnostic::new(
@@ -1346,16 +1231,11 @@ impl<'a> Translator<'a> {
 				Ok((self.b.inst_results(call)[0], Typ::Array(Box::new(elem))))
 			}
 
-			Expr::If { cond, then, els } => {
-				match self.conditional(cond, then, els.as_deref(), expr.1)? {
-					Some((v, t)) => Ok((v, t)),
-					None => Err(Diagnostic::new(
-						"this `if` never produces a value",
-						expr.1.into_range(),
-					)
+			Expr::If { cond, then, els } => match self.conditional(cond, then, els.as_deref(), expr.1)? {
+				Some((v, t)) => Ok((v, t)),
+				None => Err(Diagnostic::new("this `if` never produces a value", expr.1.into_range())
 					.with_label("every branch returns, but a value is needed here")),
-				}
-			}
+			},
 
 			Expr::Match {
 				subject,
@@ -1363,20 +1243,18 @@ impl<'a> Translator<'a> {
 				else_body,
 			} => match self.match_expr(subject, arms, else_body.as_deref(), expr.1)? {
 				Some((v, t)) => Ok((v, t)),
-				None => Err(Diagnostic::new(
-					"this `match` never produces a value",
-					expr.1.into_range(),
-				)
-				.with_label("every arm returns, but a value is needed here")),
+				None => Err(
+					Diagnostic::new("this `match` never produces a value", expr.1.into_range())
+						.with_label("every arm returns, but a value is needed here"),
+				),
 			},
 
 			Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
 				Some(vt) => Ok(vt),
-				None => Err(Diagnostic::new(
-					"this `loop` never produces a value",
-					expr.1.into_range(),
-				)
-				.with_label("an infinite loop with no `break` yields nothing")),
+				None => Err(
+					Diagnostic::new("this `loop` never produces a value", expr.1.into_range())
+						.with_label("an infinite loop with no `break` yields nothing"),
+				),
 			},
 
 			Expr::For { pat, iter, body } => self.for_loop(pat, iter, body, expr.1),
@@ -1388,17 +1266,12 @@ impl<'a> Translator<'a> {
 				if rhs_typ == Typ::Str {
 					let (lhs_val, lhs_typ) = self.expr(lhs)?;
 					if lhs_typ != Typ::Str {
-						return Err(Diagnostic::new(
-							format!("cannot search {lhs_typ:?} in Str"),
-							lhs.1.into_range(),
-						)
-						.with_label("type mismatch: value must be Str"));
+						return Err(
+							Diagnostic::new(format!("cannot search {lhs_typ:?} in Str"), lhs.1.into_range())
+								.with_label("type mismatch: value must be Str"),
+						);
 					}
-					let func = self.import_fn(
-						runtime::STR_CONTAINS,
-						&[self.int, self.int],
-						Some(self.int),
-					);
+					let func = self.import_fn(runtime::STR_CONTAINS, &[self.int, self.int], Some(self.int));
 					let call = self.b.ins().call(func, &[rhs_val, lhs_val]);
 					return Ok((self.b.inst_results(call)[0], Typ::Bool));
 				}
@@ -1451,14 +1324,9 @@ impl<'a> Translator<'a> {
 				let iv = self.b.use_var(i);
 				let off = self.b.ins().imul_imm(iv, elem_size(&elem));
 				let addr = self.b.ins().iadd(data, off);
-				let elem_val =
-					self.b
-						.ins()
-						.load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
+				let elem_val = self.b.ins().load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
 				let equal = self.emit_eq(val, elem_val, &elem);
-				self.b
-					.ins()
-					.brif(equal, found_block, &[], continue_block, &[]);
+				self.b.ins().brif(equal, found_block, &[], continue_block, &[]);
 				self.b.seal_block(found_block);
 				self.b.seal_block(continue_block);
 
@@ -1483,24 +1351,18 @@ impl<'a> Translator<'a> {
 				// `Self {}` inside a method resolves to the impl's type
 				let name = match name.as_str() {
 					"Self" => self.self_type.clone().ok_or_else(|| {
-						Diagnostic::new(
-							"`Self` is only valid in an impl block",
-							expr.1.into_range(),
-						)
-						.with_label("no enclosing impl")
+						Diagnostic::new("`Self` is only valid in an impl block", expr.1.into_range())
+							.with_label("no enclosing impl")
 					})?,
 					_ => name.clone(),
 				};
 				let struct_fields = self.structs.get(name.as_str()).cloned().ok_or_else(|| {
-					Diagnostic::new(format!("unknown struct `{name}`"), expr.1.into_range())
-						.with_label("not defined")
+					Diagnostic::new(format!("unknown struct `{name}`"), expr.1.into_range()).with_label("not defined")
 				})?;
 				let size = (struct_fields.len() * 8) as u32;
-				let slot = self.b.create_sized_stack_slot(StackSlotData::new(
-					StackSlotKind::ExplicitSlot,
-					size,
-					0,
-				));
+				let slot = self
+					.b
+					.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, size, 0));
 				let ptr = self.b.ins().stack_addr(self.int, slot, 0);
 
 				for (i, f) in struct_fields.iter().enumerate() {
@@ -1508,10 +1370,7 @@ impl<'a> Translator<'a> {
 						let (val, vtyp) = self.expr(default_expr)?;
 						if vtyp != f.typ {
 							return Err(Diagnostic::new(
-								format!(
-									"default value type mismatch: expected {:?}, got {vtyp:?}",
-									f.typ
-								),
+								format!("default value type mismatch: expected {:?}, got {vtyp:?}", f.typ),
 								default_expr.1.into_range(),
 							)
 							.with_label("type mismatch"));
@@ -1520,9 +1379,7 @@ impl<'a> Translator<'a> {
 					} else {
 						self.zero(&f.typ)
 					};
-					self.b
-						.ins()
-						.store(MemFlags::new(), init, ptr, (i * 8) as i32);
+					self.b.ins().store(MemFlags::new(), init, ptr, (i * 8) as i32);
 				}
 
 				if !fields.is_empty() {
@@ -1549,29 +1406,18 @@ impl<'a> Translator<'a> {
 								)
 								.with_label("type mismatch"));
 							}
-							self.b
-								.ins()
-								.store(MemFlags::new(), val, ptr, (i * 8) as i32);
+							self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
 						}
 					} else {
 						for (field_name, value) in fields {
 							let fname = field_name.as_deref().ok_or_else(|| {
-								Diagnostic::new(
-									"cannot mix named and positional fields",
-									value.1.into_range(),
-								)
-								.with_label("missing field name")
+								Diagnostic::new("cannot mix named and positional fields", value.1.into_range())
+									.with_label("missing field name")
 							})?;
-							let idx = struct_fields
-								.iter()
-								.position(|f| f.name == fname)
-								.ok_or_else(|| {
-									Diagnostic::new(
-										format!("`{name}` has no field `{fname}`"),
-										value.1.into_range(),
-									)
+							let idx = struct_fields.iter().position(|f| f.name == fname).ok_or_else(|| {
+								Diagnostic::new(format!("`{name}` has no field `{fname}`"), value.1.into_range())
 									.with_label("no such field")
-								})?;
+							})?;
 							let expected = struct_fields[idx].typ.clone();
 							let (val, vtyp) = self.check_expr(value, &expected)?;
 							if vtyp != expected {
@@ -1581,9 +1427,7 @@ impl<'a> Translator<'a> {
 								)
 								.with_label("type mismatch"));
 							}
-							self.b
-								.ins()
-								.store(MemFlags::new(), val, ptr, (idx * 8) as i32);
+							self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
 						}
 					}
 				}
@@ -1642,11 +1486,10 @@ impl<'a> Translator<'a> {
 		match name {
 			"print" | "write" | "eprint" | "ewrite" => {
 				if args.is_empty() {
-					return Err(Diagnostic::new(
-						format!("`{name}` takes at least 1 argument"),
-						span.into_range(),
-					)
-					.with_label("missing argument"));
+					return Err(
+						Diagnostic::new(format!("`{name}` takes at least 1 argument"), span.into_range())
+							.with_label("missing argument"),
+					);
 				}
 				let stderr = matches!(name, "eprint" | "ewrite");
 				let newline = matches!(name, "print" | "eprint");
@@ -1787,11 +1630,10 @@ impl<'a> Translator<'a> {
 					self.b.ins().select(gt, max_v, v)
 				}
 				_ => {
-					return Err(Diagnostic::new(
-						format!("cannot cast {typ:?} to {name}"),
-						args[0].1.into_range(),
-					)
-					.with_label("not an integer"));
+					return Err(
+						Diagnostic::new(format!("cannot cast {typ:?} to {name}"), args[0].1.into_range())
+							.with_label("not an integer"),
+					);
 				}
 			};
 			let out_typ = if signed { Typ::ISize } else { Typ::USize };
@@ -1820,11 +1662,10 @@ impl<'a> Translator<'a> {
 					}
 				}
 				_ => {
-					return Err(Diagnostic::new(
-						format!("cannot cast {typ:?} to i{target}"),
-						args[0].1.into_range(),
-					)
-					.with_label("not an integer"));
+					return Err(
+						Diagnostic::new(format!("cannot cast {typ:?} to i{target}"), args[0].1.into_range())
+							.with_label("not an integer"),
+					);
 				}
 			};
 			return Ok(Some((out, Typ::Int(target))));
@@ -1835,23 +1676,13 @@ impl<'a> Translator<'a> {
 			let target_cl = cl_type(&Typ::UInt(target), self.int);
 			let out = match &typ {
 				Typ::UInt(w) if *w == target => val,
-				Typ::UInt(_) => {
-					self.clamp_to_width(val, false, None, uint_max(target), true, target_cl)
-				}
-				Typ::Int(_) => self.clamp_to_width(
-					val,
-					true,
-					Some((0, false)),
-					uint_max(target),
-					true,
-					target_cl,
-				),
+				Typ::UInt(_) => self.clamp_to_width(val, false, None, uint_max(target), true, target_cl),
+				Typ::Int(_) => self.clamp_to_width(val, true, Some((0, false)), uint_max(target), true, target_cl),
 				_ => {
-					return Err(Diagnostic::new(
-						format!("cannot cast {typ:?} to u{target}"),
-						args[0].1.into_range(),
-					)
-					.with_label("not an integer"));
+					return Err(
+						Diagnostic::new(format!("cannot cast {typ:?} to u{target}"), args[0].1.into_range())
+							.with_label("not an integer"),
+					);
 				}
 			};
 			return Ok(Some((out, Typ::UInt(target))));
@@ -1865,11 +1696,10 @@ impl<'a> Translator<'a> {
 				_ => 64,
 			};
 			if args.len() != 1 {
-				return Err(Diagnostic::new(
-					format!("`{name}` cast takes exactly 1 argument"),
-					span.into_range(),
-				)
-				.with_label("wrong number of arguments"));
+				return Err(
+					Diagnostic::new(format!("`{name}` cast takes exactly 1 argument"), span.into_range())
+						.with_label("wrong number of arguments"),
+				);
 			}
 			if target == 16 || target == 128 {
 				return Err(Diagnostic::new(
@@ -1886,11 +1716,10 @@ impl<'a> Translator<'a> {
 				Typ::Float(_) => self.b.ins().fdemote(types::F32, val),
 				Typ::Int(_) => self.b.ins().fcvt_from_sint(target_cl, val),
 				_ => {
-					return Err(Diagnostic::new(
-						format!("cannot cast {typ:?} to f{target}"),
-						args[0].1.into_range(),
-					)
-					.with_label("not a number"));
+					return Err(
+						Diagnostic::new(format!("cannot cast {typ:?} to f{target}"), args[0].1.into_range())
+							.with_label("not a number"),
+					);
 				}
 			};
 			return Ok(Some((out, Typ::Float(target))));
@@ -1901,18 +1730,12 @@ impl<'a> Translator<'a> {
 
 	// Evaluate the sole operand of a single-argument cast.
 	// Errors on wrong arity.
-	fn cast_operand(
-		&mut self,
-		name: &str,
-		args: &[Spanned<Expr>],
-		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	fn cast_operand(&mut self, name: &str, args: &[Spanned<Expr>], span: Span) -> Result<(Value, Typ), Diagnostic> {
 		if args.len() != 1 {
-			return Err(Diagnostic::new(
-				format!("`{name}` cast takes exactly 1 argument"),
-				span.into_range(),
-			)
-			.with_label("wrong number of arguments"));
+			return Err(
+				Diagnostic::new(format!("`{name}` cast takes exactly 1 argument"), span.into_range())
+					.with_label("wrong number of arguments"),
+			);
 		}
 		self.expr(&args[0])
 	}
@@ -1922,10 +1745,7 @@ impl<'a> Translator<'a> {
 		bytes.push(0);
 		let name = format!("__str_{}", *self.string_idx);
 		*self.string_idx += 1;
-		let id = self
-			.module
-			.declare_data(&name, Linkage::Local, false, false)
-			.unwrap();
+		let id = self.module.declare_data(&name, Linkage::Local, false, false).unwrap();
 		let mut desc = DataDescription::new();
 		desc.define(bytes.into_boxed_slice());
 		self.module.define_data(id, &desc).unwrap();
@@ -1937,20 +1757,14 @@ impl<'a> Translator<'a> {
 	fn atom_const(&mut self, name: &str) -> Value {
 		let sym = format!("__atom_{name}");
 		if self.atoms.insert(name.to_string()) {
-			let id = self
-				.module
-				.declare_data(&sym, Linkage::Local, false, false)
-				.unwrap();
+			let id = self.module.declare_data(&sym, Linkage::Local, false, false).unwrap();
 			let mut bytes = format!(":{name}").into_bytes();
 			bytes.push(0);
 			let mut desc = DataDescription::new();
 			desc.define(bytes.into_boxed_slice());
 			self.module.define_data(id, &desc).unwrap();
 		}
-		let id = self
-			.module
-			.declare_data(&sym, Linkage::Local, false, false)
-			.unwrap();
+		let id = self.module.declare_data(&sym, Linkage::Local, false, false).unwrap();
 		let gv = self.module.declare_data_in_func(id, self.b.func);
 		self.b.ins().symbol_value(self.int, gv)
 	}
@@ -1997,12 +1811,7 @@ impl<'a> Translator<'a> {
 			Typ::Float(32) => self.b.ins().f32const(0.0),
 			Typ::Float(64) => self.b.ins().f64const(0.0),
 			Typ::Float(128) => {
-				let c = self
-					.b
-					.func
-					.dfg
-					.constants
-					.insert(Ieee128::with_bits(0).into());
+				let c = self.b.func.dfg.constants.insert(Ieee128::with_bits(0).into());
 				self.b.ins().f128const(c)
 			}
 			Typ::Float(w) => panic!("unsupported float width f{w}"),
@@ -2013,22 +1822,16 @@ impl<'a> Translator<'a> {
 			Typ::Bool | Typ::ISize | Typ::USize => self.b.ins().iconst(self.int, 0),
 			// default to first variant
 			Typ::Enum(name) => {
-				let disc = self
-					.enums
-					.get(name)
-					.and_then(|vs| vs.first())
-					.map_or(0, |v| v.disc);
+				let disc = self.enums.get(name).and_then(|vs| vs.first()).map_or(0, |v| v.disc);
 				self.make_enum(name, disc, &[])
 			}
 			Typ::Tuple(fields) if fields.is_empty() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
 				let fields = fields.clone();
 				let size = (fields.len() * 8) as u32;
-				let slot = self.b.create_sized_stack_slot(StackSlotData::new(
-					StackSlotKind::ExplicitSlot,
-					size,
-					0,
-				));
+				let slot = self
+					.b
+					.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, size, 0));
 				let ptr = self.b.ins().stack_addr(self.int, slot, 0);
 				for (i, f) in fields.iter().enumerate() {
 					let z = self.zero(&f.typ);
@@ -2060,9 +1863,7 @@ impl<'a> Translator<'a> {
 				let ptr = self.b.ins().stack_addr(self.int, slot, 0);
 				for i in 0..*n {
 					let z = self.zero(&elem);
-					self.b
-						.ins()
-						.store(MemFlags::new(), z, ptr, (i as i64 * stride) as i32);
+					self.b.ins().store(MemFlags::new(), z, ptr, (i as i64 * stride) as i32);
 				}
 				ptr
 			}
@@ -2077,21 +1878,14 @@ impl<'a> Translator<'a> {
 	}
 
 	// A numeric literal takes the binding's declared type directly.
-	fn coerce_lit(
-		&mut self,
-		value: &Spanned<Expr>,
-		target: &Typ,
-	) -> Result<Option<Value>, Diagnostic> {
+	fn coerce_lit(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<Option<Value>, Diagnostic> {
 		let (neg, inner) = match &value.0 {
 			Expr::Negative(e) => (true, &e.0),
 			v => (false, v),
 		};
 		let oob = |n| {
-			Diagnostic::new(
-				format!("{n} is out of range for {target}"),
-				value.1.into_range(),
-			)
-			.with_label(format!("doesn't fit in {target}"))
+			Diagnostic::new(format!("{n} is out of range for {target}"), value.1.into_range())
+				.with_label(format!("doesn't fit in {target}"))
 		};
 		let v = match (inner, target) {
 			(Expr::Int(n), Typ::Int(w)) => {
@@ -2116,15 +1910,9 @@ impl<'a> Translator<'a> {
 				}
 				self.b.ins().iconst(self.int, n)
 			}
-			(Expr::Int(n), Typ::Float(w)) => {
-				self.float_lit((if neg { -*n } else { *n }) as f64, *w, value.1)?
-			}
-			(Expr::Float(x), Typ::Float(w)) => {
-				self.float_lit(if neg { -*x } else { *x }, *w, value.1)?
-			}
-			(Expr::Atom(name), Typ::Enum(typ)) => {
-				self.construct_variant(typ, name, &[], value.1)?.0
-			}
+			(Expr::Int(n), Typ::Float(w)) => self.float_lit((if neg { -*n } else { *n }) as f64, *w, value.1)?,
+			(Expr::Float(x), Typ::Float(w)) => self.float_lit(if neg { -*x } else { *x }, *w, value.1)?,
+			(Expr::Atom(name), Typ::Enum(typ)) => self.construct_variant(typ, name, &[], value.1)?.0,
 			(Expr::EnumShorthand { variant, args }, Typ::Enum(typ)) => {
 				self.construct_variant(typ, variant, args, value.1)?.0
 			}
@@ -2153,19 +1941,13 @@ impl<'a> Translator<'a> {
 		let tag = self.b.ins().iconst(self.int, disc);
 		self.b.ins().store(MemFlags::new(), tag, ptr, 0);
 		for (i, fv) in fields.iter().enumerate() {
-			self.b
-				.ins()
-				.store(MemFlags::new(), *fv, ptr, ((i + 1) * 8) as i32);
+			self.b.ins().store(MemFlags::new(), *fv, ptr, ((i + 1) * 8) as i32);
 		}
 		ptr
 	}
 
 	// A match pattern's discriminant and payload binds.
-	fn enum_pattern(
-		&self,
-		pat: &Spanned<Expr>,
-		enum_name: &str,
-	) -> Result<(i64, Vec<Bind>), Diagnostic> {
+	fn enum_pattern(&self, pat: &Spanned<Expr>, enum_name: &str) -> Result<(i64, Vec<Bind>), Diagnostic> {
 		let bad = |msg| Err(Diagnostic::new(msg, pat.1.into_range()).with_label("bad pattern"));
 		let (variant, args): (&str, &[Spanned<Expr>]) = match &pat.0 {
 			Expr::EnumShorthand { variant, args } => (variant, args),
@@ -2193,10 +1975,7 @@ impl<'a> Translator<'a> {
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("not an integer"));
 		};
 		let mut cond = self.b.ins().iconst(types::I8, 1);
-		for (bound, cc) in [
-			(start, IntCC::SignedGreaterThanOrEqual),
-			(end, IntCC::SignedLessThan),
-		] {
+		for (bound, cc) in [(start, IntCC::SignedGreaterThanOrEqual), (end, IntCC::SignedLessThan)] {
 			if let Some(e) = bound {
 				let (bv, _) = self.check_expr(e, st)?;
 				let c = self.b.ins().icmp(cc, sv, bv);
@@ -2219,11 +1998,8 @@ impl<'a> Translator<'a> {
 			.get(name)
 			.and_then(|vs| vs.iter().find(|v| v.name == variant))
 			.ok_or_else(|| {
-				Diagnostic::new(
-					format!("enum `{name}` has no variant `{variant}`"),
-					span.into_range(),
-				)
-				.with_label("no such variant")
+				Diagnostic::new(format!("enum `{name}` has no variant `{variant}`"), span.into_range())
+					.with_label("no such variant")
 			})?;
 		let (disc, payload) = (v.disc, v.payload.clone());
 		if args.len() != payload.len() {
@@ -2232,9 +2008,7 @@ impl<'a> Translator<'a> {
 				payload.len(),
 				args.len()
 			);
-			return Err(
-				Diagnostic::new(msg, span.into_range()).with_label("wrong number of fields")
-			);
+			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of fields"));
 		}
 		let mut fields = Vec::with_capacity(args.len());
 		for (arg, ft) in args.iter().zip(&payload) {
@@ -2250,11 +2024,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Evaluate `value` against an expected type, resolving `.variant` shorthands and atoms via coercion.
-	fn check_expr(
-		&mut self,
-		value: &Spanned<Expr>,
-		target: &Typ,
-	) -> Result<(Value, Typ), Diagnostic> {
+	fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<(Value, Typ), Diagnostic> {
 		if matches!(value.0, Expr::EnumShorthand { .. } | Expr::Atom(_))
 			&& let Some(v) = self.coerce_lit(value, target)?
 		{
@@ -2277,11 +2047,9 @@ impl<'a> Translator<'a> {
 
 	fn struct_copy(&mut self, src: Value, fields: &[FieldDef]) -> Value {
 		let size = (fields.len() * 8) as u32;
-		let slot = self.b.create_sized_stack_slot(StackSlotData::new(
-			StackSlotKind::ExplicitSlot,
-			size,
-			0,
-		));
+		let slot = self
+			.b
+			.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, size, 0));
 		let dst = self.b.ins().stack_addr(self.int, slot, 0);
 		for (i, f) in fields.iter().enumerate() {
 			let cl = cl_type(&f.typ, self.int);
@@ -2308,13 +2076,7 @@ impl<'a> Translator<'a> {
 		dst
 	}
 
-	fn binop(
-		&mut self,
-		op: Op,
-		l: &Spanned<Expr>,
-		r: &Spanned<Expr>,
-		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	fn binop(&mut self, op: Op, l: &Spanned<Expr>, r: &Spanned<Expr>, span: Span) -> Result<(Value, Typ), Diagnostic> {
 		let (lv, lt) = self.expr(l)?;
 		let (rv, rt) = self.expr(r)?;
 
@@ -2337,20 +2099,18 @@ impl<'a> Translator<'a> {
 			(Typ::USize, Typ::USize) => NumKind::UInt,
 			(Typ::Float(lw), Typ::Float(rw)) if lw == rw => NumKind::Float,
 			_ => {
-				return Err(Diagnostic::new(
-					format!("cannot {op:?} {lt:?} and {rt:?}"),
-					span.into_range(),
-				)
-				.with_label("operands have mismatched types"));
+				return Err(
+					Diagnostic::new(format!("cannot {op:?} {lt:?} and {rt:?}"), span.into_range())
+						.with_label("operands have mismatched types"),
+				);
 			}
 		};
 		if let (Op::Mod, NumKind::Float) = (op, kind) {
 			// TODO: cranelift has no float remainder
-			return Err(Diagnostic::new(
-				"`%` is not yet supported on floats".to_string(),
-				span.into_range(),
-			)
-			.with_label("only integer operands"));
+			return Err(
+				Diagnostic::new("`%` is not yet supported on floats".to_string(), span.into_range())
+					.with_label("only integer operands"),
+			);
 		}
 		let b = self.b.ins();
 		let out = match (op, kind) {
@@ -2369,12 +2129,8 @@ impl<'a> Translator<'a> {
 		};
 		// For non-standard widths, wrap the result back to the declared bit width.
 		let out = match &lt {
-			Typ::Int(w) if cl_type(&Typ::Int(*w), self.int).bits() as u16 != *w => {
-				self.reduce_int(out, *w)
-			}
-			Typ::UInt(w) if cl_type(&Typ::UInt(*w), self.int).bits() as u16 != *w => {
-				self.reduce_uint(out, *w)
-			}
+			Typ::Int(w) if cl_type(&Typ::Int(*w), self.int).bits() as u16 != *w => self.reduce_int(out, *w),
+			Typ::UInt(w) if cl_type(&Typ::UInt(*w), self.int).bits() as u16 != *w => self.reduce_uint(out, *w),
 			_ => out,
 		};
 		Ok((out, lt))
@@ -2407,20 +2163,16 @@ impl<'a> Translator<'a> {
 				IntCC::Equal => self.b.ins().iconst(self.int, 1),
 				IntCC::NotEqual => self.b.ins().iconst(self.int, 0),
 				_ => {
-					return Err(Diagnostic::new(
-						"unit type `()` only supports `==` and `!=`",
-						span.into_range(),
-					)
-					.with_label("unsupported comparison"));
+					return Err(
+						Diagnostic::new("unit type `()` only supports `==` and `!=`", span.into_range())
+							.with_label("unsupported comparison"),
+					);
 				}
 			};
 			return Ok((result, Typ::Bool));
 		}
 
-		let icc = if matches!(
-			(&lt, &rt),
-			(Typ::UInt(_), Typ::UInt(_)) | (Typ::USize, Typ::USize)
-		) {
+		let icc = if matches!((&lt, &rt), (Typ::UInt(_), Typ::UInt(_)) | (Typ::USize, Typ::USize)) {
 			unsigned_cc(icc)
 		} else {
 			icc
@@ -2454,11 +2206,10 @@ impl<'a> Translator<'a> {
 				}
 			}
 			_ => {
-				return Err(Diagnostic::new(
-					format!("cannot compare {lt:?} and {rt:?}"),
-					span.into_range(),
-				)
-				.with_label("operands have mismatched types"));
+				return Err(
+					Diagnostic::new(format!("cannot compare {lt:?} and {rt:?}"), span.into_range())
+						.with_label("operands have mismatched types"),
+				);
 			}
 		};
 		let out = self.b.ins().uextend(self.int, raw);
@@ -2466,18 +2217,11 @@ impl<'a> Translator<'a> {
 	}
 
 	// Short-circuits. `&&` only evaluates the right side when the left is true, and `||` does the inverse.
-	fn logical(
-		&mut self,
-		and: bool,
-		l: &Spanned<Expr>,
-		r: &Spanned<Expr>,
-	) -> Result<(Value, Typ), Diagnostic> {
+	fn logical(&mut self, and: bool, l: &Spanned<Expr>, r: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
 		let (lv, lt) = self.expr(l)?;
 		if lt != Typ::Bool {
-			return Err(
-				Diagnostic::new(format!("expected Bool, got {lt:?}"), l.1.into_range())
-					.with_label("logical operators need Bool operands"),
-			);
+			return Err(Diagnostic::new(format!("expected Bool, got {lt:?}"), l.1.into_range())
+				.with_label("logical operators need Bool operands"));
 		}
 
 		// result defaults to the short-circuit value
@@ -2487,21 +2231,15 @@ impl<'a> Translator<'a> {
 
 		let rhs_block = self.b.create_block();
 		let merge = self.b.create_block();
-		let (then, els) = if and {
-			(rhs_block, merge)
-		} else {
-			(merge, rhs_block)
-		};
+		let (then, els) = if and { (rhs_block, merge) } else { (merge, rhs_block) };
 		self.b.ins().brif(lv, then, &[], els, &[]);
 
 		self.b.switch_to_block(rhs_block);
 		self.b.seal_block(rhs_block);
 		let (rv, rt) = self.expr(r)?;
 		if rt != Typ::Bool {
-			return Err(
-				Diagnostic::new(format!("expected Bool, got {rt:?}"), r.1.into_range())
-					.with_label("logical operators need Bool operands"),
-			);
+			return Err(Diagnostic::new(format!("expected Bool, got {rt:?}"), r.1.into_range())
+				.with_label("logical operators need Bool operands"));
 		}
 		self.b.def_var(result, rv);
 		self.b.ins().jump(merge, &[]);
@@ -2511,12 +2249,7 @@ impl<'a> Translator<'a> {
 		Ok((self.b.use_var(result), Typ::Bool))
 	}
 
-	fn import_fn(
-		&mut self,
-		name: &str,
-		params: &[types::Type],
-		ret: Option<types::Type>,
-	) -> codegen::ir::FuncRef {
+	fn import_fn(&mut self, name: &str, params: &[types::Type], ret: Option<types::Type>) -> codegen::ir::FuncRef {
 		let mut sig = self.module.make_signature();
 		for &p in params {
 			sig.params.push(AbiParam::new(p));
@@ -2524,10 +2257,7 @@ impl<'a> Translator<'a> {
 		if let Some(r) = ret {
 			sig.returns.push(AbiParam::new(r));
 		}
-		let id = self
-			.module
-			.declare_function(name, Linkage::Import, &sig)
-			.unwrap();
+		let id = self.module.declare_function(name, Linkage::Import, &sig).unwrap();
 		self.module.declare_func_in_func(id, self.b.func)
 	}
 
@@ -2562,11 +2292,10 @@ impl<'a> Translator<'a> {
 			let (val, typ) = self.expr(arg)?;
 			let want = expected.next().unwrap();
 			if &typ != want {
-				return Err(Diagnostic::new(
-					format!("expected {want} argument, got {typ}"),
-					arg.1.into_range(),
-				)
-				.with_label("wrong argument type"));
+				return Err(
+					Diagnostic::new(format!("expected {want} argument, got {typ}"), arg.1.into_range())
+						.with_label("wrong argument type"),
+				);
 			}
 			vals.push(val);
 		}
@@ -2616,17 +2345,12 @@ impl<'a> Translator<'a> {
 	}
 
 	// Evaluate an array-typed operand, returning its value and type.
-	fn array_operand(
-		&mut self,
-		collection: &Spanned<Expr>,
-		what: &str,
-	) -> Result<(Value, Typ), Diagnostic> {
+	fn array_operand(&mut self, collection: &Spanned<Expr>, what: &str) -> Result<(Value, Typ), Diagnostic> {
 		let (ptr, typ) = self.expr(collection)?;
 		match typ {
 			Typ::Array(_) | Typ::FixedArray(..) => Ok((ptr, typ)),
 			_ => Err(
-				Diagnostic::new(format!("cannot {what} {typ:?}"), collection.1.into_range())
-					.with_label("not an array"),
+				Diagnostic::new(format!("cannot {what} {typ:?}"), collection.1.into_range()).with_label("not an array"),
 			),
 		}
 	}
@@ -2642,21 +2366,16 @@ impl<'a> Translator<'a> {
 	fn int_value(&mut self, e: &Spanned<Expr>, what: &str) -> Result<Value, Diagnostic> {
 		let (v, t) = self.expr(e)?;
 		if !matches!(t, Typ::Int(_)) {
-			return Err(Diagnostic::new(
-				format!("{what} must be Int, got {t:?}"),
-				e.1.into_range(),
-			)
-			.with_label("not an Int"));
+			return Err(
+				Diagnostic::new(format!("{what} must be Int, got {t:?}"), e.1.into_range()).with_label("not an Int"),
+			);
 		}
 		Ok(v)
 	}
 
 	// Bounds-check `idx` and return the element address.
 	fn elem_addr(&mut self, data: Value, len: Value, elem: &Typ, idx: Value) -> Value {
-		let oob = self
-			.b
-			.ins()
-			.icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
+		let oob = self.b.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, idx, len);
 
 		let panic_block = self.b.create_block();
 		let ok_block = self.b.create_block();
@@ -2676,9 +2395,7 @@ impl<'a> Translator<'a> {
 
 	fn load_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value) -> Value {
 		let addr = self.elem_addr(data, len, elem, idx);
-		self.b
-			.ins()
-			.load(cl_type(elem, self.int), MemFlags::new(), addr, 0)
+		self.b.ins().load(cl_type(elem, self.int), MemFlags::new(), addr, 0)
 	}
 
 	fn store_index(&mut self, data: Value, len: Value, elem: &Typ, idx: Value, val: Value) {
@@ -2701,9 +2418,7 @@ impl<'a> Translator<'a> {
 			&[self.int, self.int, self.int, self.int, self.int],
 			None,
 		);
-		self.b
-			.ins()
-			.call(func, &[tag, bits, width, quote, stderr_v]);
+		self.b.ins().call(func, &[tag, bits, width, quote, stderr_v]);
 	}
 
 	// Enum `Display`.
@@ -2765,10 +2480,7 @@ impl<'a> Translator<'a> {
 				self.b.ins().call(sep, &[iv, stderr_v]);
 				let off = self.b.ins().imul_imm(iv, elem_size(elem));
 				let addr = self.b.ins().iadd(data, off);
-				let ev = self
-					.b
-					.ins()
-					.load(cl_type(elem, self.int), MemFlags::new(), addr, 0);
+				let ev = self.b.ins().load(cl_type(elem, self.int), MemFlags::new(), addr, 0);
 				self.emit_print(ev, elem, true, stderr);
 				let next = self.b.ins().iadd_imm(iv, 1);
 				self.b.def_var(i, next);
@@ -2870,10 +2582,7 @@ fn field_binds<'a>(
 		.enumerate()
 		.map(|(i, (e, t))| match &e.0 {
 			Expr::Ident(n) => Ok((n.clone(), t.clone(), base + i as i32 * stride)),
-			_ => Err(
-				Diagnostic::new("patterns must bind names", e.1.into_range())
-					.with_label("not a name"),
-			),
+			_ => Err(Diagnostic::new("patterns must bind names", e.1.into_range()).with_label("not a name")),
 		})
 		.collect()
 }
@@ -2895,17 +2604,13 @@ fn struct_pattern(
 		.map(|(fname, e)| {
 			let Expr::Ident(local) = &e.0 else {
 				return Err(
-					Diagnostic::new("struct patterns must bind names", e.1.into_range())
-						.with_label("not a name"),
+					Diagnostic::new("struct patterns must bind names", e.1.into_range()).with_label("not a name")
 				);
 			};
 			let field = fname.as_deref().unwrap_or(local);
 			let idx = fdefs.iter().position(|f| f.name == field).ok_or_else(|| {
-				Diagnostic::new(
-					format!("struct `{sname}` has no field `{field}`"),
-					e.1.into_range(),
-				)
-				.with_label("no such field")
+				Diagnostic::new(format!("struct `{sname}` has no field `{field}`"), e.1.into_range())
+					.with_label("no such field")
 			})?;
 			Ok((local.clone(), fdefs[idx].typ.clone(), idx as i32 * 8))
 		})
@@ -2936,11 +2641,7 @@ fn uint_max(width: u16) -> i64 {
 }
 
 fn int_min(width: u16) -> i64 {
-	if width >= 64 {
-		i64::MIN
-	} else {
-		-(1i64 << (width - 1))
-	}
+	if width >= 64 { i64::MIN } else { -(1i64 << (width - 1)) }
 }
 
 fn int_max(width: u16) -> i64 {

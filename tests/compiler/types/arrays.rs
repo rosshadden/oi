@@ -54,10 +54,7 @@ fn no_comma_single() {
 #[test]
 fn no_comma_mixed_with_nested() {
 	// spec example: `odd << [9 11]`
-	check(
-		"mut odd := [1, 3, 5]\nodd << [9 11]\nodd",
-		"[1, 3, 5, 9, 11]",
-	);
+	check("mut odd := [1, 3, 5]\nodd << [9 11]\nodd", "[1, 3, 5, 9, 11]");
 }
 
 #[test]
@@ -130,10 +127,7 @@ fn array_of_tuples() {
 
 #[test]
 fn nested_arrays() {
-	check(
-		"a := [10, 20]\nb := [30, 40]\n[a, b]",
-		"[[10, 20], [30, 40]]",
-	);
+	check("a := [10, 20]\nb := [30, 40]\n[a, b]", "[[10, 20], [30, 40]]");
 }
 
 #[test]
@@ -205,10 +199,7 @@ fn slice_empty() {
 
 #[test]
 fn slice_variable_bounds() {
-	check(
-		"a := [0, 2, 4, 6, 8]\nlo := 1\nhi := 4\na[lo..hi]",
-		"[2, 4, 6]",
-	);
+	check("a := [0, 2, 4, 6, 8]\nlo := 1\nhi := 4\na[lo..hi]", "[2, 4, 6]");
 }
 
 #[test]
@@ -273,18 +264,12 @@ fn index_assign_variable_index() {
 
 #[test]
 fn index_assign_multiple() {
-	check(
-		"mut a := [0, 0, 0]\na[0] = 1\na[1] = 2\na[2] = 3\na",
-		"[1, 2, 3]",
-	);
+	check("mut a := [0, 0, 0]\na[0] = 1\na[1] = 2\na[2] = 3\na", "[1, 2, 3]");
 }
 
 #[test]
 fn index_assign_strings() {
-	check(
-		r#"mut a := ["x", "y"]; a[0] = "hello"; a"#,
-		r#"["hello", "y"]"#,
-	);
+	check(r#"mut a := ["x", "y"]; a[0] = "hello"; a"#, r#"["hello", "y"]"#);
 }
 
 #[test]
@@ -339,19 +324,13 @@ fn append_multiple() {
 
 #[test]
 fn append_strings() {
-	check(
-		r#"mut a := ["x"]; a << "y"; a << "z"; a"#,
-		r#"["x", "y", "z"]"#,
-	);
+	check(r#"mut a := ["x"]; a << "y"; a << "z"; a"#, r#"["x", "y", "z"]"#);
 }
 
 #[test]
 fn append_grows_past_initial_cap() {
 	// initial cap == len == 2; force multiple doublings
-	check(
-		"mut a := [1, 2]\na << 3\na << 4\na << 5\na",
-		"[1, 2, 3, 4, 5]",
-	);
+	check("mut a := [1, 2]\na << 3\na << 4\na << 5\na", "[1, 2, 3, 4, 5]");
 }
 
 #[test]
@@ -379,10 +358,7 @@ fn append_type_mismatch_error() {
 
 #[test]
 fn extend_basic() {
-	check(
-		"mut odd := [1, 3, 5]\nodd << [9, 11]\nodd",
-		"[1, 3, 5, 9, 11]",
-	);
+	check("mut odd := [1, 3, 5]\nodd << [9, 11]\nodd", "[1, 3, 5, 9, 11]");
 }
 
 #[test]

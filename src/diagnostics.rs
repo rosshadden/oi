@@ -48,9 +48,7 @@ impl Diagnostic {
 	pub fn report(&self, filename: &str, src: &str) {
 		let id = filename.to_string();
 		let color = std::io::stderr().is_terminal();
-		let config = Config::default()
-			.with_color(color)
-			.with_index_type(IndexType::Byte);
+		let config = Config::default().with_color(color).with_index_type(IndexType::Byte);
 
 		let mut builder = Report::build(ReportKind::Error, (id.clone(), self.span.clone()))
 			.with_config(config)

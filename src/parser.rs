@@ -19,8 +19,7 @@ enum Access {
 	Method(String, Vec<Spanned<Expr>>),
 }
 
-pub fn parser<'token, I>()
--> impl Parser<'token, I, Vec<Spanned<Expr>>, extra::Err<Rich<'token, Token>>>
+pub fn parser<'token, I>() -> impl Parser<'token, I, Vec<Spanned<Expr>>, extra::Err<Rich<'token, Token>>>
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
 {
@@ -74,10 +73,7 @@ where
 		.then(just(Token::Bind).ignore_then(expr.clone()).or_not())
 		.try_map(|(((mutable, name), typ), value), span| {
 			if value.is_none() && (typ.is_none() || mutable.is_none()) {
-				return Err(Rich::custom(
-					span,
-					"expected `:=` value, or `mut name type`",
-				));
+				return Err(Rich::custom(span, "expected `:=` value, or `mut name type`"));
 			}
 			Ok(Expr::Bind {
 				mutable: mutable.is_some(),
@@ -109,10 +105,7 @@ where
 
 	// `name[index] = value`
 	let index_assign = select! { Token::Ident(name) => name }
-		.then(
-			expr.clone()
-				.delimited_by(just(Token::LBracket), just(Token::RBracket)),
-		)
+		.then(expr.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)))
 		.then_ignore(just(Token::Assign))
 		.then(expr.clone())
 		.map_with(|((name, index), value), ex| {
@@ -224,10 +217,7 @@ where
 			});
 
 		// leaf atoms pair themselves with their span
-		let leaf = literal
-			.or(struct_lit)
-			.or(var_or_call)
-			.map_with(|e, ex| (e, ex.span()));
+		let leaf = literal.or(struct_lit).or(var_or_call).map_with(|e, ex| (e, ex.span()));
 
 		// enum shorthand
 		let enum_shorthand = just(Token::Dot)
@@ -239,14 +229,11 @@ where
 			});
 
 		// a lexer error token
-		let bad = select! { Token::Error(text) => text }.try_map(|text, span| {
-			Err(Rich::custom(span, format!("unexpected character `{text}`")))
-		});
+		let bad = select! { Token::Error(text) => text }
+			.try_map(|text, span| Err(Rich::custom(span, format!("unexpected character `{text}`"))));
 
 		// grouping before tuple rule to avoid making 1ples, which are instead made with `(expr,)`
-		let group = expr
-			.clone()
-			.delimited_by(just(Token::LParen), just(Token::RParen));
+		let group = expr.clone().delimited_by(just(Token::LParen), just(Token::RParen));
 
 		let elem = select! { Token::Ident(name) => name }
 			.then_ignore(just(Token::Colon))
@@ -342,9 +329,7 @@ where
 		let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
 		// match expression
-		let binding = select! { Token::Ident(n) => n }
-			.then_ignore(just(Token::At))
-			.or_not();
+		let binding = select! { Token::Ident(n) => n }.then_ignore(just(Token::At)).or_not();
 		let match_arm = binding
 			.then(
 				expr.clone()
@@ -412,16 +397,10 @@ where
 			.map(|end| Subscript::Slice(None, end));
 		let with_start = expr
 			.clone()
-			.then(
-				just(Token::DotDot)
-					.ignore_then(expr.clone().or_not())
-					.or_not(),
-			)
+			.then(just(Token::DotDot).ignore_then(expr.clone().or_not()).or_not())
 			.map(|(e, extra)| match (e.0.clone(), extra) {
 				// `start..end`
-				(Expr::Range { start, end }, None) => {
-					Subscript::Slice(start.map(|s| *s), end.map(|e| *e))
-				}
+				(Expr::Range { start, end }, None) => Subscript::Slice(start.map(|s| *s), end.map(|e| *e)),
 				// `start..`
 				(_, Some(end)) => Subscript::Slice(Some(e), end),
 				// numeric index
@@ -433,33 +412,29 @@ where
 
 		atom.pratt((
 			// field/tuple/method access
-			postfix(
-				8,
-				just(Token::Dot).ignore_then(access),
-				|lhs, acc, ex| match acc {
-					Access::Fields(parts) => {
-						let mut cur = lhs;
-						for field in parts {
-							cur = (
-								Expr::Field {
-									tuple: Box::new(cur),
-									field,
-								},
-								ex.span(),
-							);
-						}
-						cur
+			postfix(8, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
+				Access::Fields(parts) => {
+					let mut cur = lhs;
+					for field in parts {
+						cur = (
+							Expr::Field {
+								tuple: Box::new(cur),
+								field,
+							},
+							ex.span(),
+						);
 					}
-					Access::Method(method, args) => (
-						Expr::MethodCall {
-							recv: Box::new(lhs),
-							method,
-							args,
-						},
-						ex.span(),
-					),
-				},
-			),
+					cur
+				}
+				Access::Method(method, args) => (
+					Expr::MethodCall {
+						recv: Box::new(lhs),
+						method,
+						args,
+					},
+					ex.span(),
+				),
+			}),
 			// indexing and slicing
 			postfix(8, subscript, |lhs, sub, ex| {
 				let collection = Box::new(lhs);
@@ -480,9 +455,7 @@ where
 			prefix(7, just(Token::Minus), |_, rhs, ex| {
 				(Expr::Negative(Box::new(rhs)), ex.span())
 			}),
-			prefix(7, just(Token::Not), |_, rhs, ex| {
-				(Expr::Not(Box::new(rhs)), ex.span())
-			}),
+			prefix(7, just(Token::Not), |_, rhs, ex| (Expr::Not(Box::new(rhs)), ex.span())),
 			// arithmetic
 			infix(left(6), just(Token::Asterisk), |l, _, r, ex| {
 				(Expr::Mul(Box::new(l), Box::new(r)), ex.span())
