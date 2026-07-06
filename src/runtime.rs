@@ -145,7 +145,7 @@ pub extern "C" fn array_reserve(header: *mut i64, min_cap: i64, elem_size: i64) 
 	}
 	let new_cap = cap.max(1) * 2;
 	let new_cap = new_cap.max(min_cap);
-	let new_data = alloc(new_cap * elem_size) as *mut u8;
+	let new_data = alloc(new_cap * elem_size);
 	unsafe {
 		std::ptr::copy_nonoverlapping(data as *const u8, new_data, (len * elem_size) as usize);
 		*header = new_data as i64;
