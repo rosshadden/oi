@@ -1802,7 +1802,7 @@ impl<'a> Translator<'a> {
 				for (i, f) in struct_fields.iter().enumerate() {
 					let init = if let Some(default_expr) = &f.default {
 						let (val, vtyp) = self.expr(default_expr)?;
-						if &vtyp != &f.typ {
+						if vtyp != f.typ {
 							return Err(Diagnostic::new(
 								format!(
 									"default value type mismatch: expected {:?}, got {vtyp:?}",
