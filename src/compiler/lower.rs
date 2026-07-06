@@ -1798,7 +1798,7 @@ impl<'a> Translator<'a> {
 			return Ok(Some((out, out_typ)));
 		}
 
-		if let Some(target) = int_cast_width(name) {
+		if let Some(target) = int_cast_width('i', name) {
 			let (val, typ) = self.cast_operand(name, args, span)?;
 			let target_cl = cl_type(&Typ::Int(target), self.int);
 			let out = match &typ {
@@ -1830,7 +1830,7 @@ impl<'a> Translator<'a> {
 			return Ok(Some((out, Typ::Int(target))));
 		}
 
-		if let Some(target) = uint_cast_width(name) {
+		if let Some(target) = int_cast_width('u', name) {
 			let (val, typ) = self.cast_operand(name, args, span)?;
 			let target_cl = cl_type(&Typ::UInt(target), self.int);
 			let out = match &typ {
@@ -2920,16 +2920,9 @@ fn array_elem(typ: &Typ) -> &Typ {
 	}
 }
 
-// The width of an `i{N}` cast name.
-fn int_cast_width(name: &str) -> Option<u16> {
-	name.strip_prefix('i')
-		.and_then(|w| w.parse::<u16>().ok())
-		.filter(|&w| w > 0 && w <= 64)
-}
-
-// The width of a `u{N}` cast name.
-fn uint_cast_width(name: &str) -> Option<u16> {
-	name.strip_prefix('u')
+// The width of `i{N}` and `i{N}` casts.
+fn int_cast_width(prefix: char, name: &str) -> Option<u16> {
+	name.strip_prefix(prefix)
 		.and_then(|w| w.parse::<u16>().ok())
 		.filter(|&w| w > 0 && w <= 64)
 }
