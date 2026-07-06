@@ -334,7 +334,7 @@ impl Compiler {
 		let mut alias_items: Vec<(&str, &TypeExpr)> = vec![];
 		let mut main_body: Option<&[Spanned<Expr>]> = None;
 		let mut others: Vec<FnItem> = vec![];
-		let mut loose: Vec<&Spanned<Expr>> = vec![];
+		let mut loose_refs: Vec<&Spanned<Expr>> = vec![];
 		for item in program {
 			match &item.0 {
 				Expr::StructDef { name, fields } => {
@@ -365,7 +365,7 @@ impl Compiler {
 					body,
 				} => others.push((name.clone(), params, ret, body)),
 				Expr::Doc(_) => {}
-				_ => loose.push(item),
+				_ => loose_refs.push(item),
 			}
 		}
 
@@ -421,11 +421,9 @@ impl Compiler {
 					))
 				})
 				.transpose()?;
-			let stmts: Vec<&Spanned<Expr>> = body.iter().collect();
 			let sym = format!("oi_{}", key.replace('.', "__"));
-			let ret = self.translate(
-				int, &params, ret, &stmts, &funcs, &structs, &enums, self_type,
-			)?;
+			let ret =
+				self.translate(int, &params, ret, body, &funcs, &structs, &enums, self_type)?;
 			let id = self.finish_fn(&sym);
 			let param_typs = params.iter().map(|(_, t, _)| t.clone()).collect();
 			funcs.insert(
@@ -438,9 +436,11 @@ impl Compiler {
 			);
 		}
 
-		let entry: Vec<&Spanned<Expr>> = match main_body {
+		// gather loose top-level statements
+		let loose: Vec<Spanned<Expr>>;
+		let entry: &[Spanned<Expr>] = match main_body {
 			Some(body) => {
-				if let Some(first) = loose.first() {
+				if let Some(first) = loose_refs.first() {
 					return Err(Diagnostic::new(
 						"top-level statements are not allowed alongside `fn main`",
 						first.1.into_range(),
@@ -450,12 +450,15 @@ impl Compiler {
 						"`fn main` is the entrypoint, so loose statements have nowhere to run",
 					));
 				}
-				body.iter().collect()
+				body
 			}
-			None => loose,
+			None => {
+				loose = loose_refs.into_iter().cloned().collect();
+				&loose
+			}
 		};
 
-		let typ = self.translate(int, &[], None, &entry, &funcs, &structs, &enums, None)?;
+		let typ = self.translate(int, &[], None, entry, &funcs, &structs, &enums, None)?;
 		let entry_id = self.finish_fn("oi_main");
 		let id = self.compile_entry(int, entry_id, typ, &funcs, &structs, &enums);
 
@@ -523,7 +526,7 @@ impl Compiler {
 		int: types::Type,
 		params: &[(String, Typ, bool)],
 		ret: Option<(Typ, Span)>,
-		stmts: &[&Spanned<Expr>],
+		stmts: &[Spanned<Expr>],
 		funcs: &HashMap<String, FnSig>,
 		structs: &HashMap<String, Vec<FieldDef>>,
 		enums: &HashMap<String, Vec<VariantInfo>>,

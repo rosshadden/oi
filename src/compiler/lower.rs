@@ -67,9 +67,9 @@ impl<'a> Translator<'a> {
 
 	// Evaluate a block of statements, returning the final value.
 	// Returns None if the block diverged (every path returned/broke).
-	pub fn block(&mut self, stmts: &[&Spanned<Expr>]) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	pub fn block(&mut self, stmts: &[Spanned<Expr>]) -> Result<Option<(Value, Typ)>, Diagnostic> {
 		let mut last = (self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]));
-		for &stmt in stmts {
+		for stmt in stmts {
 			match &stmt.0 {
 				Expr::Bind {
 					mutable,
@@ -482,8 +482,7 @@ impl<'a> Translator<'a> {
 		let saved = self.vars.clone();
 
 		self.b.switch_to_block(then_block);
-		let then_refs: Vec<&Spanned<Expr>> = then.iter().collect();
-		let then_flow = self.block(&then_refs)?;
+		let then_flow = self.block(then)?;
 		self.vars = saved.clone();
 		if let Some((v, t)) = then_flow {
 			let var = self.b.declare_var(cl_type(&t, self.int));
@@ -497,10 +496,7 @@ impl<'a> Translator<'a> {
 
 		self.b.switch_to_block(else_block);
 		let else_flow = match els {
-			Some(els) => {
-				let refs: Vec<&Spanned<Expr>> = els.iter().collect();
-				self.block(&refs)?
-			}
+			Some(els) => self.block(els)?,
 			None => {
 				let t = result_typ.clone().unwrap_or(Typ::Tuple(vec![]));
 				let z = self.zero(&t);
@@ -700,7 +696,7 @@ impl<'a> Translator<'a> {
 				};
 				self.vars.insert(name.clone(), local);
 			}
-			let flow = self.block(&arm.body.iter().collect::<Vec<_>>())?;
+			let flow = self.block(&arm.body)?;
 			self.vars = saved;
 			if let Some(vt) = flow {
 				self.match_contribute(vt, &mut result, merge, span)?;
@@ -711,7 +707,7 @@ impl<'a> Translator<'a> {
 		self.b.seal_block(else_blk);
 		let else_flow = if let Some(els) = else_body {
 			let saved = self.vars.clone();
-			let flow = self.block(&els.iter().collect::<Vec<_>>())?;
+			let flow = self.block(els)?;
 			self.vars = saved;
 			flow
 		} else {
@@ -796,8 +792,7 @@ impl<'a> Translator<'a> {
 		self.loops.push(LoopFrame { top, exit });
 		// bindings inside the loop must not leak past it
 		let saved = self.vars.clone();
-		let refs: Vec<&Spanned<Expr>> = body.iter().collect();
-		let flow = self.block(&refs)?;
+		let flow = self.block(body)?;
 		self.vars = saved;
 		let frame = self.loops.pop().expect("loop frame");
 
@@ -887,8 +882,7 @@ impl<'a> Translator<'a> {
 			top: latch,
 			exit: Some(exit),
 		});
-		let refs: Vec<&Spanned<Expr>> = body.iter().collect();
-		let flow = self.block(&refs)?;
+		let flow = self.block(body)?;
 		self.vars = saved;
 		self.loops.pop().expect("loop frame");
 
