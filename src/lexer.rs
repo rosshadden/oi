@@ -242,12 +242,12 @@ pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
 	let mut out = Vec::with_capacity(raw.len() + 4);
 	for i in 0..raw.len() {
 		let (tok, span) = &raw[i];
-		if i > 0 {
-			if let (Token::Doc(_), Token::Doc(_)) = (&raw[i - 1].0, tok) {
-				let gap = &src[raw[i - 1].1.end..span.start];
-				if gap.bytes().filter(|&b| b == b'\n').count() > 1 {
-					out.push((Token::DocBreak, (raw[i - 1].1.end..span.start).into()));
-				}
+		if i > 0
+			&& let (Token::Doc(_), Token::Doc(_)) = (&raw[i - 1].0, tok)
+		{
+			let gap = &src[raw[i - 1].1.end..span.start];
+			if gap.bytes().filter(|&b| b == b'\n').count() > 1 {
+				out.push((Token::DocBreak, (raw[i - 1].1.end..span.start).into()));
 			}
 		}
 		out.push((tok.clone(), *span));
