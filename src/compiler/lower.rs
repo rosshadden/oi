@@ -135,7 +135,7 @@ impl<'a> Translator<'a> {
 					let (val, typ) = self.check_expr(value, &local.typ)?;
 					if typ != local.typ {
 						return Err(Diagnostic::new(
-							format!("cannot assign {typ:?} to `{name}`, which is {:?}", local.typ),
+							format!("cannot assign {typ} to `{name}`, which is {}", local.typ),
 							value.1.into_range(),
 						)
 						.with_label("type mismatch"));
@@ -170,7 +170,7 @@ impl<'a> Translator<'a> {
 					let (val, vtyp) = self.expr(value)?;
 					if vtyp != elem {
 						return Err(Diagnostic::new(
-							format!("cannot assign {vtyp:?} to element of {elem:?} array"),
+							format!("cannot assign {vtyp} to element of {elem} array"),
 							value.1.into_range(),
 						)
 						.with_label("type mismatch"));
@@ -224,7 +224,7 @@ impl<'a> Translator<'a> {
 						self.b.ins().call(func, &[ptr, val, size]);
 					} else {
 						return Err(Diagnostic::new(
-							format!("cannot append {vtyp:?} to {elem:?} array"),
+							format!("cannot append {vtyp} to {elem} array"),
 							value.1.into_range(),
 						)
 						.with_label("type mismatch"));
@@ -283,10 +283,7 @@ impl<'a> Translator<'a> {
 					let (val, vtyp) = self.expr(value)?;
 					if vtyp != fields[idx].typ {
 						return Err(Diagnostic::new(
-							format!(
-								"cannot assign {vtyp:?} to field `{field}` of type {:?}",
-								fields[idx].typ
-							),
+							format!("cannot assign {vtyp} to field `{field}` of type {}", fields[idx].typ),
 							value.1.into_range(),
 						)
 						.with_label("type mismatch"));
@@ -404,7 +401,7 @@ impl<'a> Translator<'a> {
 		let (cv, ct) = self.expr(cond)?;
 		if ct != Typ::Bool {
 			return Err(
-				Diagnostic::new(format!("`if` condition must be Bool, got {ct:?}"), cond.1.into_range())
+				Diagnostic::new(format!("`if` condition must be Bool, got {ct}"), cond.1.into_range())
 					.with_label("not a Bool"),
 			);
 		}
@@ -450,7 +447,7 @@ impl<'a> Translator<'a> {
 			match &result_typ {
 				Some(rt) if rt != &t => {
 					return Err(Diagnostic::new(
-						format!("`if` branches have mismatched types: {rt:?} and {t:?}"),
+						format!("`if` branches have mismatched types: {rt} and {t}"),
 						span.into_range(),
 					)
 					.with_label("both branches must yield the same type"));
@@ -580,7 +577,7 @@ impl<'a> Translator<'a> {
 					let (pv, pt) = self.check_expr(pat, &st)?;
 					if pt != st {
 						return Err(Diagnostic::new(
-							format!("match pattern ({pt:?}) does not match subject ({st:?})"),
+							format!("match pattern ({pt}) does not match subject ({st})"),
 							pat.1.into_range(),
 						)
 						.with_label("type mismatch"));
@@ -667,7 +664,7 @@ impl<'a> Translator<'a> {
 	) -> Result<(), Diagnostic> {
 		match result {
 			Some((_, rt)) if rt != &t => Err(Diagnostic::new(
-				format!("`match` arms have mismatched types: {rt:?} and {t:?}"),
+				format!("`match` arms have mismatched types: {rt} and {t}"),
 				span.into_range(),
 			)
 			.with_label("all arms must yield the same type")),
@@ -701,7 +698,7 @@ impl<'a> Translator<'a> {
 				let (cv, ct) = self.expr(cond)?;
 				if ct != Typ::Bool {
 					return Err(Diagnostic::new(
-						format!("`loop` condition must be Bool, got {ct:?}"),
+						format!("`loop` condition must be Bool, got {ct}"),
 						cond.1.into_range(),
 					)
 					.with_label("not a Bool"));
@@ -844,7 +841,7 @@ impl<'a> Translator<'a> {
 			Pattern::Tuple(names) => {
 				let Typ::Tuple(fields) = typ else {
 					return Err(Diagnostic::new(
-						format!("cannot destructure {typ:?} with a tuple pattern"),
+						format!("cannot destructure {typ} with a tuple pattern"),
 						span.into_range(),
 					)
 					.with_label("not a tuple"));
@@ -960,8 +957,8 @@ impl<'a> Translator<'a> {
 					Typ::Int(_) => self.b.ins().ineg(v),
 					Typ::Float(_) => self.b.ins().fneg(v),
 					_ => {
-						return Err(Diagnostic::new(format!("cannot negate {typ:?}"), expr.1.into_range())
-							.with_label(format!("this is {typ:?}")));
+						return Err(Diagnostic::new(format!("cannot negate {typ}"), expr.1.into_range())
+							.with_label(format!("this is {typ}")));
 					}
 				};
 				Ok((out, typ))
@@ -992,7 +989,7 @@ impl<'a> Translator<'a> {
 				let (v, typ) = self.expr(e)?;
 				if typ != Typ::Bool {
 					return Err(
-						Diagnostic::new(format!("expected Bool, got {typ:?}"), expr.1.into_range())
+						Diagnostic::new(format!("expected Bool, got {typ}"), expr.1.into_range())
 							.with_label("`!` needs a Bool operand"),
 					);
 				}
@@ -1114,7 +1111,7 @@ impl<'a> Translator<'a> {
 					Typ::Tuple(fields) => fields,
 					_ => {
 						return Err(
-							Diagnostic::new(format!("cannot access a field of {typ:?}"), tuple.1.into_range())
+							Diagnostic::new(format!("cannot access a field of {typ}"), tuple.1.into_range())
 								.with_label("not a tuple"),
 						);
 					}
@@ -1156,7 +1153,7 @@ impl<'a> Translator<'a> {
 					match &elem_typ {
 						Some(t) if t != &typ => {
 							return Err(Diagnostic::new(
-								format!("array elements must share a type: expected {t:?}, got {typ:?}"),
+								format!("array elements must share a type: expected {t}, got {typ}"),
 								e.1.into_range(),
 							)
 							.with_label("mismatched element type"));
@@ -1260,7 +1257,7 @@ impl<'a> Translator<'a> {
 					let (lhs_val, lhs_typ) = self.expr(lhs)?;
 					if lhs_typ != Typ::Str {
 						return Err(
-							Diagnostic::new(format!("cannot search {lhs_typ:?} in Str"), lhs.1.into_range())
+							Diagnostic::new(format!("cannot search {lhs_typ} in Str"), lhs.1.into_range())
 								.with_label("type mismatch: value must be Str"),
 						);
 					}
@@ -1273,7 +1270,7 @@ impl<'a> Translator<'a> {
 					Typ::Array(ref e) => (**e).clone(),
 					_ => {
 						return Err(Diagnostic::new(
-							format!("right side of `in` must be an array or Str, got {rhs_typ:?}"),
+							format!("right side of `in` must be an array or Str, got {rhs_typ}"),
 							rhs.1.into_range(),
 						)
 						.with_label("not an array or string"));
@@ -1282,7 +1279,7 @@ impl<'a> Translator<'a> {
 				let (val, val_typ) = self.expr(lhs)?;
 				if val_typ != elem {
 					return Err(Diagnostic::new(
-						format!("cannot search {val_typ:?} in {elem:?} array"),
+						format!("cannot search {val_typ} in {elem} array"),
 						lhs.1.into_range(),
 					)
 					.with_label("type mismatch"));
@@ -1363,7 +1360,7 @@ impl<'a> Translator<'a> {
 						let (val, vtyp) = self.expr(default_expr)?;
 						if vtyp != f.typ {
 							return Err(Diagnostic::new(
-								format!("default value type mismatch: expected {:?}, got {vtyp:?}", f.typ),
+								format!("default value type mismatch: expected {}, got {vtyp}", f.typ),
 								default_expr.1.into_range(),
 							)
 							.with_label("type mismatch"));
@@ -1394,7 +1391,7 @@ impl<'a> Translator<'a> {
 							let (val, vtyp) = self.check_expr(value, &expected)?;
 							if vtyp != expected {
 								return Err(Diagnostic::new(
-									format!("expected {expected:?}, got {vtyp:?}"),
+									format!("expected {expected}, got {vtyp}"),
 									value.1.into_range(),
 								)
 								.with_label("type mismatch"));
@@ -1415,7 +1412,7 @@ impl<'a> Translator<'a> {
 							let (val, vtyp) = self.check_expr(value, &expected)?;
 							if vtyp != expected {
 								return Err(Diagnostic::new(
-									format!("expected {expected:?}, got {vtyp:?}"),
+									format!("expected {expected}, got {vtyp}"),
 									value.1.into_range(),
 								)
 								.with_label("type mismatch"));
@@ -1511,7 +1508,7 @@ impl<'a> Translator<'a> {
 				let (cond, cond_typ) = self.expr(&args[0])?;
 				if cond_typ != Typ::Bool {
 					return Err(Diagnostic::new(
-						format!("`assert` condition must be Bool, got {cond_typ:?}"),
+						format!("`assert` condition must be Bool, got {cond_typ}"),
 						args[0].1.into_range(),
 					)
 					.with_label("not a Bool"));
@@ -1520,7 +1517,7 @@ impl<'a> Translator<'a> {
 					let (msg_val, msg_typ) = self.expr(&args[1])?;
 					if msg_typ != Typ::Str {
 						return Err(Diagnostic::new(
-							format!("`assert` message must be Str, got {msg_typ:?}"),
+							format!("`assert` message must be Str, got {msg_typ}"),
 							args[1].1.into_range(),
 						)
 						.with_label("not a Str"));
@@ -1624,7 +1621,7 @@ impl<'a> Translator<'a> {
 				}
 				_ => {
 					return Err(
-						Diagnostic::new(format!("cannot cast {typ:?} to {name}"), args[0].1.into_range())
+						Diagnostic::new(format!("cannot cast {typ} to {name}"), args[0].1.into_range())
 							.with_label("not an integer"),
 					);
 				}
@@ -1656,7 +1653,7 @@ impl<'a> Translator<'a> {
 				}
 				_ => {
 					return Err(
-						Diagnostic::new(format!("cannot cast {typ:?} to i{target}"), args[0].1.into_range())
+						Diagnostic::new(format!("cannot cast {typ} to i{target}"), args[0].1.into_range())
 							.with_label("not an integer"),
 					);
 				}
@@ -1673,7 +1670,7 @@ impl<'a> Translator<'a> {
 				Typ::Int(_) => self.clamp_to_width(val, true, Some((0, false)), uint_max(target), true, target_cl),
 				_ => {
 					return Err(
-						Diagnostic::new(format!("cannot cast {typ:?} to u{target}"), args[0].1.into_range())
+						Diagnostic::new(format!("cannot cast {typ} to u{target}"), args[0].1.into_range())
 							.with_label("not an integer"),
 					);
 				}
@@ -1710,7 +1707,7 @@ impl<'a> Translator<'a> {
 				Typ::Int(_) => self.b.ins().fcvt_from_sint(target_cl, val),
 				_ => {
 					return Err(
-						Diagnostic::new(format!("cannot cast {typ:?} to f{target}"), args[0].1.into_range())
+						Diagnostic::new(format!("cannot cast {typ} to f{target}"), args[0].1.into_range())
 							.with_label("not a number"),
 					);
 				}
@@ -2093,7 +2090,7 @@ impl<'a> Translator<'a> {
 			(Typ::Float(lw), Typ::Float(rw)) if lw == rw => NumKind::Float,
 			_ => {
 				return Err(
-					Diagnostic::new(format!("cannot {op:?} {lt:?} and {rt:?}"), span.into_range())
+					Diagnostic::new(format!("cannot apply `{op}` to {lt} and {rt}"), span.into_range())
 						.with_label("operands have mismatched types"),
 				);
 			}
@@ -2200,7 +2197,7 @@ impl<'a> Translator<'a> {
 			}
 			_ => {
 				return Err(
-					Diagnostic::new(format!("cannot compare {lt:?} and {rt:?}"), span.into_range())
+					Diagnostic::new(format!("cannot compare {lt} and {rt}"), span.into_range())
 						.with_label("operands have mismatched types"),
 				);
 			}
@@ -2213,7 +2210,7 @@ impl<'a> Translator<'a> {
 	fn logical(&mut self, and: bool, l: &Spanned<Expr>, r: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
 		let (lv, lt) = self.expr(l)?;
 		if lt != Typ::Bool {
-			return Err(Diagnostic::new(format!("expected Bool, got {lt:?}"), l.1.into_range())
+			return Err(Diagnostic::new(format!("expected Bool, got {lt}"), l.1.into_range())
 				.with_label("logical operators need Bool operands"));
 		}
 
@@ -2231,7 +2228,7 @@ impl<'a> Translator<'a> {
 		self.b.seal_block(rhs_block);
 		let (rv, rt) = self.expr(r)?;
 		if rt != Typ::Bool {
-			return Err(Diagnostic::new(format!("expected Bool, got {rt:?}"), r.1.into_range())
+			return Err(Diagnostic::new(format!("expected Bool, got {rt}"), r.1.into_range())
 				.with_label("logical operators need Bool operands"));
 		}
 		self.b.def_var(result, rv);
@@ -2343,7 +2340,7 @@ impl<'a> Translator<'a> {
 		match typ {
 			Typ::Array(_) | Typ::FixedArray(..) => Ok((ptr, typ)),
 			_ => Err(
-				Diagnostic::new(format!("cannot {what} {typ:?}"), collection.1.into_range()).with_label("not an array"),
+				Diagnostic::new(format!("cannot {what} {typ}"), collection.1.into_range()).with_label("not an array"),
 			),
 		}
 	}
@@ -2360,7 +2357,7 @@ impl<'a> Translator<'a> {
 		let (v, t) = self.expr(e)?;
 		if !matches!(t, Typ::Int(_)) {
 			return Err(
-				Diagnostic::new(format!("{what} must be Int, got {t:?}"), e.1.into_range()).with_label("not an Int"),
+				Diagnostic::new(format!("{what} must be Int, got {t}"), e.1.into_range()).with_label("not an Int"),
 			);
 		}
 		Ok(v)

@@ -57,7 +57,7 @@ fn return_keyword_wrong_type() {
 
 #[test]
 fn type_mismatch() {
-	assert!(fail(r#"1 + "x""#).contains("cannot Add"));
+	assert!(fail(r#"1 + "x""#).contains("cannot apply `+`"));
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn assign_to_undefined() {
 
 #[test]
 fn assign_wrong_type() {
-	assert!(fail("mut x := 1\nx = 2.0").contains("cannot assign Float"));
+	assert!(fail("mut x := 1\nx = 2.0").contains("cannot assign float"));
 }
 
 #[test]
