@@ -32,6 +32,15 @@ pub(super) struct Translator<'a> {
 	pub self_type: Option<String>,
 }
 
+// A statement that writes through an existing, mutable binding.
+#[derive(Clone, Copy)]
+enum Mutation {
+	Assign, // `x = v`
+	IndexAssign, // `x[i] = v`
+	Append, // `x << v`
+	FieldAssign, // `x.f = v`
+}
+
 impl<'a> Translator<'a> {
 	// The named types in scope, bundled for resolving type annotations.
 	fn types(&self) -> TypeCtx<'a> {
@@ -42,16 +51,16 @@ impl<'a> Translator<'a> {
 		}
 	}
 
-	// Look up a mutable local.
-	fn mutable_local(
-		&self,
-		name: &str,
-		span: Range<usize>,
-		verb: &str,
-		immutable_verb: &str,
-		allow: &str,
-		suggest_declare: bool,
-	) -> Result<Local, Diagnostic> {
+	// Look up the binding that a mutation targets.
+	fn mutable_local(&self, name: &str, span: Range<usize>, op: Mutation) -> Result<Local, Diagnostic> {
+		// how the mutation reads in errors
+		// (verb, verb when immutable, noun for the `mut` hint, suggest `:=`?)
+		let (verb, immutable_verb, allow, suggest_declare) = match op {
+			Mutation::Assign => ("assign to", "assign to", "assignment", true),
+			Mutation::IndexAssign => ("assign to", "assign to element of", "assignment", true),
+			Mutation::Append => ("append to", "append to", "append", false),
+			Mutation::FieldAssign => ("assign field of", "assign field of", "field assignment", false),
+		};
 		let local = self.vars.get(name).cloned().ok_or_else(|| {
 			let d = Diagnostic::new(format!("cannot {verb} undefined variable `{name}`"), span.clone())
 				.with_label("not found in scope");
@@ -122,8 +131,7 @@ impl<'a> Translator<'a> {
 				}
 
 				Expr::Assign { name, value } => {
-					let local =
-						self.mutable_local(name, stmt.1.into_range(), "assign to", "assign to", "assignment", true)?;
+					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::Assign)?;
 					let (val, typ) = self.check_expr(value, &local.typ)?;
 					if typ != local.typ {
 						return Err(Diagnostic::new(
@@ -146,14 +154,7 @@ impl<'a> Translator<'a> {
 				}
 
 				Expr::IndexAssign { name, index, value } => {
-					let local = self.mutable_local(
-						name,
-						stmt.1.into_range(),
-						"assign to",
-						"assign to element of",
-						"assignment",
-						true,
-					)?;
+					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::IndexAssign)?;
 					let elem = match &local.typ {
 						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						_ => {
@@ -179,8 +180,7 @@ impl<'a> Translator<'a> {
 				}
 
 				Expr::Append { name, value } => {
-					let local =
-						self.mutable_local(name, stmt.1.into_range(), "append to", "append to", "append", false)?;
+					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::Append)?;
 					let elem = match &local.typ {
 						Typ::Array(e) => (**e).clone(),
 						_ => {
@@ -266,14 +266,7 @@ impl<'a> Translator<'a> {
 				Expr::For { pat, iter, body } => last = self.for_loop(pat, iter, body, stmt.1)?,
 
 				Expr::FieldAssign { name, field, value } => {
-					let local = self.mutable_local(
-						name,
-						stmt.1.into_range(),
-						"assign field of",
-						"assign field of",
-						"field assignment",
-						false,
-					)?;
+					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::FieldAssign)?;
 					let fields = match &local.typ {
 						Typ::Struct(_, fields) => fields.clone(),
 						_ => {
