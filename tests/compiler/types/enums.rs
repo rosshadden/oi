@@ -258,9 +258,23 @@ fn shorthand_payload_construct() {
 }
 
 #[test]
-fn payload_eq_deferred() {
-	let err = fail("enum Opt { none some(int) }\nOpt.none == Opt.none");
-	assert!(err.contains("isn't supported yet"), "got: {err}");
+fn payload_eq() {
+	check("enum Opt { none some(int) }\nOpt.some(1) == Opt.some(1)", "true");
+	check("enum Opt { none some(int) }\nOpt.some(1) == Opt.some(2)", "false");
+	check("enum Opt { none some(int) }\nOpt.none == Opt.some(1)", "false");
+	check("enum Opt { none some(int) }\nOpt.none != Opt.some(1)", "true");
+}
+
+#[test]
+fn payload_eq_string_field() {
+	check("enum Msg { quit say(str) }\nMsg.say(\"hi\") == Msg.say(\"hi\")", "true");
+	check("enum Msg { quit say(str) }\nMsg.say(\"hi\") == Msg.say(\"bye\")", "false");
+}
+
+#[test]
+fn payload_ordering_rejected() {
+	let err = fail("enum Opt { none some(int) }\nOpt.some(1) < Opt.some(2)");
+	assert!(err.contains("only `==`/`!=`"), "got: {err}");
 }
 
 #[test]
