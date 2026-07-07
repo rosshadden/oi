@@ -482,7 +482,7 @@ impl Compiler {
 			b,
 			vars: HashMap::new(),
 			params: vec![],
-			params_tuple: true,
+			dollar: None,
 			module: &mut self.module,
 			funcs,
 			structs: types.structs,
@@ -546,7 +546,7 @@ impl Compiler {
 			b,
 			vars: HashMap::new(),
 			params: vec![],
-			params_tuple,
+			dollar: None,
 			module: &mut self.module,
 			funcs,
 			structs: types.structs,
@@ -572,6 +572,7 @@ impl Compiler {
 			trans.vars.insert(name.clone(), local.clone());
 			trans.params.push(local);
 		}
+		trans.bind_dollar(params_tuple);
 
 		if let Some((val, typ)) = trans.block(stmts)? {
 			let span = stmts.last().map(|s| s.1).or(decl_span).unwrap_or((0..0).into());

@@ -42,24 +42,30 @@ impl<'a> Translator<'a> {
 	// `$` implicit input
 	// TODO: migrate to its own submodule. idk what to call it yet so putting it here. `sigils`?
 	pub(super) fn dollar(&mut self) -> (Value, Typ) {
+		self.dollar.clone().expect("`bind_dollar` runs before the body is lowered")
+	}
+
+	// Determine type of `$` once params are bound.
+	pub fn bind_dollar(&mut self, params_tuple: bool) {
 		let locals = self.params.clone();
-		if !self.params_tuple {
+		let value = if !params_tuple {
 			let local = &locals[0];
-			return (self.b.use_var(local.var), local.typ.clone());
-		}
-		if locals.is_empty() {
-			return (self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]));
-		}
-		let ptr = self.call_alloc(locals.len());
-		let fields = locals
-			.iter()
-			.enumerate()
-			.map(|(i, local)| {
-				let val = self.b.use_var(local.var);
-				self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
-				(None, local.typ.clone())
-			})
-			.collect();
-		(ptr, Typ::Tuple(fields))
+			(self.b.use_var(local.var), local.typ.clone())
+		} else if locals.is_empty() {
+			(self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))
+		} else {
+			let ptr = self.call_alloc(locals.len());
+			let fields = locals
+				.iter()
+				.enumerate()
+				.map(|(i, local)| {
+					let val = self.b.use_var(local.var);
+					self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
+					(None, local.typ.clone())
+				})
+				.collect();
+			(ptr, Typ::Tuple(fields))
+		};
+		self.dollar = Some(value);
 	}
 }
