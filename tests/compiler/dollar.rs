@@ -16,6 +16,15 @@ fn dollar_scalar_has_no_fields() {
 }
 
 #[test]
+fn dollar_one_tuple() {
+	let src = indoc! {"
+		fn f(x int,) int { assert(x == $.0); $.0 }
+		f(5)
+	"};
+	check(src, "5");
+}
+
+#[test]
 fn dollar_two_tuple() {
 	let src = indoc! {"
 		fn f(x int, y int) int { assert(x == $.0); assert(y == $.1); $.0 + $.1 }
