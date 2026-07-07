@@ -1,59 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use std::ops::Range;
-
-use cranelift::codegen;
-use cranelift::codegen::ir::immediates::{Ieee16, Ieee128};
-use cranelift::codegen::ir::{StackSlotData, StackSlotKind};
-use cranelift::prelude::*;
-use cranelift_jit::JITModule;
-use cranelift_module::{DataDescription, Linkage, Module};
-
-use super::{
-	FieldDef, FnSig, Local, LoopFrame, Op, Typ, TypeCtx, VariantInfo, cl_int_for_width, cl_type, elem_size, enum_boxed,
-	enum_slots,
-};
-use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned, TypeExpr};
-use crate::diagnostics::Diagnostic;
-use crate::runtime;
-
-mod array;
-mod builtin;
-mod call;
-mod control;
-mod expr;
-mod op;
-mod print;
-mod stmt;
-mod value;
-
-pub(super) struct Translator<'a> {
-	pub int: types::Type,
-	pub b: FunctionBuilder<'a>,
-	pub vars: HashMap<String, Local>,
-	pub module: &'a mut JITModule,
-	pub funcs: &'a HashMap<String, FnSig>,
-	pub structs: &'a HashMap<String, Vec<FieldDef>>,
-	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
-	pub aliases: &'a HashMap<String, TypeExpr>,
-	pub string_idx: &'a mut usize,
-	pub atoms: &'a mut HashSet<String>,
-	pub ret: Option<(Typ, Span)>,
-	pub loops: Vec<LoopFrame>,
-	pub self_type: Option<String>,
-}
-
-// A statement that writes through an existing, mutable binding.
-#[derive(Clone, Copy)]
-enum Mutation {
-	Assign,      // `x = v`
-	IndexAssign, // `x[i] = v`
-	Append,      // `x << v`
-	FieldAssign, // `x.f = v`
-}
+use super::*;
 
 impl<'a> Translator<'a> {
 	// The named types in scope, bundled for resolving type annotations.
-	fn types(&self) -> TypeCtx<'a> {
+	pub(super) fn types(&self) -> TypeCtx<'a> {
 		TypeCtx {
 			structs: self.structs,
 			enums: self.enums,
@@ -62,7 +11,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Look up the binding that a mutation targets.
-	fn mutable_local(&self, name: &str, span: Range<usize>, op: Mutation) -> Result<Local, Diagnostic> {
+	pub(super) fn mutable_local(&self, name: &str, span: Range<usize>, op: Mutation) -> Result<Local, Diagnostic> {
 		// how the mutation reads in errors
 		// (verb, verb when immutable, noun for the `mut` hint, suggest `:=`?)
 		let (verb, immutable_verb, allow, suggest_declare) = match op {
@@ -91,13 +40,9 @@ impl<'a> Translator<'a> {
 	}
 }
 
-// A destructured binding.
-// `(name, type, offset)`
-type Bind = (String, Typ, i32);
-
 // Create `Bind`s from idents.
 // `base` is the first offset, `stride` the step between fields.
-fn field_binds<'a>(
+pub(super) fn field_binds<'a>(
 	elems: impl Iterator<Item = (&'a Spanned<Expr>, &'a Typ)>,
 	base: i32,
 	stride: i32,
@@ -112,7 +57,7 @@ fn field_binds<'a>(
 }
 
 // A struct pattern's field bindings.
-fn struct_pattern(
+pub(super) fn struct_pattern(
 	fdefs: &[FieldDef],
 	pname: &str,
 	sname: &str,
@@ -142,7 +87,7 @@ fn struct_pattern(
 }
 
 // The element type of an array.
-fn array_elem(typ: &Typ) -> &Typ {
+pub(super) fn array_elem(typ: &Typ) -> &Typ {
 	match typ {
 		Typ::Array(e) | Typ::FixedArray(e, _) => e,
 		_ => unreachable!("not an array type"),
@@ -150,13 +95,13 @@ fn array_elem(typ: &Typ) -> &Typ {
 }
 
 // The width of `i{N}` and `i{N}` casts.
-fn int_cast_width(prefix: char, name: &str) -> Option<u16> {
+pub(super) fn int_cast_width(prefix: char, name: &str) -> Option<u16> {
 	name.strip_prefix(prefix)
 		.and_then(|w| w.parse::<u16>().ok())
 		.filter(|&w| w > 0 && w <= 64)
 }
 
-fn uint_max(width: u16) -> i64 {
+pub(super) fn uint_max(width: u16) -> i64 {
 	if width >= 64 {
 		u64::MAX as i64
 	} else {
@@ -164,11 +109,11 @@ fn uint_max(width: u16) -> i64 {
 	}
 }
 
-fn int_min(width: u16) -> i64 {
+pub(super) fn int_min(width: u16) -> i64 {
 	if width >= 64 { i64::MIN } else { -(1i64 << (width - 1)) }
 }
 
-fn int_max(width: u16) -> i64 {
+pub(super) fn int_max(width: u16) -> i64 {
 	if width >= 64 {
 		i64::MAX
 	} else {
@@ -176,7 +121,7 @@ fn int_max(width: u16) -> i64 {
 	}
 }
 
-fn unsigned_cc(icc: IntCC) -> IntCC {
+pub(super) fn unsigned_cc(icc: IntCC) -> IntCC {
 	match icc {
 		IntCC::SignedLessThan => IntCC::UnsignedLessThan,
 		IntCC::SignedLessThanOrEqual => IntCC::UnsignedLessThanOrEqual,
