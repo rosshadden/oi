@@ -13,13 +13,19 @@ pub fn run() -> Result<(), Reported> {
 	loop {
 		match rl.read_line(&prompt) {
 			Ok(Signal::Success(line)) => {
-				if line.trim().is_empty() {
-					continue;
+				match line.trim() {
+					s if s.is_empty() => { continue },
+					"/q" | "/quit" => {
+						println!("goodbye");
+						break
+					},
+					"/c" | "/clear" => {
+						session.clear();
+						continue
+					},
+					_ => {},
 				}
-				if line.trim() == "/quit" {
-					println!("goodbye");
-					break
-				}
+
 				let candidate = format!("{session}{line}\n");
 				if run_source("<repl>", &candidate, false).is_ok() {
 					session = candidate;
