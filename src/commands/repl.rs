@@ -1,5 +1,6 @@
+use std::process::Command;
+
 use oi::Reported;
-use oi::driver::run_source;
 use reedline::{DefaultPrompt, DefaultPromptSegment, Reedline, Signal};
 
 pub fn run() -> Result<(), Reported> {
@@ -17,7 +18,7 @@ pub fn run() -> Result<(), Reported> {
 					continue;
 				}
 				let candidate = format!("{session}{line}\n");
-				if run_source("<repl>", &candidate, false).is_ok() {
+				if eval(&candidate) {
 					session = candidate;
 				}
 			}
@@ -32,4 +33,13 @@ pub fn run() -> Result<(), Reported> {
 	}
 
 	Ok(())
+}
+
+// Run `src` as a fresh process.
+fn eval(src: &str) -> bool {
+	Command::new(std::env::current_exe().expect("current executable path"))
+		.args(["exec", src])
+		.status()
+		.expect("spawn `oi exec`")
+		.success()
 }
