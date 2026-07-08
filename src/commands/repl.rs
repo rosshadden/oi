@@ -14,16 +14,16 @@ pub fn run() -> Result<(), Reported> {
 		match rl.read_line(&prompt) {
 			Ok(Signal::Success(line)) => {
 				match line.trim() {
-					s if s.is_empty() => { continue },
+					s if s.is_empty() => continue,
 					"/q" | "/quit" => {
 						println!("goodbye");
-						break
-					},
+						break;
+					}
 					"/c" | "/clear" => {
 						session.clear();
-						continue
-					},
-					_ => {},
+						continue;
+					}
+					_ => {}
 				}
 
 				let candidate = format!("{session}{line}\n");
