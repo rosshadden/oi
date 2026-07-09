@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +16,9 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@nightly
-    - name: Build
+    - name: Rust - build
       run: cargo build --verbose
-    - name: Run tests
+    - name: Rust - clippy
+      run: cargo clippy --all -- -D warnings
+    - name: Rust - tests
       run: cargo test --verbose
