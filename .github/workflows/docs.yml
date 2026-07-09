@@ -30,8 +30,12 @@ jobs:
       - name: rust:build
         run: cargo build --verbose
 
+      - uses: Swatinem/rust-cache@v2
+
       - name: rust:doc
         run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "-D warnings"
 
       - uses: actions/upload-pages-artifact@v5
         id: docs
