@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -13,14 +13,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # TODO: doctests
     steps:
     - uses: actions/checkout@v7
+
     - uses: dtolnay/rust-toolchain@nightly
       with:
         components: clippy, rustfmt
-    - name: Rust - build
+
+    - name: rust:build
       run: cargo build --verbose
-    - name: Rust - clippy
+
+    - name: rust:clippy
       run: cargo clippy --all -- -D warnings
-    - name: Rust - tests
+
+    - name: rust:tests
       run: cargo test --verbose

@@ -1,0 +1,51 @@
+name: docs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: rust:build
+        run: cargo build --verbose
+
+      - name: rust:doc
+        run: cargo doc --no-deps --all-features
+
+      - uses: actions/upload-pages-artifact@v5
+        id: docs
+        with:
+          path: ./target/doc
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.docs.outputs.page_url }}
+
+    steps:
+      - uses: actions/deploy-pages@v5
+        id: docs
