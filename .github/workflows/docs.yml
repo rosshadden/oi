@@ -39,12 +39,12 @@ jobs:
 
       - name: fix:docs
         run: |
-          cp .github/templates/index.html target/doc/
+          mv ./target/doc/ ./public/docs/
 
       - uses: actions/upload-pages-artifact@v5
         id: docs
         with:
-          path: ./target/doc
+          path: ./public/
 
   deploy:
     needs: build
