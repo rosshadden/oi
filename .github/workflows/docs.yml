@@ -32,10 +32,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: rust:doc
+      - name: rust:docs
         run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: "-D warnings"
+
+      - name: fix:docs
+        run: |
+          cp .github/templates/index.html target/doc/
 
       - uses: actions/upload-pages-artifact@v5
         id: docs
