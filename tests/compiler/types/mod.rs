@@ -5,6 +5,7 @@ mod booleans;
 mod enums;
 mod literals;
 mod numbers;
+mod options;
 mod strings;
 mod structs;
 mod tuples;
