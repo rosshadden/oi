@@ -178,29 +178,29 @@ fn payload_construct() {
 
 #[test]
 fn payloadless_variant_of_boxed_enum() {
-	check("enum Opt { none some(int) }\nOpt.none", "none");
-	check("enum Opt { none some(int) }\no Opt := .none\no", "none");
+	check("enum Opt { nope some(int) }\nOpt.nope", "nope");
+	check("enum Opt { nope some(int) }\no Opt := .nope\no", "nope");
 }
 
 #[test]
 fn payload_enum_default_is_first() {
-	check("enum Opt { none some(int) }\nmut o Opt\no", "none");
+	check("enum Opt { nope some(int) }\nmut o Opt\no", "nope");
 }
 
 #[test]
 fn payload_int_cast_gives_tag() {
-	check("enum Opt { none some(int) }\nint(Opt.some(1))", "1");
+	check("enum Opt { nope some(int) }\nint(Opt.some(1))", "1");
 }
 
 #[test]
 fn payload_field_type_mismatch() {
-	let err = fail("enum Opt { none some(int) }\nOpt.some(3.0)");
+	let err = fail("enum Opt { nope some(int) }\nOpt.some(3.0)");
 	assert!(err.contains("expected int, got float"), "got: {err}");
 }
 
 #[test]
 fn payload_wrong_arity() {
-	let err = fail("enum Opt { none some(int) }\nOpt.some()");
+	let err = fail("enum Opt { nope some(int) }\nOpt.some()");
 	assert!(err.contains("takes 1 field(s), got 0"), "got: {err}");
 }
 
@@ -208,11 +208,11 @@ fn payload_wrong_arity() {
 fn payload_match_binds_fields() {
 	check(
 		indoc! {r#"
-			enum Opt { none some(int) }
+			enum Opt { nope some(int) }
 			o := Opt.some(7)
 			match o {
 				.some(n) { n }
-				.none { -1 }
+				.nope { -1 }
 			}
 		"#},
 		"7",
@@ -223,11 +223,11 @@ fn payload_match_binds_fields() {
 fn payload_match_fieldless_arm() {
 	check(
 		indoc! {r#"
-			enum Opt { none some(int) }
-			o Opt := .none
+			enum Opt { nope some(int) }
+			o Opt := .nope
 			match o {
 				.some(n) { n }
-				.none { -1 }
+				.nope { -1 }
 			}
 		"#},
 		"-1",
@@ -252,17 +252,17 @@ fn payload_match_multiple_fields() {
 #[test]
 fn shorthand_payload_construct() {
 	check(
-		"enum Opt { none some(int) }\no Opt := .some(5)\nmatch o { .some(n) { n } .none { 0 } }",
+		"enum Opt { nope some(int) }\no Opt := .some(5)\nmatch o { .some(n) { n } .nope { 0 } }",
 		"5",
 	);
 }
 
 #[test]
 fn payload_eq() {
-	check("enum Opt { none some(int) }\nOpt.some(1) == Opt.some(1)", "true");
-	check("enum Opt { none some(int) }\nOpt.some(1) == Opt.some(2)", "false");
-	check("enum Opt { none some(int) }\nOpt.none == Opt.some(1)", "false");
-	check("enum Opt { none some(int) }\nOpt.none != Opt.some(1)", "true");
+	check("enum Opt { nope some(int) }\nOpt.some(1) == Opt.some(1)", "true");
+	check("enum Opt { nope some(int) }\nOpt.some(1) == Opt.some(2)", "false");
+	check("enum Opt { nope some(int) }\nOpt.nope == Opt.some(1)", "false");
+	check("enum Opt { nope some(int) }\nOpt.nope != Opt.some(1)", "true");
 }
 
 #[test]
@@ -276,7 +276,7 @@ fn payload_eq_string_field() {
 
 #[test]
 fn payload_ordering_rejected() {
-	let err = fail("enum Opt { none some(int) }\nOpt.some(1) < Opt.some(2)");
+	let err = fail("enum Opt { nope some(int) }\nOpt.some(1) < Opt.some(2)");
 	assert!(err.contains("only `==`&`!=`"), "got: {err}");
 }
 
