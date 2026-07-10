@@ -1,2 +1,8 @@
-/target
+# rust
+/target/
+
+# docs
+/www/public/
+
+# misc.
 /ref
