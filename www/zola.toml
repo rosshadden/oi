@@ -1,12 +1,45 @@
 base_url = "https://rawsp33d.github.io/oi"
+title = "Oi"
+
+# theme = "book"
+# theme = "neovim-theme"
+theme = "terminimal"
+# theme = "goyo"
 
 compile_sass = true
-
 build_search_index = true
 
 [markdown]
 
 [markdown.highlighting]
 theme = "catppuccin-mocha"
+# theme = "boron"
 
 [extra]
+
+# terminimal
+
+author = "Ross Hadden"
+accent_color = "pink" # TODO: add purple support?
+background_color = "dark"
+logo_text = "Oi!"
+# use_full_hack_font = true
+
+menu_items = [
+	{ name = "about", url = "/about" },
+	{ name = "docs", url = "/docs/oi" },
+]
+
+# goyo
+
+nav = [
+	{ name = "About", url = "/about", type = "url" },
+	{ name = "Docs", url = "/docs/oi", type = "url", icon = "book" },
+]
+edit_url = "https://github.com/rawsp33d/oi/edit/main"
+issue_url = "https://github.com/rawsp33d/oi/issues"
+
+# [extra.theme]
+# colorset = "dark"
+# dark_brightness = "darker"
+# default_theme_dark = "goyo-dark"
