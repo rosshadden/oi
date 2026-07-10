@@ -43,12 +43,14 @@ jobs:
 
       - name: fix:docs
         run: |
-          mv ./target/doc/ ./public/docs/
+          mkdir -p ./www/public/
+          mv ./target/doc/ ./www/public/docs/
 
-      - uses: actions/upload-pages-artifact@v5
+      - uses: getzola/github-pages@v1
         id: docs
         with:
-          path: ./public/
+          zola_version: v0.22.1
+          working_directory: "www"
 
   deploy:
     needs: build
