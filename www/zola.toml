@@ -1,0 +1,12 @@
+base_url = "https://rawsp33d.github.io/oi"
+
+compile_sass = true
+
+build_search_index = true
+
+[markdown]
+
+[markdown.highlighting]
+theme = "catppuccin-mocha"
+
+[extra]
