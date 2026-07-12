@@ -1,0 +1,61 @@
+base_url = "https://rawsp33d.github.io/oi"
+title = "Oi"
+description = "Friendly neighborhood programming language."
+
+# theme = "book"
+# theme = "neovim-theme"
+# theme = "terminimal"
+theme = "zap"
+
+compile_sass = true
+build_search_index = true
+
+[markdown]
+
+[markdown.highlighting]
+light_theme = "github-light"
+dark_theme = "github-dark"
+theme = "github-dark"
+
+[extra]
+
+# keywords = []
+keywords = "zola, theme, minimal, tui"
+
+# terminimal
+
+author = "Ross Hadden"
+accent_color = "pink" # TODO: add purple support?
+# background_color = "dark"
+# logo_text = "Oi!"
+# # use_full_hack_font = true
+
+menu_links = [
+	{ name = "/", url = "/" },
+	{ name = "/about", url = "/about" },
+	{ name = "/docs", url = "/docs/oi" },
+]
+
+# # juice
+# juice_logo_name = "Oi!"
+# juice_logo_path = "juice.svg"
+
+# # cyberwalk
+# system_status = "ONLINE"
+
+# goyo
+
+# nav = [
+# 	{ name = "About", url = "/about", type = "url" },
+# 	{ name = "Docs", url = "/docs/oi", type = "url", icon = "book" },
+# ]
+# edit_url = "https://github.com/rawsp33d/oi/edit/main"
+# issue_url = "https://github.com/rawsp33d/oi/issues"
+
+# [extra.theme]
+# colorset = "dark"
+# dark_brightness = "darker"
+# default_theme_dark = "goyo-dark"
+
+# [extra.cela.color]
+# default_theme = "dark"
