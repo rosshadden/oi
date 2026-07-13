@@ -40,16 +40,19 @@ impl<'a> Translator<'a> {
 				self.b.ins().f128const(c)
 			}
 			Typ::Float(w) => panic!("unsupported float width f{w}"),
-			Typ::Str => self.str_const(""),
+			Typ::Str | Typ::Error => self.str_const(""),
 			Typ::Atom => self.atom_const(""),
 			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
 			Typ::Bool | Typ::ISize | Typ::USize => self.b.ins().iconst(self.int, 0),
-			// default to first variant
-			Typ::Enum(_) | Typ::Option(_) => {
+			// default to first variant, with zero'd payload fields
+			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) => {
 				let variants = self.variants_of(typ);
-				let disc = variants.first().map_or(0, |v| v.disc);
-				self.make_enum(&variants, disc, &[])
+				let v = variants.first().cloned();
+				let disc = v.as_ref().map_or(0, |v| v.disc);
+				let fields: Vec<Value> =
+					v.map(|v| v.payload.iter().map(|t| self.zero(t)).collect()).unwrap_or_default();
+				self.make_enum(&variants, disc, &fields)
 			}
 			Typ::Tuple(fields) if fields.is_empty() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
@@ -158,6 +161,7 @@ impl<'a> Translator<'a> {
 		match typ {
 			Typ::Enum(name) => self.enum_variants(name).to_vec(),
 			Typ::Option(inner) => option_variants(inner),
+			Typ::Result(inner) => result_variants(inner),
 			_ => Vec::new(),
 		}
 	}

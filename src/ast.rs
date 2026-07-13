@@ -34,6 +34,12 @@ pub enum Expr {
 		arg: Box<Spanned<Expr>>,
 	},
 
+	// `!T(value)` or `!T(error)`
+	ResultInit {
+		inner: Spanned<TypeExpr>,
+		arg: Box<Spanned<Expr>>,
+	},
+
 	// `name = value`: assigns to an existing mutable binding
 	Assign {
 		name: String,
@@ -212,6 +218,7 @@ pub enum TypeExpr {
 	FixedArray(Box<TypeExpr>, usize),
 	Fn(Vec<TypeExpr>, Box<TypeExpr>),
 	Option(Box<TypeExpr>),
+	Result(Box<TypeExpr>),
 }
 
 #[derive(Debug, Clone)]

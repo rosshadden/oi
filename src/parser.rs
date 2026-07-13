@@ -63,7 +63,9 @@ where
 		let option = just(Token::Question)
 			.ignore_then(te.clone())
 			.map(|t| TypeExpr::Option(Box::new(t)));
-		unit.or(fn_type).or(option).or(name).or(tuple).or(array)
+		// `!T`: ok/error
+		let result = just(Token::Not).ignore_then(te.clone()).map(|t| TypeExpr::Result(Box::new(t)));
+		unit.or(fn_type).or(option).or(result).or(name).or(tuple).or(array)
 	});
 
 	// bindings
@@ -278,6 +280,20 @@ where
 				)
 			});
 
+		// result literal
+		let result_shape = type_expr
+			.clone()
+			.then(expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)));
+		let result_init = just(Token::Not).ignore_then(result_shape.clone()).map_with(|(elem, arg), ex| {
+			(
+				Expr::ResultInit {
+					inner: (elem, ex.span()),
+					arg: Box::new(arg),
+				},
+				ex.span(),
+			)
+		});
+
 		// array literal
 		let array = expr
 			.clone()
@@ -388,6 +404,7 @@ where
 			.or(tuple)
 			.or(array_init)
 			.or(option_init)
+			.or(result_init)
 			.or(array)
 			.or(if_expr)
 			.or(match_expr)
@@ -473,7 +490,11 @@ where
 			prefix(7, just(Token::Minus), |_, rhs, ex| {
 				(Expr::Negative(Box::new(rhs)), ex.span())
 			}),
-			prefix(7, just(Token::Not), |_, rhs, ex| (Expr::Not(Box::new(rhs)), ex.span())),
+			prefix(
+				7,
+				just(Token::Not).then_ignore(result_shape.clone().not()),
+				|_, rhs, ex| (Expr::Not(Box::new(rhs)), ex.span()),
+			),
 			// arithmetic
 			infix(left(6), just(Token::Asterisk), |l, _, r, ex| {
 				(Expr::Mul(Box::new(l), Box::new(r)), ex.span())

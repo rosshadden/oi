@@ -124,6 +124,25 @@ impl<'a> Translator<'a> {
 				Ok(Some((cond, Typ::Bool)))
 			}
 
+			"error" => {
+				if args.len() != 1 {
+					return Err(Diagnostic::new(
+						format!("`error` takes 1 argument, got {}", args.len()),
+						span.into_range(),
+					)
+					.with_label("wrong number of arguments"));
+				}
+				let (msg, msg_typ) = self.expr(&args[0])?;
+				if msg_typ != Typ::Str {
+					return Err(Diagnostic::new(
+						format!("`error` message must be Str, got {msg_typ}"),
+						args[0].1.into_range(),
+					)
+					.with_label("not a Str"));
+				}
+				Ok(Some((msg, Typ::Error)))
+			}
+
 			_ => self.cast_call(name, args, span),
 		}
 	}
@@ -225,7 +244,7 @@ impl<'a> Translator<'a> {
 					false,
 					target_cl,
 				),
-				Typ::Enum(_) | Typ::Option(_) => {
+				Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) => {
 					let variants = self.variants_of(&typ);
 					let tag = self.enum_tag(&variants, val);
 					if target_cl == types::I64 {

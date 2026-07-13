@@ -46,6 +46,25 @@ impl<'a> Translator<'a> {
 				Ok((val, Typ::Option(Box::new(inner_typ))))
 			}
 
+			Expr::ResultInit { inner: (te, span), arg } => {
+				let inner_typ = self.types().resolve(te, *span)?;
+				let variants = result_variants(&inner_typ);
+				let (fv, at) = self.check_expr(arg, &inner_typ)?;
+				let disc = if at == inner_typ {
+					0
+				} else if at == Typ::Error {
+					1
+				} else {
+					return Err(Diagnostic::new(
+						format!("expected {inner_typ} or Error, got {at}"),
+						arg.1.into_range(),
+					)
+					.with_label("type mismatch"));
+				};
+				let val = self.make_enum(&variants, disc, &[fv]);
+				Ok((val, Typ::Result(Box::new(inner_typ))))
+			}
+
 			Expr::Ident(name) => {
 				let local = self.vars.get(name).cloned().ok_or_else(|| {
 					Diagnostic::new(format!("undefined variable `{name}`"), expr.1.into_range())

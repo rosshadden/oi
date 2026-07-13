@@ -40,6 +40,8 @@ pub(crate) enum Typ {
 	Struct(String, Vec<FieldDef>),
 	Enum(String),
 	Option(Box<Typ>),
+	Result(Box<Typ>),
+	Error,
 	Range,
 }
 
@@ -92,6 +94,8 @@ impl fmt::Display for Typ {
 			Typ::Struct(name, _) => write!(f, "{name}"),
 			Typ::Enum(name) => write!(f, "{name}"),
 			Typ::Option(inner) => write!(f, "?{inner}"),
+			Typ::Result(inner) => write!(f, "!{inner}"),
+			Typ::Error => write!(f, "Error"),
 			Typ::Range => write!(f, "range"),
 		}
 	}
@@ -168,6 +172,21 @@ pub(crate) fn option_variants(inner: &Typ) -> Vec<VariantInfo> {
 	]
 }
 
+pub(crate) fn result_variants(inner: &Typ) -> Vec<VariantInfo> {
+	vec![
+		VariantInfo {
+			name: "ok".to_string(),
+			disc: 0,
+			payload: vec![inner.clone()],
+		},
+		VariantInfo {
+			name: "err".to_string(),
+			disc: 1,
+			payload: vec![Typ::Error],
+		},
+	]
+}
+
 // Assign discriminants and resolve payload types.
 // TODO: only primitive payloads work right now
 fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnostic> {
@@ -220,6 +239,7 @@ impl TypeCtx<'_> {
 			TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(self.resolve(elem, span)?))),
 			TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(Box::new(self.resolve(elem, span)?), *n)),
 			TypeExpr::Option(inner) => Ok(Typ::Option(Box::new(self.resolve(inner, span)?))),
+			TypeExpr::Result(inner) => Ok(Typ::Result(Box::new(self.resolve(inner, span)?))),
 			TypeExpr::Fn(_, _) => Err(Diagnostic::new(
 				"function types are not yet supported in codegen",
 				span.into_range(),

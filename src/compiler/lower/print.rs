@@ -108,7 +108,7 @@ impl<'a> Translator<'a> {
 				self.emit_frag(runtime::Tag::Raw, val, 0, false, stderr);
 			}
 
-			Typ::Enum(_) | Typ::Option(_) => {
+			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) => {
 				let variants = self.variants_of(typ);
 				let ptr = self.enum_name_str(&variants, val);
 				self.emit_frag(runtime::Tag::Raw, ptr, 0, false, stderr);
@@ -129,7 +129,7 @@ impl<'a> Translator<'a> {
 					Typ::Int(_) | Typ::ISize => runtime::Tag::Int,
 					Typ::UInt(_) | Typ::USize => runtime::Tag::UInt,
 					Typ::Float(_) => runtime::Tag::Float,
-					Typ::Str => runtime::Tag::Str,
+					Typ::Str | Typ::Error => runtime::Tag::Str,
 					Typ::Atom
 					| Typ::Tuple(_)
 					| Typ::Array(_)
@@ -137,6 +137,7 @@ impl<'a> Translator<'a> {
 					| Typ::Struct(..)
 					| Typ::Enum(_)
 					| Typ::Option(_)
+					| Typ::Result(_)
 					| Typ::Range => {
 						unreachable!("handled above")
 					}

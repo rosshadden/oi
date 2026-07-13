@@ -4,7 +4,7 @@ impl<'a> Translator<'a> {
 	pub(super) fn emit_eq(&mut self, a: Value, b: Value, typ: &Typ) -> Value {
 		match typ {
 			Typ::Float(_) => self.b.ins().fcmp(FloatCC::Equal, a, b),
-			Typ::Str => {
+			Typ::Str | Typ::Error => {
 				let func = self.import_fn(runtime::STR_EQ, &[self.int, self.int], Some(self.int));
 				let call = self.b.ins().call(func, &[a, b]);
 				self.b.inst_results(call)[0]
@@ -193,7 +193,7 @@ impl<'a> Translator<'a> {
 			| (Typ::USize, Typ::USize)
 			| (Typ::Bool, Typ::Bool)
 			| (Typ::Atom, Typ::Atom) => self.b.ins().icmp(icc, lv, rv),
-			(l, r) if l == r && matches!(l, Typ::Enum(_) | Typ::Option(_)) => {
+			(l, r) if l == r && matches!(l, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_)) => {
 				let variants = self.variants_of(l);
 				if !enum_boxed(&variants) {
 					self.b.ins().icmp(icc, lv, rv)
