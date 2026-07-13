@@ -113,3 +113,25 @@ fn fn_param_type() {
 	"};
 	check(src, "42");
 }
+
+#[test]
+fn bare_value_return_wraps_some() {
+	let src = indoc! {"
+		fn find(x int) ?int {
+			return x
+		}
+		find(5)
+	"};
+	check(src, "some");
+}
+
+#[test]
+fn bare_none_return_wraps() {
+	let src = indoc! {"
+		fn find(x int) ?int {
+			return none
+		}
+		find(5)
+	"};
+	check(src, "none");
+}

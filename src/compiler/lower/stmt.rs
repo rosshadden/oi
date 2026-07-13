@@ -154,7 +154,10 @@ impl<'a> Translator<'a> {
 
 				Expr::Return(value) => {
 					let (val, typ) = match value {
-						Some(e) => self.expr(e)?,
+						Some(e) => match self.ret.clone() {
+							Some((target, _)) => self.check_expr(e, &target)?,
+							None => self.expr(e)?,
+						},
 						None => {
 							let typ = self.ret.as_ref().map_or(Typ::Tuple(vec![]), |(t, _)| t.clone());
 							(self.zero(&typ), typ)
@@ -254,8 +257,29 @@ impl<'a> Translator<'a> {
 		Ok(Some(last))
 	}
 
+	// Autowrap return types.
+	// idk whether it'll be more general in the future, but for now this is for `Option` and `Result`.
+	fn autowrap_return(&mut self, val: Value, typ: Typ) -> (Value, Typ) {
+		match self.ret.as_ref().map(|(t, _)| t.clone()) {
+			Some(Typ::Option(inner)) if typ == *inner => {
+				let v = self.make_enum(&option_variants(&inner), 1, &[val]);
+				(v, Typ::Option(inner))
+			}
+			Some(Typ::Result(inner)) if typ == *inner => {
+				let v = self.make_enum(&result_variants(&inner), 0, &[val]);
+				(v, Typ::Result(inner))
+			}
+			Some(Typ::Result(inner)) if typ == Typ::Error => {
+				let v = self.make_enum(&result_variants(&inner), 1, &[val]);
+				(v, Typ::Result(inner))
+			}
+			_ => (val, typ),
+		}
+	}
+
 	// The first return fixes the fn's type, and later returns must agree.
 	pub fn emit_return(&mut self, val: Value, typ: Typ, span: Span) -> Result<(), Diagnostic> {
+		let (val, typ) = self.autowrap_return(val, typ);
 		if let Some((declared, _)) = &self.ret
 			&& &typ != declared
 		{

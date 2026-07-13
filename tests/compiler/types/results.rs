@@ -107,3 +107,25 @@ fn fn_param_type() {
 	"};
 	check(src, "42");
 }
+
+#[test]
+fn bare_value_return_wraps_ok() {
+	let src = indoc! {"
+		fn find(x int) !int {
+			return x
+		}
+		find(5)
+	"};
+	check(src, "ok");
+}
+
+#[test]
+fn bare_error_return_wraps_err() {
+	let src = indoc! {r#"
+		fn find(x int) !int {
+			return error("not found")
+		}
+		find(5)
+	"#};
+	check(src, "err");
+}
