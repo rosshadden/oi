@@ -188,16 +188,17 @@ impl<'a> Translator<'a> {
 	}
 
 	// A match pattern's discriminant and payload binds.
-	pub(super) fn enum_pattern(&self, pat: &Spanned<Expr>, enum_name: &str) -> Result<(i64, Vec<Bind>), Diagnostic> {
+	pub(super) fn enum_pattern(&self, pat: &Spanned<Expr>, typ: &Typ) -> Result<(i64, Vec<Bind>), Diagnostic> {
 		let bad = |msg| Err(Diagnostic::new(msg, pat.1.into_range()).with_label("bad pattern"));
 		let (variant, args): (&str, &[Spanned<Expr>]) = match &pat.0 {
 			Expr::EnumShorthand { variant, args } => (variant, args),
 			Expr::Atom(v) => (v, &[]),
 			Expr::Field { tuple, field } if matches!(tuple.0, Expr::Ident(_)) => (field, &[]),
-			_ => return bad(format!("`{enum_name}` is matched by its variants")),
+			_ => return bad(format!("`{typ}` is matched by its variants")),
 		};
-		let Some(v) = self.enums[enum_name].iter().find(|v| v.name == variant) else {
-			return bad(format!("enum `{enum_name}` has no variant `{variant}`"));
+		let variants = self.variants_of(typ);
+		let Some(v) = variants.iter().find(|v| v.name == variant) else {
+			return bad(format!("`{typ}` has no variant `{variant}`"));
 		};
 		let binds = field_binds(args.iter().zip(&v.payload), 8, 8)?;
 		Ok((v.disc, binds))

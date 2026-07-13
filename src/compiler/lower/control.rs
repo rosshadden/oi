@@ -102,15 +102,16 @@ impl<'a> Translator<'a> {
 		let sv_var = self.b.declare_var(cl_type(&st, self.int));
 		self.b.def_var(sv_var, sv);
 
-		// ensure enum match covers every variant
-		if let Typ::Enum(ename) = &st {
+		// ensure match covers every variant when applicable
+		if matches!(&st, Typ::Enum(_) | Typ::Option(_)) {
 			let pats = || arms.iter().flat_map(|a| &a.patterns);
 			let catch_all = else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
 			if !catch_all {
+				let variants = self.variants_of(&st);
 				let covered = pats()
-					.map(|p| self.enum_pattern(p, ename).map(|(d, _)| d))
+					.map(|p| self.enum_pattern(p, &st).map(|(d, _)| d))
 					.collect::<Result<Vec<_>, _>>()?;
-				let missing: Vec<_> = self.enums[ename]
+				let missing: Vec<_> = variants
 					.iter()
 					.filter(|v| !covered.contains(&v.disc))
 					.map(|v| v.name.clone())
@@ -148,13 +149,14 @@ impl<'a> Translator<'a> {
 				} else if let Expr::Range { start, end } = &pat.0 {
 					let sv = self.b.use_var(sv_var);
 					self.range_pattern(sv, &st, start.as_deref(), end.as_deref(), pat.1)?
-				} else if let Typ::Enum(enum_name) = &st {
-					let (disc, b) = self.enum_pattern(pat, enum_name)?;
+				} else if matches!(&st, Typ::Enum(_) | Typ::Option(_)) {
+					let (disc, b) = self.enum_pattern(pat, &st)?;
 					if arm.patterns.len() == 1 {
 						binds = b;
 					}
 					let sv = self.b.use_var(sv_var);
-					let tag = self.enum_tag(self.enum_variants(enum_name), sv);
+					let variants = self.variants_of(&st);
+					let tag = self.enum_tag(&variants, sv);
 					let disc = self.b.ins().iconst(self.int, disc);
 					self.b.ins().icmp(IntCC::Equal, tag, disc)
 				} else if let (Typ::Tuple(fields), Expr::Tuple(elems)) = (&st, &pat.0) {

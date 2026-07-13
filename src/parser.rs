@@ -225,7 +225,7 @@ where
 
 		// enum shorthand
 		let enum_shorthand = just(Token::Dot)
-			.ignore_then(select! { Token::Ident(v) => v })
+			.ignore_then(select! { Token::Ident(v) => v, Token::None => "none".to_string() })
 			.then(args.clone().or_not())
 			.map_with(|(variant, args), ex| {
 				let args = args.unwrap_or_default();
