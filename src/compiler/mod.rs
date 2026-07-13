@@ -411,7 +411,7 @@ impl Compiler {
 			let resolved = fields
 				.iter()
 				.map(|p| {
-					field_types.named(&p.typ, p.span).map(|t| FieldDef {
+					field_types.resolve(&p.typ, p.span).map(|t| FieldDef {
 						name: p.name.clone(),
 						typ: t,
 						default: p.default.clone(),
@@ -435,7 +435,7 @@ impl Compiler {
 			};
 			let params: Vec<(String, Typ, bool)> = params
 				.iter()
-				.map(|p| Ok((p.name.clone(), types.named(&p.typ, p.span)?, p.mutable)))
+				.map(|p| Ok((p.name.clone(), types.resolve(&p.typ, p.span)?, p.mutable)))
 				.collect::<Result<_, Diagnostic>>()?;
 			let ret = ret
 				.as_ref()

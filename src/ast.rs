@@ -241,11 +241,10 @@ pub enum Pattern {
 }
 
 // A function parameter or struct field declaration.
-// `typ` is the declared type name.
 #[derive(Debug, Clone)]
 pub struct Param {
 	pub name: String,
-	pub typ: String,
+	pub typ: TypeExpr,
 	pub span: Span,
 	pub default: Option<Spanned<Expr>>,
 	pub mutable: bool,

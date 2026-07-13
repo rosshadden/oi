@@ -541,9 +541,9 @@ where
 	let param = just(Token::Mut)
 		.or_not()
 		.then(select! { Token::Ident(name) => name })
-		.then(select! { Token::Ident(typ) => typ }.or_not())
+		.then(type_expr.clone().or_not())
 		.map_with(|((mutable, name), typ), ex| Param {
-			typ: typ.unwrap_or_else(|| "Self".into()),
+			typ: typ.unwrap_or(TypeExpr::Name("Self".into())),
 			name,
 			span: ex.span(),
 			default: None,
@@ -584,7 +584,7 @@ where
 
 	// `struct Name { name type [= default], ... }`
 	let struct_field = select! { Token::Ident(name) => name }
-		.then(select! { Token::Ident(typ) => typ })
+		.then(type_expr.clone())
 		.then(just(Token::Assign).ignore_then(expr.clone()).or_not())
 		.map_with(|((name, typ), default), ex| Param {
 			name,
