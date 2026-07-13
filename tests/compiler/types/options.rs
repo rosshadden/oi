@@ -1,4 +1,5 @@
 use crate::helpers::*;
+use indoc::indoc;
 
 #[test]
 fn construct_some() {
@@ -53,4 +54,38 @@ fn field_type_mismatch() {
 fn ordering_rejected() {
 	let err = fail("?int(1) < ?int(2)");
 	assert!(err.contains("only `==`&`!=`"), "got: {err}");
+}
+
+#[test]
+fn match_binds_some() {
+	check(
+		indoc! {r#"
+			o := ?int(42)
+			match o {
+				.some(n) { n }
+				.none { -1 }
+			}
+		"#},
+		"42",
+	);
+}
+
+#[test]
+fn match_none_arm() {
+	check(
+		indoc! {r#"
+			o := ?int(none)
+			match o {
+				.some(n) { n }
+				.none { -1 }
+			}
+		"#},
+		"-1",
+	);
+}
+
+#[test]
+fn match_non_exhaustive_errors() {
+	let err = fail("o := ?int(42)\nmatch o {\n\t.some(n) { n }\n}");
+	assert!(err.contains("non-exhaustive match, missing: none"), "got: {err}");
 }
