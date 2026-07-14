@@ -397,20 +397,20 @@ impl<'a> Translator<'a> {
 		let is_happy = self.b.ins().icmp(IntCC::Equal, tag, happy_disc);
 
 		let happy_block = self.b.create_block();
-		let unhappy_block = self.b.create_block();
-		self.b.ins().brif(is_happy, happy_block, &[], unhappy_block, &[]);
+		let sad_block = self.b.create_block();
+		self.b.ins().brif(is_happy, happy_block, &[], sad_block, &[]);
 		self.b.seal_block(happy_block);
-		self.b.seal_block(unhappy_block);
+		self.b.seal_block(sad_block);
 
-		self.b.switch_to_block(unhappy_block);
+		self.b.switch_to_block(sad_block);
 		let fields = if is_result {
 			vec![self.b.ins().load(self.int, MemFlags::new(), val, 8)]
 		} else {
 			vec![]
 		};
 		let target_variants = self.variants_of(&target_typ);
-		let unhappy_val = self.make_enum(&target_variants, 1 - happy, &fields);
-		self.emit_return(unhappy_val, target_typ, span)?;
+		let sad_val = self.make_enum(&target_variants, 1 - happy, &fields);
+		self.emit_return(sad_val, target_typ, span)?;
 
 		self.b.switch_to_block(happy_block);
 		let payload = self.b.ins().load(cl_type(&inner, self.int), MemFlags::new(), val, 8);
