@@ -124,6 +124,34 @@ impl<'a> Translator<'a> {
 				Ok(Some((cond, Typ::Bool)))
 			}
 
+			// TODO: migrate to `panic!` macro once we have macros
+			"panic" => {
+				if args.len() != 1 {
+					return Err(Diagnostic::new(
+						format!("`panic` takes 1 argument, got {}", args.len()),
+						span.into_range(),
+					)
+					.with_label("wrong number of arguments"));
+				}
+				let (msg, msg_typ) = self.expr(&args[0])?;
+				if msg_typ != Typ::Str {
+					return Err(Diagnostic::new(
+						format!("`panic` message must be Str, got {msg_typ}"),
+						args[0].1.into_range(),
+					)
+					.with_label("not a Str"));
+				}
+				let func = self.import_fn(runtime::PANIC, &[self.int], None);
+				self.b.ins().call(func, &[msg]);
+				self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
+
+				// unreachable, but needed for codegen
+				let dead = self.b.create_block();
+				self.b.seal_block(dead);
+				self.b.switch_to_block(dead);
+				Ok(Some((self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))))
+			}
+
 			"error" => {
 				if args.len() != 1 {
 					return Err(Diagnostic::new(

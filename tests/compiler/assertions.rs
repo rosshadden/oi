@@ -42,3 +42,20 @@ fn assert_non_bool_condition() {
 fn assert_non_str_message() {
 	assert!(fail("assert(false, 42)").contains("must be Str"));
 }
+
+#[test]
+fn panic_aborts_with_message() {
+	let err = fail(r#"panic("uh oh")"#);
+	assert!(err.contains("panic: uh oh"), "{err}");
+}
+
+#[test]
+fn panic_wrong_arg_count() {
+	assert!(fail("panic()").contains("1 argument"));
+	assert!(fail(r#"panic("a", "b")"#).contains("1 argument"));
+}
+
+#[test]
+fn panic_non_str_message() {
+	assert!(fail("panic(42)").contains("must be Str"));
+}
