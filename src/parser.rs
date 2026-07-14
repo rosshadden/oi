@@ -482,8 +482,7 @@ where
 				};
 				(e, ex.span())
 			}),
-			// option/result propagation
-			// TODO: give these a name (orables? questions? unresolved? tryables? propagators?)
+			// propagators
 			postfix(8, just(Token::Question), |lhs, _, ex| {
 				(Expr::PropagateNone(Box::new(lhs)), ex.span())
 			}),
