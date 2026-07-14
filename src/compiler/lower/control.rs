@@ -359,6 +359,7 @@ impl<'a> Translator<'a> {
 
 	// Unwraps `?T`/`!T`.
 	// Returns `none`/error from the enclosing fn on the sad path.
+	// Panics when called in `main`.
 	pub(super) fn propagate(
 		&mut self,
 		value: &Spanned<Expr>,
@@ -375,6 +376,7 @@ impl<'a> Translator<'a> {
 				return Err(Diagnostic::new(msg, value.1.into_range()).with_label(format!("not a `{shape}` value")));
 			}
 		};
+		let panic_in_main = self.ret.is_none() && self.is_main;
 		let target = match &self.ret {
 			Some((Typ::Option(t), _)) if !is_result => (**t).clone(),
 			Some((Typ::Result(t), _)) if is_result => (**t).clone(),
@@ -403,14 +405,25 @@ impl<'a> Translator<'a> {
 		self.b.seal_block(sad_block);
 
 		self.b.switch_to_block(sad_block);
-		let fields = if is_result {
-			vec![self.b.ins().load(self.int, MemFlags::new(), val, 8)]
+		if panic_in_main {
+			let msg = if is_result {
+				self.b.ins().load(self.int, MemFlags::new(), val, 8)
+			} else {
+				self.str_const("unwrapped `none`")
+			};
+			let func = self.import_fn(runtime::PANIC, &[self.int], None);
+			self.b.ins().call(func, &[msg]);
+			self.b.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
 		} else {
-			vec![]
-		};
-		let target_variants = self.variants_of(&target_typ);
-		let sad_val = self.make_enum(&target_variants, 1 - happy, &fields);
-		self.emit_return(sad_val, target_typ, span)?;
+			let fields = if is_result {
+				vec![self.b.ins().load(self.int, MemFlags::new(), val, 8)]
+			} else {
+				vec![]
+			};
+			let target_variants = self.variants_of(&target_typ);
+			let sad_val = self.make_enum(&target_variants, 1 - happy, &fields);
+			self.emit_return(sad_val, target_typ, span)?;
+		}
 
 		self.b.switch_to_block(happy_block);
 		let payload = self.b.ins().load(cl_type(&inner, self.int), MemFlags::new(), val, 8);

@@ -90,6 +90,32 @@ fn requires_option_or_result() {
 }
 
 #[test]
+fn option_panics_in_main() {
+	let src = indoc! {"
+		fn find(id int) ?int {
+			if id == 7 { return 42 }
+			return none
+		}
+		find(1)?
+	"};
+	let err = fail(src);
+	assert!(err.contains("panic: unwrapped `none`"), "got: {err}");
+}
+
+#[test]
+fn result_panics_in_main() {
+	let src = indoc! {r#"
+		fn load(path string) !int {
+			if path == "ok" { return 42 }
+			return error("missing")
+		}
+		load("nope")!
+	"#};
+	let err = fail(src);
+	assert!(err.contains("panic: missing"), "got: {err}");
+}
+
+#[test]
 fn requires_matching_enclosing_return() {
 	let src = indoc! {"
 		fn find(id int) ?int {
