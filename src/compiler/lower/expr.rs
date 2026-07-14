@@ -363,6 +363,8 @@ impl<'a> Translator<'a> {
 				),
 			},
 
+			Expr::OrElse { value, body } => self.or_else(value, body, expr.1),
+
 			Expr::Loop { cond, body } => match self.loop_expr(cond.as_deref(), body)? {
 				Some(vt) => Ok(vt),
 				None => Err(

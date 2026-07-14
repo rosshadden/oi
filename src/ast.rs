@@ -131,6 +131,12 @@ pub enum Expr {
 		else_body: Option<Vec<Spanned<Expr>>>,
 	},
 
+	// `value or { body }`
+	OrElse {
+		value: Box<Spanned<Expr>>,
+		body: Vec<Spanned<Expr>>,
+	},
+
 	// structs
 	// `struct Name {}`
 	StructDef {

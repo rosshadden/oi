@@ -85,6 +85,8 @@ pub enum Token {
 	Mut,
 	#[token("none")]
 	None,
+	#[token("or")]
+	Or,
 	#[regex(r"[A-Za-z_][A-Za-z0-9_]*", |lex| lex.slice().to_string())]
 	Ident(String),
 	#[token(":=")]
@@ -198,6 +200,7 @@ impl fmt::Display for Token {
 			Token::In => write!(f, "in"),
 			Token::Mut => write!(f, "mut"),
 			Token::None => write!(f, "none"),
+			Token::Or => write!(f, "or"),
 			Token::Ident(name) => write!(f, "{name}"),
 			Token::Bind => write!(f, ":="),
 			Token::Assign => write!(f, "="),

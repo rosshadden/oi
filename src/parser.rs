@@ -441,7 +441,7 @@ where
 			.or(with_start)
 			.delimited_by(just(Token::LBracket), just(Token::RBracket));
 
-		atom.pratt((
+		let core = atom.pratt((
 			// field/tuple/method access
 			postfix(8, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
 				Access::Fields(parts) => {
@@ -549,7 +549,20 @@ where
 					ex.span(),
 				)
 			}),
-		))
+		));
+
+		// or blocks
+		let or_tail = just(Token::Or).ignore_then(block.clone());
+		core.then(or_tail.or_not()).map_with(|(value, body), ex| match body {
+			Some(body) => (
+				Expr::OrElse {
+					value: Box::new(value),
+					body,
+				},
+				ex.span(),
+			),
+			None => value,
+		})
 	};
 	expr.define(definition);
 

@@ -240,7 +240,7 @@ impl<'a> Translator<'a> {
 			let flow = self.block(&arm.body)?;
 			self.vars = saved;
 			if let Some(vt) = flow {
-				self.match_contribute(vt, &mut result, merge, span)?;
+				self.contribute("match", vt, &mut result, merge, span)?;
 			}
 		}
 
@@ -256,7 +256,7 @@ impl<'a> Translator<'a> {
 			Some((self.zero(&t), t))
 		};
 		if let Some(vt) = else_flow {
-			self.match_contribute(vt, &mut result, merge, span)?;
+			self.contribute("match", vt, &mut result, merge, span)?;
 		}
 
 		Ok(if let Some((var, typ)) = result {
@@ -269,9 +269,10 @@ impl<'a> Translator<'a> {
 	}
 
 	// Write (v, t) into the shared result variable and jump to `merge`.
-	// All arms must agree on type. The first arm declares the variable.
-	pub(super) fn match_contribute(
+	// All branches must agree on type. The first one declares the variable.
+	pub(super) fn contribute(
 		&mut self,
+		kw: &str,
 		(v, t): (Value, Typ),
 		result: &mut Option<(Variable, Typ)>,
 		merge: Block,
@@ -279,10 +280,10 @@ impl<'a> Translator<'a> {
 	) -> Result<(), Diagnostic> {
 		match result {
 			Some((_, rt)) if rt != &t => Err(Diagnostic::new(
-				format!("`match` arms have mismatched types: {rt} and {t}"),
+				format!("`{kw}` branches have mismatched types: {rt} and {t}"),
 				span.into_range(),
 			)
-			.with_label("all arms must yield the same type")),
+			.with_label("must yield the same type")),
 			Some((var, _)) => {
 				self.b.def_var(*var, v);
 				self.b.ins().jump(merge, &[]);
@@ -296,6 +297,64 @@ impl<'a> Translator<'a> {
 				Ok(())
 			}
 		}
+	}
+
+	// `or` blocks, for unwrapping Options and Results.
+	// The happy branch yields the inner value, the unhappy branch executes a block and yields its value.
+	pub(super) fn or_else(
+		&mut self,
+		value: &Spanned<Expr>,
+		body: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		let (val, typ) = self.expr(value)?;
+		let (inner, happy) = match &typ {
+			Typ::Option(inner) => ((**inner).clone(), 1),
+			Typ::Result(inner) => ((**inner).clone(), 0),
+			_ => {
+				return Err(
+					Diagnostic::new(format!("`or` needs a `?T`/`!T` value, got {typ}"), value.1.into_range())
+						.with_label("not an Option or Result"),
+				);
+			}
+		};
+
+		let variants = self.variants_of(&typ);
+		let tag = self.enum_tag(&variants, val);
+		let happy_disc = self.b.ins().iconst(self.int, happy);
+		let is_happy = self.b.ins().icmp(IntCC::Equal, tag, happy_disc);
+
+		let happy_block = self.b.create_block();
+		let fallback_block = self.b.create_block();
+		self.b.ins().brif(is_happy, happy_block, &[], fallback_block, &[]);
+		self.b.seal_block(happy_block);
+		self.b.seal_block(fallback_block);
+		let merge = self.b.create_block();
+		let mut result = None;
+
+		self.b.switch_to_block(happy_block);
+		let payload = self.b.ins().load(cl_type(&inner, self.int), MemFlags::new(), val, 8);
+		self.contribute("or", (payload, inner), &mut result, merge, span)?;
+
+		self.b.switch_to_block(fallback_block);
+		let saved_dollar = self.dollar.take();
+		self.dollar = Some(if matches!(typ, Typ::Result(_)) {
+			(self.b.ins().load(self.int, MemFlags::new(), val, 8), Typ::Error)
+		} else {
+			(self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))
+		});
+		let saved_vars = self.vars.clone();
+		let flow = self.block(body)?;
+		self.vars = saved_vars;
+		self.dollar = saved_dollar;
+		if let Some(vt) = flow {
+			self.contribute("or", vt, &mut result, merge, span)?;
+		}
+
+		self.b.switch_to_block(merge);
+		self.b.seal_block(merge);
+		let (var, typ) = result.unwrap();
+		Ok((self.b.use_var(var), typ))
 	}
 
 	pub(super) fn loop_expr(
