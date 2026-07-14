@@ -373,3 +373,51 @@ fn no_such_method() {
 	let err = fail("enum Color { red green blue }\nColor.red.hex()");
 	assert!(err.contains("has no method `hex`"), "got: {err}");
 }
+
+#[test]
+fn from_int_match() {
+	check("enum Color { red green blue }\nColor.from(1) or { Color.red }", "green");
+}
+
+#[test]
+fn from_int_no_match() {
+	check("enum Color { red green blue }\nColor.from(9) or { Color.red }", "red");
+}
+
+#[test]
+fn from_int_no_match_carries_error() {
+	check(
+		"enum Color { red green blue }\nColor.from(9) or { print($)\nColor.red }",
+		"no matching variant\nred",
+	);
+}
+
+#[test]
+fn from_str_match() {
+	check(
+		"enum Color { red green blue }\nColor.from(\"blue\") or { Color.red }",
+		"blue",
+	);
+}
+
+#[test]
+fn from_str_no_match() {
+	check(
+		"enum Color { red green blue }\nColor.from(\"purple\") or { print($)\nColor.red }",
+		"no matching variant\nred",
+	);
+}
+
+#[test]
+fn from_payload_zero_fills() {
+	check(
+		"enum Shape { point triangle(f64, f64, f64) }\nShape.from(1) or { Shape.point }",
+		"triangle",
+	);
+}
+
+#[test]
+fn from_wrong_type() {
+	let err = fail("enum Color { red green blue }\nColor.from(true)");
+	assert!(err.contains("needs an int or str"), "got: {err}");
+}
