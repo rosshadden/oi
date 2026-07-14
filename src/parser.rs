@@ -537,10 +537,10 @@ where
 				(Expr::In(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// logical
-			infix(left(2), just(Token::And), |l, _, r, ex| {
+			infix(left(2), just(Token::AndAnd), |l, _, r, ex| {
 				(Expr::And(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(1), just(Token::Or), |l, _, r, ex| {
+			infix(left(1), just(Token::OrOr), |l, _, r, ex| {
 				(Expr::Or(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// ranges

@@ -122,9 +122,9 @@ pub enum Token {
 
 	// logical operators
 	#[token("&&")]
-	And,
+	AndAnd,
 	#[token("||")]
-	Or,
+	OrOr,
 	#[token("!")]
 	Not,
 
@@ -217,8 +217,8 @@ impl fmt::Display for Token {
 			Token::Gt => write!(f, ">"),
 			Token::Le => write!(f, "<="),
 			Token::Ge => write!(f, ">="),
-			Token::And => write!(f, "&&"),
-			Token::Or => write!(f, "||"),
+			Token::AndAnd => write!(f, "&&"),
+			Token::OrOr => write!(f, "||"),
 			Token::Not => write!(f, "!"),
 			Token::LParen => write!(f, "("),
 			Token::RParen => write!(f, ")"),
