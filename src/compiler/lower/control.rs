@@ -357,81 +357,60 @@ impl<'a> Translator<'a> {
 		Ok((self.b.use_var(var), typ))
 	}
 
-	// Unwraps `?T`.
-	// Returns `none` from the enclosing fn on the sad path.
-	pub(super) fn option_try(&mut self, value: &Spanned<Expr>, span: Span) -> Result<(Value, Typ), Diagnostic> {
+	// Unwraps `?T`/`!T`.
+	// Returns `none`/error from the enclosing fn on the sad path.
+	pub(super) fn propagate(
+		&mut self,
+		value: &Spanned<Expr>,
+		is_result: bool,
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		let (op, shape) = if is_result { ("!", "!T") } else { ("?", "?T") };
 		let (val, typ) = self.expr(value)?;
-		let Typ::Option(inner) = &typ else {
-			return Err(
-				Diagnostic::new(format!("`?` needs a `?T` value, got {typ}"), value.1.into_range())
-					.with_label("not an Option"),
-			);
+		let inner = match &typ {
+			Typ::Option(inner) if !is_result => (**inner).clone(),
+			Typ::Result(inner) if is_result => (**inner).clone(),
+			_ => {
+				let msg = format!("`{op}` needs a `{shape}` value, got {typ}");
+				return Err(Diagnostic::new(msg, value.1.into_range()).with_label(format!("not a `{shape}` value")));
+			}
 		};
-		let inner = (**inner).clone();
 		let target = match &self.ret {
-			Some((Typ::Option(t), _)) => (**t).clone(),
+			Some((Typ::Option(t), _)) if !is_result => (**t).clone(),
+			Some((Typ::Result(t), _)) if is_result => (**t).clone(),
 			Some((other, _)) => {
-				let msg = format!("`?` needs an enclosing fn returning `?T`, found {other}");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("not a `?T` fn"));
+				let msg = format!("`{op}` needs an enclosing fn returning `{shape}`, found {other}");
+				return Err(Diagnostic::new(msg, span.into_range()).with_label(format!("not a `{shape}` fn")));
 			}
 			None => inner.clone(),
+		};
+		let target_typ = if is_result {
+			Typ::Result(Box::new(target))
+		} else {
+			Typ::Option(Box::new(target))
 		};
 
 		let variants = self.variants_of(&typ);
 		let tag = self.enum_tag(&variants, val);
-		let some_disc = self.b.ins().iconst(self.int, 1);
-		let is_some = self.b.ins().icmp(IntCC::Equal, tag, some_disc);
+		let happy: i64 = if is_result { 0 } else { 1 };
+		let happy_disc = self.b.ins().iconst(self.int, happy);
+		let is_happy = self.b.ins().icmp(IntCC::Equal, tag, happy_disc);
 
 		let happy_block = self.b.create_block();
-		let none_block = self.b.create_block();
-		self.b.ins().brif(is_some, happy_block, &[], none_block, &[]);
+		let unhappy_block = self.b.create_block();
+		self.b.ins().brif(is_happy, happy_block, &[], unhappy_block, &[]);
 		self.b.seal_block(happy_block);
-		self.b.seal_block(none_block);
+		self.b.seal_block(unhappy_block);
 
-		self.b.switch_to_block(none_block);
-		let none_val = self.make_enum(&option_variants(&target), 0, &[]);
-		self.emit_return(none_val, Typ::Option(Box::new(target)), span)?;
-
-		self.b.switch_to_block(happy_block);
-		let payload = self.b.ins().load(cl_type(&inner, self.int), MemFlags::new(), val, 8);
-		Ok((payload, inner))
-	}
-
-	// Unwraps `!T`.
-	// Returns the error from the enclosing fn on the sad path.
-	pub(super) fn result_try(&mut self, value: &Spanned<Expr>, span: Span) -> Result<(Value, Typ), Diagnostic> {
-		let (val, typ) = self.expr(value)?;
-		let Typ::Result(inner) = &typ else {
-			return Err(
-				Diagnostic::new(format!("`!` needs a `!T` value, got {typ}"), value.1.into_range())
-					.with_label("not a Result"),
-			);
+		self.b.switch_to_block(unhappy_block);
+		let fields = if is_result {
+			vec![self.b.ins().load(self.int, MemFlags::new(), val, 8)]
+		} else {
+			vec![]
 		};
-		let inner = (**inner).clone();
-		let target = match &self.ret {
-			Some((Typ::Result(t), _)) => (**t).clone(),
-			Some((other, _)) => {
-				let msg = format!("`!` needs an enclosing fn returning `!T`, found {other}");
-				return Err(Diagnostic::new(msg, span.into_range()).with_label("not a `!T` fn"));
-			}
-			None => inner.clone(),
-		};
-
-		let variants = self.variants_of(&typ);
-		let tag = self.enum_tag(&variants, val);
-		let ok_disc = self.b.ins().iconst(self.int, 0);
-		let is_ok = self.b.ins().icmp(IntCC::Equal, tag, ok_disc);
-
-		let happy_block = self.b.create_block();
-		let err_block = self.b.create_block();
-		self.b.ins().brif(is_ok, happy_block, &[], err_block, &[]);
-		self.b.seal_block(happy_block);
-		self.b.seal_block(err_block);
-
-		self.b.switch_to_block(err_block);
-		let error = self.b.ins().load(self.int, MemFlags::new(), val, 8);
-		let err_val = self.make_enum(&result_variants(&target), 1, &[error]);
-		self.emit_return(err_val, Typ::Result(Box::new(target)), span)?;
+		let target_variants = self.variants_of(&target_typ);
+		let unhappy_val = self.make_enum(&target_variants, 1 - happy, &fields);
+		self.emit_return(unhappy_val, target_typ, span)?;
 
 		self.b.switch_to_block(happy_block);
 		let payload = self.b.ins().load(cl_type(&inner, self.int), MemFlags::new(), val, 8);
