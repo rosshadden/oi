@@ -482,6 +482,14 @@ where
 				};
 				(e, ex.span())
 			}),
+			// option/result propagation
+			// TODO: give these a name (orables? questions? unresolved? tryables? propagators?)
+			postfix(8, just(Token::Question), |lhs, _, ex| {
+				(Expr::PropagateNone(Box::new(lhs)), ex.span())
+			}),
+			postfix(8, just(Token::Not), |lhs, _, ex| {
+				(Expr::PropagateErr(Box::new(lhs)), ex.span())
+			}),
 			// unary
 			prefix(7, just(Token::Minus), |_, rhs, ex| {
 				(Expr::Negative(Box::new(rhs)), ex.span())

@@ -300,7 +300,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// `or` blocks, for unwrapping Options and Results.
-	// The happy branch yields the inner value, the unhappy branch executes a block and yields its value.
+	// The happy branch yields the inner value, the sad branch executes a block and yields its value.
 	pub(super) fn or_else(
 		&mut self,
 		value: &Spanned<Expr>,
@@ -355,6 +355,87 @@ impl<'a> Translator<'a> {
 		self.b.seal_block(merge);
 		let (var, typ) = result.unwrap();
 		Ok((self.b.use_var(var), typ))
+	}
+
+	// Unwraps `?T`.
+	// Returns `none` from the enclosing fn on the sad path.
+	pub(super) fn option_try(&mut self, value: &Spanned<Expr>, span: Span) -> Result<(Value, Typ), Diagnostic> {
+		let (val, typ) = self.expr(value)?;
+		let Typ::Option(inner) = &typ else {
+			return Err(
+				Diagnostic::new(format!("`?` needs a `?T` value, got {typ}"), value.1.into_range())
+					.with_label("not an Option"),
+			);
+		};
+		let inner = (**inner).clone();
+		let target = match &self.ret {
+			Some((Typ::Option(t), _)) => (**t).clone(),
+			Some((other, _)) => {
+				let msg = format!("`?` needs an enclosing fn returning `?T`, found {other}");
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("not a `?T` fn"));
+			}
+			None => inner.clone(),
+		};
+
+		let variants = self.variants_of(&typ);
+		let tag = self.enum_tag(&variants, val);
+		let some_disc = self.b.ins().iconst(self.int, 1);
+		let is_some = self.b.ins().icmp(IntCC::Equal, tag, some_disc);
+
+		let happy_block = self.b.create_block();
+		let none_block = self.b.create_block();
+		self.b.ins().brif(is_some, happy_block, &[], none_block, &[]);
+		self.b.seal_block(happy_block);
+		self.b.seal_block(none_block);
+
+		self.b.switch_to_block(none_block);
+		let none_val = self.make_enum(&option_variants(&target), 0, &[]);
+		self.emit_return(none_val, Typ::Option(Box::new(target)), span)?;
+
+		self.b.switch_to_block(happy_block);
+		let payload = self.b.ins().load(cl_type(&inner, self.int), MemFlags::new(), val, 8);
+		Ok((payload, inner))
+	}
+
+	// Unwraps `!T`.
+	// Returns the error from the enclosing fn on the sad path.
+	pub(super) fn result_try(&mut self, value: &Spanned<Expr>, span: Span) -> Result<(Value, Typ), Diagnostic> {
+		let (val, typ) = self.expr(value)?;
+		let Typ::Result(inner) = &typ else {
+			return Err(
+				Diagnostic::new(format!("`!` needs a `!T` value, got {typ}"), value.1.into_range())
+					.with_label("not a Result"),
+			);
+		};
+		let inner = (**inner).clone();
+		let target = match &self.ret {
+			Some((Typ::Result(t), _)) => (**t).clone(),
+			Some((other, _)) => {
+				let msg = format!("`!` needs an enclosing fn returning `!T`, found {other}");
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("not a `!T` fn"));
+			}
+			None => inner.clone(),
+		};
+
+		let variants = self.variants_of(&typ);
+		let tag = self.enum_tag(&variants, val);
+		let ok_disc = self.b.ins().iconst(self.int, 0);
+		let is_ok = self.b.ins().icmp(IntCC::Equal, tag, ok_disc);
+
+		let happy_block = self.b.create_block();
+		let err_block = self.b.create_block();
+		self.b.ins().brif(is_ok, happy_block, &[], err_block, &[]);
+		self.b.seal_block(happy_block);
+		self.b.seal_block(err_block);
+
+		self.b.switch_to_block(err_block);
+		let error = self.b.ins().load(self.int, MemFlags::new(), val, 8);
+		let err_val = self.make_enum(&result_variants(&target), 1, &[error]);
+		self.emit_return(err_val, Typ::Result(Box::new(target)), span)?;
+
+		self.b.switch_to_block(happy_block);
+		let payload = self.b.ins().load(cl_type(&inner, self.int), MemFlags::new(), val, 8);
+		Ok((payload, inner))
 	}
 
 	pub(super) fn loop_expr(
