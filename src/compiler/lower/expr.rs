@@ -138,7 +138,11 @@ impl<'a> Translator<'a> {
 					&& !self.vars.contains_key(name)
 					&& self.enums.contains_key(name)
 				{
-					return self.construct_variant(name, method, args, expr.1);
+					return if method == "from" {
+						self.enum_from(name, args, expr.1)
+					} else {
+						self.construct_variant(name, method, args, expr.1)
+					};
 				}
 
 				// method call is static when `recv` names a struct

@@ -417,6 +417,49 @@ impl<'a> Translator<'a> {
 		Ok((payload, inner))
 	}
 
+	// `Enum.from(v)`.
+	pub(super) fn enum_from(
+		&mut self,
+		name: &str,
+		args: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		if args.len() != 1 {
+			let msg = format!("`{name}.from` takes 1 argument, got {}", args.len());
+			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of arguments"));
+		}
+		let (av, at) = self.expr(&args[0])?;
+		let is_str = match at {
+			Typ::Str => true,
+			Typ::Int(_) | Typ::UInt(_) | Typ::ISize | Typ::USize => false,
+			_ => {
+				let msg = format!("`{name}.from` needs an int or str, got {at}");
+				return Err(Diagnostic::new(msg, args[0].1.into_range()).with_label("not an int or str"));
+			}
+		};
+
+		let target = Typ::Result(Box::new(Typ::Enum(name.to_string())));
+		let target_variants = self.variants_of(&target);
+		let variants = self.enum_variants(name).to_vec();
+
+		let err = self.str_const("no matching variant");
+		let mut result = self.make_enum(&target_variants, 1, &[err]);
+		for v in &variants {
+			let matched = if is_str {
+				let name_const = self.str_const(&v.name);
+				self.emit_eq(av, name_const, &Typ::Str)
+			} else {
+				let disc = self.b.ins().iconst(cl_type(&at, self.int), v.disc);
+				self.b.ins().icmp(IntCC::Equal, av, disc)
+			};
+			let fields: Vec<Value> = v.payload.iter().map(|t| self.zero(t)).collect();
+			let inner = self.make_enum(&variants, v.disc, &fields);
+			let wrapped = self.make_enum(&target_variants, 0, &[inner]);
+			result = self.b.ins().select(matched, wrapped, result);
+		}
+		Ok((result, target))
+	}
+
 	pub(super) fn loop_expr(
 		&mut self,
 		cond: Option<&Spanned<Expr>>,
