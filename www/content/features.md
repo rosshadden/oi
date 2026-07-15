@@ -45,14 +45,38 @@ user := load_user(id) or {
 }
 ```
 
-## compile-time
-
-
 ## leading literals
+
+If there's only one literal argument, function parens may be omitted.
+
+```oi
+print "lol"
+foo "bar"
+sleep 1_000
+log.group :process
+```
+
+## trailing struct literals
 
 
 ## trailing functions
 
+```oi
+# if a function is the last argument of a call, it may be written after the parens.
+retry(3) fn {
+	fetch(url)!
+}
+
+# if no named params are needed, the `fn` may be omitted
+retry(3) {
+	fetch(url)!
+}
+
+# if the trailing function is the only argument, the parens may be omitted too
+spawn {
+	do_work()
+}
+```
 
 ## implicit input
 

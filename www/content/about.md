@@ -71,10 +71,21 @@ It too has a lot of parts I'm not in love with, but as a base foundation it is t
 
 At some point I started designing what has become Oi.
 
-## Influences
+## influences
 
 - V
 - Nushell
 - Rust
 - random new languages that pop up on [/r/programminglanguages](https://www.reddit.com/r/ProgrammingLanguages/), like [revo](https://github.com/if-not-nil/revo)
 - to a lesser extent: Nim, Zig, Clojure, Janet, Lua, Odin, Julia, Elixir, Haskell, GDScript
+
+## non-goals
+
+Oi isn't trying to be:
+- the smallest
+- the fastest
+- the most academically perfect
+- the most minimal
+- another X replacement
+
+The real goal is building a language that is enjoyable to write.
