@@ -41,6 +41,7 @@ pub(crate) enum Typ {
 	Enum(String),
 	Option(Box<Typ>),
 	Result(Box<Typ>),
+	AtomSum(Vec<String>),
 	Error,
 	Range,
 }
@@ -95,6 +96,13 @@ impl fmt::Display for Typ {
 			Typ::Enum(name) => write!(f, "{name}"),
 			Typ::Option(inner) => write!(f, "?{inner}"),
 			Typ::Result(inner) => write!(f, "!{inner}"),
+			Typ::AtomSum(names) => {
+				write!(
+					f,
+					"{}",
+					names.iter().map(|n| format!(":{n}")).collect::<Vec<_>>().join(" | ")
+				)
+			}
 			Typ::Error => write!(f, "Error"),
 			Typ::Range => write!(f, "range"),
 		}
@@ -187,6 +195,19 @@ pub(crate) fn result_variants(inner: &Typ) -> Vec<VariantInfo> {
 	]
 }
 
+// An atom sum type desugars to a bare enum.
+pub(crate) fn atom_sum_variants(names: &[String]) -> Vec<VariantInfo> {
+	names
+		.iter()
+		.enumerate()
+		.map(|(disc, name)| VariantInfo {
+			name: name.clone(),
+			disc: disc as i64,
+			payload: vec![],
+		})
+		.collect()
+}
+
 // Assign discriminants and resolve payload types.
 // TODO: only primitive payloads work right now
 fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnostic> {
@@ -240,6 +261,16 @@ impl TypeCtx<'_> {
 			TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(Box::new(self.resolve(elem, span)?), *n)),
 			TypeExpr::Option(inner) => Ok(Typ::Option(Box::new(self.resolve(inner, span)?))),
 			TypeExpr::Result(inner) => Ok(Typ::Result(Box::new(self.resolve(inner, span)?))),
+			TypeExpr::AtomSum(names) => {
+				let mut seen = HashSet::new();
+				if let Some(dup) = names.iter().find(|n| !seen.insert(*n)) {
+					return Err(
+						Diagnostic::new(format!("duplicate atom `:{dup}` in sum type"), span.into_range())
+							.with_label("repeated atom"),
+					);
+				}
+				Ok(Typ::AtomSum(names.clone()))
+			}
 			TypeExpr::Fn(_, _) => Err(Diagnostic::new(
 				"function types are not yet supported in codegen",
 				span.into_range(),
@@ -616,7 +647,8 @@ impl Compiler {
 		}
 		trans.bind_dollar(params_tuple);
 
-		if let Some((val, typ)) = trans.block(stmts)? {
+		let tail_target = trans.ret.as_ref().map(|(t, _)| t.clone());
+		if let Some((val, typ)) = trans.block_tail(stmts, tail_target.as_ref())? {
 			let span = stmts.last().map(|s| s.1).or(decl_span).unwrap_or((0..0).into());
 			trans.emit_return(val, typ, span)?;
 		}

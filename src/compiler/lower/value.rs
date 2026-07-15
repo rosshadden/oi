@@ -46,7 +46,7 @@ impl<'a> Translator<'a> {
 			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
 			Typ::Bool | Typ::ISize | Typ::USize => self.b.ins().iconst(self.int, 0),
 			// default to first variant, with zero'd payload fields
-			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) => {
+			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) => {
 				let variants = self.variants_of(typ);
 				let v = variants.first().cloned();
 				let disc = v.as_ref().map_or(0, |v| v.disc);
@@ -146,6 +146,15 @@ impl<'a> Translator<'a> {
 				self.construct_variant(typ, variant, args, value.1)?.0
 			}
 			(Expr::None, Typ::Option(inner)) => self.make_enum(&option_variants(inner), 0, &[]),
+			(Expr::Atom(name), Typ::AtomSum(names)) => {
+				let Some(disc) = names.iter().position(|n| n == name) else {
+					return Err(
+						Diagnostic::new(format!("`{target}` has no atom `:{name}`"), value.1.into_range())
+							.with_label("not a member of this sum type"),
+					);
+				};
+				self.make_enum(&atom_sum_variants(names), disc as i64, &[])
+			}
 			_ => return Ok(None),
 		};
 		Ok(Some(v))
@@ -162,6 +171,7 @@ impl<'a> Translator<'a> {
 			Typ::Enum(name) => self.enum_variants(name).to_vec(),
 			Typ::Option(inner) => option_variants(inner),
 			Typ::Result(inner) => result_variants(inner),
+			Typ::AtomSum(names) => atom_sum_variants(names),
 			_ => Vec::new(),
 		}
 	}

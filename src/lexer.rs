@@ -129,6 +129,8 @@ pub enum Token {
 	OrOr,
 	#[token("!")]
 	Not,
+	#[token("|")]
+	Pipe,
 
 	// grouping
 	#[token("(")]
@@ -223,6 +225,7 @@ impl fmt::Display for Token {
 			Token::AndAnd => write!(f, "&&"),
 			Token::OrOr => write!(f, "||"),
 			Token::Not => write!(f, "!"),
+			Token::Pipe => write!(f, "|"),
 			Token::LParen => write!(f, "("),
 			Token::RParen => write!(f, ")"),
 			Token::LBrace => write!(f, "{{"),

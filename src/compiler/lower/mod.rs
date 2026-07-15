@@ -9,8 +9,8 @@ use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, Linkage, Module};
 
 use super::{
-	FieldDef, FnSig, Local, LoopFrame, Op, Typ, TypeCtx, VariantInfo, cl_int_for_width, cl_type, elem_size, enum_boxed,
-	enum_slots, option_variants, result_variants,
+	FieldDef, FnSig, Local, LoopFrame, Op, Typ, TypeCtx, VariantInfo, atom_sum_variants, cl_int_for_width, cl_type,
+	elem_size, enum_boxed, enum_slots, option_variants, result_variants,
 };
 use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned, TypeExpr};
 use crate::diagnostics::Diagnostic;

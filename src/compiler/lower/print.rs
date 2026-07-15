@@ -108,7 +108,7 @@ impl<'a> Translator<'a> {
 				self.emit_frag(runtime::Tag::Raw, val, 0, false, stderr);
 			}
 
-			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) => {
+			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) => {
 				let variants = self.variants_of(typ);
 				let ptr = self.enum_name_str(&variants, val);
 				self.emit_frag(runtime::Tag::Raw, ptr, 0, false, stderr);
@@ -138,6 +138,7 @@ impl<'a> Translator<'a> {
 					| Typ::Enum(_)
 					| Typ::Option(_)
 					| Typ::Result(_)
+					| Typ::AtomSum(_)
 					| Typ::Range => {
 						unreachable!("handled above")
 					}

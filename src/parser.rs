@@ -65,7 +65,9 @@ where
 			.map(|t| TypeExpr::Option(Box::new(t)));
 		// results
 		let result = just(Token::Not).ignore_then(te.clone()).map(|t| TypeExpr::Result(Box::new(t)));
-		unit.or(fn_type).or(option).or(result).or(name).or(tuple).or(array)
+		// atom(s)
+		let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a]) };
+		unit.or(fn_type).or(option).or(result).or(atom).or(name).or(tuple).or(array)
 	});
 
 	// bindings
@@ -684,11 +686,16 @@ where
 			Ok((Expr::EnumDef { name, variants }, ex.span()))
 		});
 
-	// type alieses
+	// type aliases
+	let atom_sum = select! { Token::Atom(a) => a }
+		.separated_by(just(Token::Pipe))
+		.at_least(1)
+		.collect::<Vec<_>>()
+		.map(TypeExpr::AtomSum);
 	let type_alias = just(Token::Type)
 		.ignore_then(select! { Token::Ident(name) => name })
 		.then_ignore(just(Token::Assign))
-		.then(type_expr)
+		.then(atom_sum.or(type_expr))
 		.map_with(|(name, typ), ex| (Expr::TypeAlias { name, typ }, ex.span()));
 
 	let impl_block = just(Token::Impl)

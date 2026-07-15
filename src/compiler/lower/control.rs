@@ -103,7 +103,7 @@ impl<'a> Translator<'a> {
 		self.b.def_var(sv_var, sv);
 
 		// ensure match covers every variant when applicable
-		if matches!(&st, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_)) {
+		if matches!(&st, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_)) {
 			let pats = || arms.iter().flat_map(|a| &a.patterns);
 			let catch_all = else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
 			if !catch_all {
@@ -149,7 +149,7 @@ impl<'a> Translator<'a> {
 				} else if let Expr::Range { start, end } = &pat.0 {
 					let sv = self.b.use_var(sv_var);
 					self.range_pattern(sv, &st, start.as_deref(), end.as_deref(), pat.1)?
-				} else if matches!(&st, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_)) {
+				} else if matches!(&st, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_)) {
 					let (disc, b) = self.enum_pattern(pat, &st)?;
 					if arm.patterns.len() == 1 {
 						binds = b;

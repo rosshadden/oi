@@ -193,7 +193,7 @@ impl<'a> Translator<'a> {
 			| (Typ::USize, Typ::USize)
 			| (Typ::Bool, Typ::Bool)
 			| (Typ::Atom, Typ::Atom) => self.b.ins().icmp(icc, lv, rv),
-			(l, r) if l == r && matches!(l, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_)) => {
+			(l, r) if l == r && matches!(l, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_)) => {
 				let variants = self.variants_of(l);
 				if !enum_boxed(&variants) {
 					self.b.ins().icmp(icc, lv, rv)

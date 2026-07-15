@@ -272,7 +272,7 @@ impl<'a> Translator<'a> {
 					false,
 					target_cl,
 				),
-				Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) => {
+				Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) => {
 					let variants = self.variants_of(&typ);
 					let tag = self.enum_tag(&variants, val);
 					if target_cl == types::I64 {

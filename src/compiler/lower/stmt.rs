@@ -4,8 +4,17 @@ impl<'a> Translator<'a> {
 	// Evaluate a block of statements, returning the final value.
 	// Returns None if the block diverged (every path returned/broke).
 	pub fn block(&mut self, stmts: &[Spanned<Expr>]) -> Result<Option<(Value, Typ)>, Diagnostic> {
+		self.block_tail(stmts, None)
+	}
+
+	// Coerces a bare trailing expression against `tail`.
+	pub fn block_tail(
+		&mut self,
+		stmts: &[Spanned<Expr>],
+		tail: Option<&Typ>,
+	) -> Result<Option<(Value, Typ)>, Diagnostic> {
 		let mut last = (self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]));
-		for stmt in stmts {
+		for (i, stmt) in stmts.iter().enumerate() {
 			match &stmt.0 {
 				Expr::Bind {
 					mutable,
@@ -251,7 +260,12 @@ impl<'a> Translator<'a> {
 
 				Expr::Doc(_) => {}
 
-				_ => last = self.expr(stmt)?,
+				_ => {
+					last = match tail {
+						Some(t) if i + 1 == stmts.len() => self.check_expr(stmt, t)?,
+						_ => self.expr(stmt)?,
+					}
+				}
 			}
 		}
 		Ok(Some(last))
