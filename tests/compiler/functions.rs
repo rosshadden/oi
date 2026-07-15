@@ -88,6 +88,25 @@ fn fn_arg_trailing_comma() {
 }
 
 #[test]
+fn self_recursion() {
+	let src = indoc! {"
+		fn fact(n int) int { if n <= 1 { 1 } else { n * fact(n - 1) } }
+		fact(5)
+	"};
+	check(src, "120");
+}
+
+#[test]
+fn forward_reference() {
+	let src = indoc! {"
+		fn a() int { b() + 1 }
+		fn b() int { 41 }
+		a()
+	"};
+	check(src, "42");
+}
+
+#[test]
 fn fn_arg_wrong_type() {
 	let src = indoc! {"
 		fn i(x int) { x }

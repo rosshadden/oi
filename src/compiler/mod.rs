@@ -473,7 +473,43 @@ impl Compiler {
 			structs.insert(name.to_string(), resolved);
 		}
 
+		// hoist functions with an explicit return type
+		let int = self.module.target_config().pointer_type();
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();
+		for (key, params, _, ret, _) in &others {
+			let Some((ret_te, ret_span)) = ret else { continue };
+			let mut aliases = aliases.clone();
+			if let Some(t) = key.rsplit_once('.').map(|(t, _)| t) {
+				aliases.insert("Self".into(), TypeExpr::Name(t.into()));
+			}
+			let types = TypeCtx {
+				structs: &structs,
+				enums: &enums,
+				aliases: &aliases,
+			};
+			let param_typs: Vec<Typ> =
+				params.iter().map(|p| types.resolve(&p.typ, p.span)).collect::<Result<_, _>>()?;
+			let ret = types.resolve(ret_te, *ret_span)?;
+			let mut sig = self.module.make_signature();
+			sig.params.extend(param_typs.iter().map(|t| AbiParam::new(cl_type(t, int))));
+			if !matches!(ret, Typ::Tuple(ref f) if f.is_empty()) {
+				sig.returns.push(AbiParam::new(cl_type(&ret, int)));
+			}
+			let sym = format!("oi_{}", key.replace('.', "__"));
+			let id = self
+				.module
+				.declare_function(&sym, Linkage::Local, &sig)
+				.expect("declare function");
+			funcs.insert(
+				key.clone(),
+				FnSig {
+					id,
+					params: param_typs,
+					ret,
+				},
+			);
+		}
+
 		for (key, params, params_tuple, ret, body) in &others {
 			let self_type = key.rsplit_once('.').map(|(t, _)| t);
 			let mut aliases = aliases.clone();
