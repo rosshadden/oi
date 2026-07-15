@@ -9,4 +9,5 @@ mod options;
 mod results;
 mod strings;
 mod structs;
+mod sum_types;
 mod tuples;

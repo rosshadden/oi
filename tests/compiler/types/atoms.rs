@@ -53,3 +53,8 @@ match x {
 		"yes",
 	);
 }
+
+#[test]
+fn atom_return() {
+	check("fn f() :ok { :ok }\nf()", "ok");
+}
