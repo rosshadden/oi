@@ -21,9 +21,15 @@ The language tries to get the gtfo out of your way.
 
 ### everything composes
 
+Pipelines, expressions, blocks, traits, generics.
+Rather than introducing a one-off syntax for every feature, Oi tries to make small concepts combine nicely together.
 
-### Strong defaults
+### sane defaults
 
+- immutable by default
+- private default
+- everything has zero values
+- error handling is required
 
 ### practical
 
