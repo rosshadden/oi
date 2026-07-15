@@ -164,6 +164,17 @@ impl<'a> Translator<'a> {
 						)
 						.with_label("no such method"));
 					}
+
+					// `Error` trait
+					if recv_typ == Typ::Error {
+						if method == "message" && args.is_empty() {
+							return Ok((recv_val, Typ::Str));
+						}
+						return Err(
+							Diagnostic::new(format!("`Error` has no method `{method}`"), expr.1.into_range())
+								.with_label("no such method"),
+						);
+					}
 					match &recv_typ {
 						Typ::Struct(name, _) => (name.clone(), Some(recv_val)),
 						_ => {

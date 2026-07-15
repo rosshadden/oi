@@ -129,3 +129,25 @@ fn bare_error_return_wraps_err() {
 	"#};
 	check(src, "err");
 }
+
+#[test]
+fn error_message() {
+	check(r#"error("oops").message()"#, "oops");
+}
+
+#[test]
+fn error_message_via_dollar() {
+	let src = indoc! {r#"
+		!int(error("boom")) or {
+			print($.message())
+			0
+		}
+	"#};
+	check(src, "boom\n0");
+}
+
+#[test]
+fn error_unknown_method() {
+	let err = fail(r#"error("oops").code()"#);
+	assert!(err.contains("`Error` has no method `code`"), "got: {err}");
+}
