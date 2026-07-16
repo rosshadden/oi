@@ -96,13 +96,36 @@ fn capture_undefined() {
 }
 
 #[test]
-fn capture_mut_not_yet_implemented() {
+fn capture_mut_writes_visible_outside() {
+	let src = indoc! {"
+		mut counter := 0
+		inc := fn [mut counter] () int { counter = counter + 1; counter }
+		inc()
+		inc()
+		counter
+	"};
+	check(src, "2");
+}
+
+#[test]
+fn capture_mut_sees_outer_writes() {
+	let src = indoc! {"
+		mut x := 1
+		bump := fn [mut x] () int { x = x + 10; x }
+		x = 5
+		bump()
+	"};
+	check(src, "15");
+}
+
+#[test]
+fn capture_mut_requires_mut_binding() {
 	let src = indoc! {"
 		x := 3
 		f := fn [mut x] () int { x }
 		f()
 	"};
-	assert!(fail(src).contains("not yet implemented"));
+	assert!(fail(src).contains("cannot capture `x` as `mut`"));
 }
 
 #[test]

@@ -66,11 +66,9 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::Ident(name) => {
-				let local = self.vars.get(name).cloned().ok_or_else(|| {
-					Diagnostic::new(format!("undefined variable `{name}`"), expr.1.into_range())
-						.with_label("not found in scope")
-				})?;
-				Ok((self.b.use_var(local.var), local.typ))
+				let local = self.local(name, expr.1.into_range())?;
+				let val = self.read_local(&local);
+				Ok((val, local.typ))
 			}
 
 			Expr::Dollar => Ok(self.dollar()),
@@ -123,7 +121,7 @@ impl<'a> Translator<'a> {
 
 			Expr::Call { name, args } => {
 				if let Some(local) = self.vars.get(name).cloned() {
-					let callee = self.b.use_var(local.var);
+					let callee = self.read_local(&local);
 					return match local.typ.clone() {
 						Typ::Fn(params, ret) => self.call_value(name, callee, None, &params, &ret, args, expr.1),
 						Typ::Closure(params, ret) => {

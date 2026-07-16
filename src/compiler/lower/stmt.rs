@@ -51,14 +51,7 @@ impl<'a> Translator<'a> {
 					// `:=` always declares a fresh binding, shadowing any earlier ones
 					let var = self.b.declare_var(cl);
 					self.b.def_var(var, final_val);
-					self.vars.insert(
-						name.clone(),
-						Local {
-							var,
-							typ,
-							mutable: *mutable,
-						},
-					);
+					self.vars.insert(name.clone(), Local::plain(var, typ, *mutable));
 				}
 
 				Expr::Assign { name, value } => {
@@ -73,14 +66,14 @@ impl<'a> Translator<'a> {
 					}
 					if let Typ::Struct(_, ref fields) = typ {
 						let fields = fields.clone();
-						let dst = self.b.use_var(local.var);
+						let dst = self.read_local(&local);
 						for (i, f) in fields.iter().enumerate() {
 							let cl = cl_type(&f.typ, self.int);
 							let fv = self.b.ins().load(cl, MemFlags::new(), val, (i * 8) as i32);
 							self.b.ins().store(MemFlags::new(), fv, dst, (i * 8) as i32);
 						}
 					} else {
-						self.b.def_var(local.var, val);
+						self.write_local(&local, val);
 					}
 				}
 
@@ -95,7 +88,7 @@ impl<'a> Translator<'a> {
 							);
 						}
 					};
-					let ptr = self.b.use_var(local.var);
+					let ptr = self.read_local(&local);
 					let idx = self.int_value(index, "array index")?;
 					let idx = self.b.ins().sextend(self.int, idx);
 					let (val, vtyp) = self.expr(value)?;
@@ -123,7 +116,7 @@ impl<'a> Translator<'a> {
 					};
 					let (val, vtyp) = self.expr(value)?;
 					let size = self.b.ins().iconst(self.int, elem_size(&elem));
-					let ptr = self.b.use_var(local.var);
+					let ptr = self.read_local(&local);
 
 					if vtyp == elem {
 						// grow if full, then write the new element and bump len
@@ -224,7 +217,7 @@ impl<'a> Translator<'a> {
 						)
 						.with_label("type mismatch"));
 					}
-					let ptr = self.b.use_var(local.var);
+					let ptr = self.read_local(&local);
 					self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
 				}
 

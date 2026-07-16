@@ -215,12 +215,7 @@ impl<'a> Translator<'a> {
 			self.b.switch_to_block(arm_body);
 			let saved = self.vars.clone();
 			if let Some(name) = &arm.binding {
-				let local = Local {
-					var: sv_var,
-					typ: st.clone(),
-					mutable: false,
-				};
-				self.vars.insert(name.clone(), local);
+				self.vars.insert(name.clone(), Local::plain(sv_var, st.clone(), false));
 			}
 			let sv = self.b.use_var(sv_var);
 			let base = match &st {
@@ -232,12 +227,7 @@ impl<'a> Translator<'a> {
 				let fv = self.b.ins().load(cl, MemFlags::new(), base, *off);
 				let var = self.b.declare_var(cl);
 				self.b.def_var(var, fv);
-				let local = Local {
-					var,
-					typ: typ.clone(),
-					mutable: false,
-				};
-				self.vars.insert(name.clone(), local);
+				self.vars.insert(name.clone(), Local::plain(var, typ.clone(), false));
 			}
 			let flow = self.block_tail(&arm.body, target)?;
 			self.vars = saved;
@@ -630,14 +620,7 @@ impl<'a> Translator<'a> {
 			Pattern::Name(name) => {
 				let var = self.b.declare_var(cl_type(typ, self.int));
 				self.b.def_var(var, val);
-				self.vars.insert(
-					name.clone(),
-					Local {
-						var,
-						typ: typ.clone(),
-						mutable: false,
-					},
-				);
+				self.vars.insert(name.clone(), Local::plain(var, typ.clone(), false));
 			}
 			Pattern::Tuple(names) => {
 				let Typ::Tuple(fields) = typ else {
@@ -662,14 +645,7 @@ impl<'a> Translator<'a> {
 					let fv = self.b.ins().load(cl_type(ftyp, self.int), MemFlags::new(), val, (i * 8) as i32);
 					let var = self.b.declare_var(cl_type(ftyp, self.int));
 					self.b.def_var(var, fv);
-					self.vars.insert(
-						name.clone(),
-						Local {
-							var,
-							typ: ftyp.clone(),
-							mutable: false,
-						},
-					);
+					self.vars.insert(name.clone(), Local::plain(var, ftyp.clone(), false));
 				}
 			}
 		}

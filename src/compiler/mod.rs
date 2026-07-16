@@ -372,7 +372,7 @@ pub(crate) struct GenericFnDef {
 	pub ret: Option<Spanned<TypeExpr>>,
 	pub body: Vec<Spanned<Expr>>,
 	pub type_params: Vec<String>,
-	pub captures: Vec<(String, Typ)>,
+	pub captures: Vec<(String, Typ, bool)>,
 }
 
 // A monomorphized instance whose sig is declared but body not yet compiled.
@@ -383,6 +383,18 @@ pub(crate) struct Local {
 	pub var: Variable,
 	pub typ: Typ,
 	pub mutable: bool,
+	pub boxed: bool,
+}
+
+impl Local {
+	pub fn plain(var: Variable, typ: Typ, mutable: bool) -> Self {
+		Local {
+			var,
+			typ,
+			mutable,
+			boxed: false,
+		}
+	}
 }
 
 // `continue` jumps to `top`, `break` jumps to `exit`
@@ -735,7 +747,7 @@ impl Compiler {
 		types: TypeCtx,
 		self_type: Option<&str>,
 		is_main: bool,
-		captures: &[(String, Typ)],
+		captures: &[(String, Typ, bool)],
 	) -> Result<Typ, Diagnostic> {
 		let int = self.module.target_config().pointer_type();
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
@@ -781,11 +793,7 @@ impl Compiler {
 			let cl = trans.b.func.dfg.value_type(val);
 			let var = trans.b.declare_var(cl);
 			trans.b.def_var(var, val);
-			let local = Local {
-				var,
-				typ: typ.clone(),
-				mutable: *mutable,
-			};
+			let local = Local::plain(var, typ.clone(), *mutable);
 			trans.vars.insert(name.clone(), local.clone());
 			trans.params.push(local);
 		}
@@ -793,19 +801,18 @@ impl Compiler {
 
 		if !captures.is_empty() {
 			let env = param_vals[params.len()];
-			for (i, (name, typ)) in captures.iter().enumerate() {
-				let cl = cl_type(typ, trans.int);
+			for (i, (name, typ, boxed)) in captures.iter().enumerate() {
+				let cl = if *boxed { trans.int } else { cl_type(typ, trans.int) };
 				let val = trans.b.ins().load(cl, MemFlags::new(), env, ((i + 1) * 8) as i32);
 				let var = trans.b.declare_var(cl);
 				trans.b.def_var(var, val);
-				trans.vars.insert(
-					name.clone(),
-					Local {
-						var,
-						typ: typ.clone(),
-						mutable: false,
-					},
-				);
+				let local = Local {
+					var,
+					typ: typ.clone(),
+					mutable: *boxed,
+					boxed: *boxed,
+				};
+				trans.vars.insert(name.clone(), local);
 			}
 		}
 
