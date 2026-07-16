@@ -70,6 +70,41 @@ where
 		unit.or(fn_type).or(option).or(result).or(atom).or(name).or(tuple).or(array)
 	});
 
+	// param type is kept for the compiler to resolve
+	// NOTE: a bare `self` receiver gets the type `Self`
+	let param = just(Token::Mut)
+		.or_not()
+		.then(select! { Token::Ident(name) => name })
+		.then(type_expr.clone().or_not())
+		.map_with(|((mutable, name), typ), ex| Param {
+			typ: typ.unwrap_or(TypeExpr::Name("Self".into())),
+			name,
+			span: ex.span(),
+			default: None,
+			mutable: mutable.is_some(),
+		});
+	// NOTE: a trailing comma forces a tuple even for one param
+	let params = param
+		.separated_by(just(Token::Comma))
+		.collect::<Vec<_>>()
+		.then(just(Token::Comma).or_not())
+		.delimited_by(just(Token::LParen), just(Token::RParen))
+		.map(|(params, trailing)| {
+			let tuple = params.len() != 1 || trailing.is_some();
+			(params, tuple)
+		});
+
+	// optional return type annotation
+	let ret = type_expr.clone().map_with(|t, ex| (t, ex.span())).or_not();
+
+	// generics
+	let type_params = select! { Token::Ident(name) => name }
+		.separated_by(just(Token::Comma))
+		.collect::<Vec<_>>()
+		.delimited_by(just(Token::LBracket), just(Token::RBracket))
+		.or_not()
+		.map(Option::unwrap_or_default);
+
 	// bindings
 	let annot = type_expr.clone().map_with(|t, ex| (t, ex.span()));
 	let bind = just(Token::Mut)
@@ -395,6 +430,26 @@ where
 				)
 			});
 
+		// anonymous functions
+		let anon_fn = just(Token::Fn)
+			.ignore_then(just(Token::LBracket))
+			.ignore_then(just(Token::RBracket))
+			.ignore_then(params.clone().or_not())
+			.then(ret.clone())
+			.then(block.clone())
+			.map_with(|((params, ret), body), ex| {
+				let (params, tuple) = params.unwrap_or((vec![], true));
+				(
+					Expr::AnonFn {
+						params,
+						params_tuple: tuple,
+						ret,
+						body,
+					},
+					ex.span(),
+				)
+			});
+
 		// atoms
 		let atom = leaf
 			.or(enum_shorthand)
@@ -410,6 +465,7 @@ where
 			.or(loop_expr)
 			.or(break_expr)
 			.or(continue_expr)
+			.or(anon_fn)
 			.or(bad);
 
 		// field/tuple/method access
@@ -574,41 +630,6 @@ where
 		})
 	};
 	expr.define(definition);
-
-	// param type is kept for the compiler to resolve
-	// NOTE: a bare `self` receiver gets the type `Self`
-	let param = just(Token::Mut)
-		.or_not()
-		.then(select! { Token::Ident(name) => name })
-		.then(type_expr.clone().or_not())
-		.map_with(|((mutable, name), typ), ex| Param {
-			typ: typ.unwrap_or(TypeExpr::Name("Self".into())),
-			name,
-			span: ex.span(),
-			default: None,
-			mutable: mutable.is_some(),
-		});
-	// NOTE: a trailing comma forces a tuple even for one param
-	let params = param
-		.separated_by(just(Token::Comma))
-		.collect::<Vec<_>>()
-		.then(just(Token::Comma).or_not())
-		.delimited_by(just(Token::LParen), just(Token::RParen))
-		.map(|(params, trailing)| {
-			let tuple = params.len() != 1 || trailing.is_some();
-			(params, tuple)
-		});
-
-	// optional return type annotation
-	let ret = type_expr.clone().map_with(|t, ex| (t, ex.span())).or_not();
-
-	// generics
-	let type_params = select! { Token::Ident(name) => name }
-		.separated_by(just(Token::Comma))
-		.collect::<Vec<_>>()
-		.delimited_by(just(Token::LBracket), just(Token::RBracket))
-		.or_not()
-		.map(Option::unwrap_or_default);
 
 	// fn defs
 	let func = just(Token::Fn)

@@ -44,6 +44,7 @@ pub(crate) enum Typ {
 	AtomSum(Vec<String>),
 	Error,
 	Range,
+	Fn(Vec<Typ>, Box<Typ>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -105,6 +106,16 @@ impl fmt::Display for Typ {
 			}
 			Typ::Error => write!(f, "Error"),
 			Typ::Range => write!(f, "range"),
+			Typ::Fn(params, ret) => {
+				write!(f, "fn(")?;
+				for (i, p) in params.iter().enumerate() {
+					if i > 0 {
+						write!(f, ", ")?;
+					}
+					write!(f, "{p}")?;
+				}
+				write!(f, ") {ret}")
+			}
 		}
 	}
 }
@@ -273,11 +284,10 @@ impl TypeCtx<'_> {
 				}
 				Ok(Typ::AtomSum(names.clone()))
 			}
-			TypeExpr::Fn(_, _) => Err(Diagnostic::new(
-				"function types are not yet supported in codegen",
-				span.into_range(),
-			)
-			.with_label("cannot use a function type here yet")),
+			TypeExpr::Fn(params, ret) => {
+				let params = params.iter().map(|p| self.resolve(p, span)).collect::<Result<_, _>>()?;
+				Ok(Typ::Fn(params, Box::new(self.resolve(ret, span)?)))
+			}
 		}
 	}
 

@@ -76,7 +76,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Declare a monomorphed instance's signature, reusing a prior one if it exists.
-	fn declare_instance(
+	pub(super) fn declare_instance(
 		&mut self,
 		name: &str,
 		def: &GenericFnDef,

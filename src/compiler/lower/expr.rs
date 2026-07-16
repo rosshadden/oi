@@ -607,6 +607,22 @@ impl<'a> Translator<'a> {
 				Ok((ptr, Typ::Range))
 			}
 
+			Expr::AnonFn {
+				params,
+				params_tuple,
+				ret,
+				body,
+			} => {
+				let Some(ret) = ret else {
+					return Err(Diagnostic::new(
+						"anonymous functions need an explicit return type",
+						expr.1.into_range(),
+					)
+					.with_label("add a return type, e.g. `fn [] () int { ... }`"));
+				};
+				self.declare_anon_fn(params, *params_tuple, ret, body, expr.1)
+			}
+
 			Expr::Bind { .. } => unreachable!("bind in expression position"),
 			Expr::Assign { .. } => unreachable!("assign in expression position"),
 			Expr::IndexAssign { .. } => unreachable!("index assign in expression position"),

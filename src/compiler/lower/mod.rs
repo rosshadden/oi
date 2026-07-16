@@ -16,6 +16,7 @@ use crate::ast::{Expr, MatchArm, Pattern, Span, Spanned, TypeExpr};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
 
+mod anon;
 mod array;
 mod builtin;
 mod call;

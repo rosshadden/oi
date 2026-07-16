@@ -45,6 +45,7 @@ impl<'a> Translator<'a> {
 			Typ::Int(w) => self.b.ins().iconst(cl_type(&Typ::Int(*w), self.int), 0),
 			Typ::UInt(w) => self.b.ins().iconst(cl_type(&Typ::UInt(*w), self.int), 0),
 			Typ::Bool | Typ::ISize | Typ::USize => self.b.ins().iconst(self.int, 0),
+			Typ::Fn(..) => self.b.ins().iconst(self.int, 0),
 			// default to first variant, with zero'd payload fields
 			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) => {
 				let variants = self.variants_of(typ);

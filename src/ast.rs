@@ -55,6 +55,14 @@ pub enum Expr {
 		body: Vec<Spanned<Expr>>,
 	},
 
+	// `fn []? (params)? ret? { body }`
+	AnonFn {
+		params: Vec<Param>,
+		params_tuple: bool,
+		ret: Option<Spanned<TypeExpr>>,
+		body: Vec<Spanned<Expr>>,
+	},
+
 	Call {
 		name: String,
 		args: Vec<Spanned<Expr>>,
