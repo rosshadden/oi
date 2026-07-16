@@ -1,4 +1,5 @@
-default: fmt test lint
+[parallel]
+main: fmt test lint
 
 # compile and run an Oi script
 [group("oi")]
@@ -20,19 +21,29 @@ repl:
 serve:
 	zola --root www serve --base-url localhost
 
+# run formatter
 [group("cargo")]
 fmt:
 	cargo fmt
 
+# run lints
 [group("cargo")]
 lint:
-	cargo clippy --all -- -D warnings
+	cargo clippy --no-deps -- -D warnings
 
+# run tests
 [group("cargo")]
 test:
 	cargo test
 
+# build rustdocs
 [group("cargo")]
 [group("docs")]
 doc:
 	cargo doc --no-deps --verbose
+
+# fix fixable things
+[group("cargo")]
+fix:
+	cargo fix --allow-dirty
+	cargo clippy --no-deps --fix --allow-dirty
