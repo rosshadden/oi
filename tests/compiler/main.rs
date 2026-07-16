@@ -3,6 +3,7 @@ mod support;
 
 mod helpers;
 
+mod anon_fn;
 mod arithmetic;
 mod assertions;
 mod comments;

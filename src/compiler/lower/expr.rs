@@ -121,19 +121,31 @@ impl<'a> Translator<'a> {
 				Ok((self.b.ins().bxor_imm(v, 1), Typ::Bool))
 			}
 
-			Expr::Call { name, args } => match self.builtin_call(name, args, expr.1)? {
-				Some(result) => Ok(result),
-				None => match self.funcs.get(name).cloned() {
-					Some(sig) => self.call_sig(name, sig, None, args, expr.1),
-					None => match self.generics.get(name).cloned() {
-						Some(def) => self.call_generic(name, &def, args, expr.1),
-						None => Err(
-							Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
-								.with_label("not defined"),
-						),
+			Expr::Call { name, args } => {
+				if let Some(local) = self.vars.get(name).cloned() {
+					let Typ::Fn(params, ret) = local.typ.clone() else {
+						return Err(
+							Diagnostic::new(format!("`{name}` is not callable"), expr.1.into_range())
+								.with_label(format!("this is {}, not a function", local.typ)),
+						);
+					};
+					let callee = self.b.use_var(local.var);
+					return self.call_value(name, callee, &params, &ret, args, expr.1);
+				}
+				match self.builtin_call(name, args, expr.1)? {
+					Some(result) => Ok(result),
+					None => match self.funcs.get(name).cloned() {
+						Some(sig) => self.call_sig(name, sig, None, args, expr.1),
+						None => match self.generics.get(name).cloned() {
+							Some(def) => self.call_generic(name, &def, args, expr.1),
+							None => Err(
+								Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
+									.with_label("not defined"),
+							),
+						},
 					},
-				},
-			},
+				}
+			}
 
 			Expr::MethodCall { recv, method, args } => {
 				// enum payload

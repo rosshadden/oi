@@ -71,6 +71,51 @@ impl<'a> Translator<'a> {
 		(ret_val, sig.ret.clone())
 	}
 
+	// Call through a `Typ::Fn` value.
+	// ex: a variable holding an anon fn
+	pub(super) fn call_value(
+		&mut self,
+		name: &str,
+		callee: Value,
+		params: &[Typ],
+		ret: &Typ,
+		args: &[Spanned<Expr>],
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		if args.len() != params.len() {
+			return Err(Diagnostic::new(
+				format!("`{name}` expects {} argument(s), got {}", params.len(), args.len()),
+				span.into_range(),
+			)
+			.with_label("wrong number of arguments"));
+		}
+		let mut vals = Vec::with_capacity(args.len());
+		for (arg, want) in args.iter().zip(params) {
+			let (val, typ) = self.check_expr(arg, want)?;
+			if &typ != want {
+				return Err(
+					Diagnostic::new(format!("expected {want} argument, got {typ}"), arg.1.into_range())
+						.with_label("wrong argument type"),
+				);
+			}
+			vals.push(val);
+		}
+		let mut sig = self.module.make_signature();
+		sig.params.extend(params.iter().map(|t| AbiParam::new(cl_type(t, self.int))));
+		let is_unit = matches!(ret, Typ::Tuple(f) if f.is_empty());
+		if !is_unit {
+			sig.returns.push(AbiParam::new(cl_type(ret, self.int)));
+		}
+		let sig_ref = self.b.import_signature(sig);
+		let call = self.b.ins().call_indirect(sig_ref, callee, &vals);
+		let ret_val = if is_unit {
+			self.b.ins().iconst(self.int, 0)
+		} else {
+			self.b.inst_results(call)[0]
+		};
+		Ok((ret_val, ret.clone()))
+	}
+
 	pub(super) fn call_concat(&mut self, a: Value, b: Value) -> Value {
 		let func = self.import_fn(runtime::STR_CONCAT, &[self.int, self.int], Some(self.int));
 		let call = self.b.ins().call(func, &[a, b]);
