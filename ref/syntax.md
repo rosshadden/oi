@@ -1049,7 +1049,7 @@ fn main() {
 	# check error type in the or block
 	file := fs.open(path) or {
 		if $ is fs.NotFoundError { return create_default() }
-		panic($.message())
+		panic!($.message())
 	}
 	
 	# postfix `!` propagates error up to the caller
@@ -1097,7 +1097,7 @@ fn main() {
 		return ParseError{ line: 4, col: 2 }  # auto-cast to Error
 	}
 	
-	parse(src) or { panic($.message()) }
+	parse(src) or { panic!($.message()) }
 	
 	# error chaining via cause()
 	struct WrappedError {
@@ -1218,6 +1218,7 @@ fn main() {
 	// create enum from value
 	print(Cycle.from(10) or { Cycle.three })
 	print(Cycle.from("two")!)
+	print(Cycle.from(:three) or Cycle{})
 	
 	// convert an enum value to a string
 	print(Cycle.one.str())
@@ -1240,7 +1241,7 @@ fn main() {
 	# crash out
 	if false {
 		assert!(true, "optional message")
-		panic("uh oh...")
+		panic!("uh oh...")
 	}
 	
 	## blocks
@@ -1383,8 +1384,7 @@ fn main() {
 
 	## pipelines
 
-	input := "let's do this"
-	result := input |> trim |> upper
+	call_to_action := "let's do this" |> trim |> upper
 		
 	# if any step returns none, the whole chain is none
 	"optional-aware" |> upper?
@@ -1439,7 +1439,7 @@ fn main() {
 			log.warn("Config load failed: {$}. Using default.")
 			default_config()
 		}
-	"gtfo" |> process or { panic("uh oh...") }
+	"gtfo" |> process or { panic!("uh oh...") }
 	"err binding" |> raise_err |> or { log.error($) }
 	
 	# you can specify params

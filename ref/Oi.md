@@ -1,3 +1,8 @@
+---
+id: Oi
+aliases: []
+tags: []
+---
 # principles
 - general purpose system language
 - [almost?] everything is an expression
@@ -59,7 +64,7 @@
 	- `test` (and also `suite` and `test/skip`) `zig revo`
 	- `build` `zig revo`
 	- units and unit conversion (can be an imported stdlib that adds `impl`s)
-	- primitive data type for paths `nu nix`
+	- primitive data type for paths `nu nix gdscript just`
 - cli
 	- `oi build`
 	- `oi run`
@@ -72,8 +77,13 @@
 	- `oi repl`
 	- `oi lsp`
 # TODO
+- [ ] pipeline examples with `!` postfix collide with macros
+- [ ] revisit needing `print`, `assert`, et al to be macros
+	- V allows this without macros: `error('User ${id} not found')`
+	- maybe I can do away with the `!` macros postfix entirely, solving the clash with `Result`
 - [ ] implicit context
 - [x] shore up enum shorthands: `.foo` is enum syntax (payloads, patterns), `:foo` is atom coercion (prototyping, payload-less). both kept, non-overlapping roles. prefer `.foo` when enum exists.
+- [ ] computed values `swift`
 - [ ] ptr type (ptr, voidptr, rawptr) `nim v odin`
 - [ ] make another pass on generics. I don't love what I have now
 - [ ] make another pass on metaprogramming. I don't love what I have now
@@ -119,9 +129,11 @@
 - using `not` or `!` in pipelines to achieve things like V's `val !in arr`
 - `noop` macro
 - int/float suffixes `let y: i32 = 13i32; let f: f64 = 1.3f64;` `rust`
+- maybe allow omitting `x in ` in a loop, like `loop 0..4`, because you can always use `$`
 - maybe named tuple args aren't a good thing
 	- just making structs more lightweight to use might be better, idk
 - reconciling `type` for type aliases with var declarations (can maybe share syntax)
+- CLI help docs, like Nushell and Cargo
 # stdlib
 - `os`
 - `fs`
