@@ -3,6 +3,7 @@ mod arrays;
 mod atoms;
 mod booleans;
 mod enums;
+mod generics;
 mod literals;
 mod numbers;
 mod options;
