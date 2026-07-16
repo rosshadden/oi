@@ -1,7 +1,6 @@
 pub mod exec;
 pub mod repl;
 pub mod run;
-pub mod serve;
 
 use oi::Reported;
 
@@ -13,6 +12,5 @@ pub fn dispatch(command: Command) -> Result<(), Reported> {
 		Command::Run { file, debug_ast } => run::run(&file, debug_ast),
 		Command::Exec { source } => exec::run(source),
 		Command::Repl => repl::run(),
-		Command::Serve => serve::run(),
 	}
 }
