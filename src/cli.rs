@@ -32,4 +32,7 @@ pub enum Command {
 
 	/// Start an interactive Oi REPL.
 	Repl,
+
+	/// Generate and serve the static website.
+	Serve,
 }
