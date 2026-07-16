@@ -123,13 +123,16 @@ impl<'a> Translator<'a> {
 
 			Expr::Call { name, args } => match self.builtin_call(name, args, expr.1)? {
 				Some(result) => Ok(result),
-				None => {
-					let sig = self.funcs.get(name).cloned().ok_or_else(|| {
-						Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
-							.with_label("not defined")
-					})?;
-					self.call_sig(name, sig, None, args, expr.1)
-				}
+				None => match self.funcs.get(name).cloned() {
+					Some(sig) => self.call_sig(name, sig, None, args, expr.1),
+					None => match self.generics.get(name).cloned() {
+						Some(def) => self.call_generic(name, &def, args, expr.1),
+						None => Err(
+							Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
+								.with_label("not defined"),
+						),
+					},
+				},
 			},
 
 			Expr::MethodCall { recv, method, args } => {

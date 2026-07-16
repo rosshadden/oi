@@ -211,11 +211,12 @@ pub(crate) fn atom_sum_variants(names: &[String]) -> Vec<VariantInfo> {
 // Assign discriminants and resolve payload types.
 // TODO: only primitive payloads work right now
 fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnostic> {
-	let (structs, enums, aliases) = (HashMap::new(), HashMap::new(), HashMap::new());
+	let (structs, enums, aliases, type_params) = (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new());
 	let types = TypeCtx {
 		structs: &structs,
 		enums: &enums,
 		aliases: &aliases,
+		type_params: &type_params,
 	};
 	let mut next = 0;
 	variants
@@ -243,6 +244,7 @@ pub(crate) struct TypeCtx<'a> {
 	pub structs: &'a HashMap<String, Vec<FieldDef>>,
 	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
 	pub aliases: &'a HashMap<String, TypeExpr>,
+	pub type_params: &'a HashMap<String, Typ>,
 }
 
 impl TypeCtx<'_> {
@@ -281,6 +283,9 @@ impl TypeCtx<'_> {
 
 	// Resolve a named type.
 	pub fn named(&self, name: &str, span: Span) -> Result<Typ, Diagnostic> {
+		if let Some(typ) = self.type_params.get(name) {
+			return Ok(typ.clone());
+		}
 		match name {
 			"int" => return Ok(Typ::Int(32)),
 			"isize" => return Ok(Typ::ISize),
@@ -348,6 +353,19 @@ pub(crate) struct FnSig {
 	pub ret: Typ,
 }
 
+// A generic free function, monomorphized per callsite.
+#[derive(Clone)]
+pub(crate) struct GenericFnDef {
+	pub params: Vec<Param>,
+	pub params_tuple: bool,
+	pub ret: Option<Spanned<TypeExpr>>,
+	pub body: Vec<Spanned<Expr>>,
+	pub type_params: Vec<String>,
+}
+
+// A monomorphized instance whose sig is declared but body not yet compiled.
+pub(crate) type Pending = (String, GenericFnDef, HashMap<String, Typ>);
+
 #[derive(Clone)]
 pub(crate) struct Local {
 	pub var: Variable,
@@ -367,6 +385,9 @@ pub struct Compiler {
 	module: JITModule,
 	string_idx: usize,
 	atoms: HashSet<String>,
+	generics: HashMap<String, GenericFnDef>,
+	mono: HashMap<String, FnSig>,
+	pending: Vec<Pending>,
 }
 
 impl Default for Compiler {
@@ -399,6 +420,9 @@ impl Default for Compiler {
 			module,
 			string_idx: 0,
 			atoms: HashSet::new(),
+			generics: HashMap::new(),
+			mono: HashMap::new(),
+			pending: Vec::new(),
 		}
 	}
 }
@@ -434,6 +458,25 @@ impl Compiler {
 				Expr::Fn { name, body, .. } if name == "main" => main_body = Some(body),
 				Expr::Fn {
 					name,
+					type_params,
+					params,
+					params_tuple,
+					ret,
+					body,
+				} if !type_params.is_empty() => {
+					self.generics.insert(
+						name.clone(),
+						GenericFnDef {
+							params: params.clone(),
+							params_tuple: *params_tuple,
+							ret: ret.clone(),
+							body: body.clone(),
+							type_params: type_params.clone(),
+						},
+					);
+				}
+				Expr::Fn {
+					name,
 					params,
 					params_tuple,
 					ret,
@@ -456,10 +499,12 @@ impl Compiler {
 		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		// TODO: struct fields can't reference other structs yet, so resolve against none
 		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
+		let no_type_params: HashMap<String, Typ> = HashMap::new();
 		let field_types = TypeCtx {
 			structs: &no_structs,
 			enums: &enums,
 			aliases: &aliases,
+			type_params: &no_type_params,
 		};
 		for (name, fields) in &struct_items {
 			let resolved = fields
@@ -488,6 +533,7 @@ impl Compiler {
 				structs: &structs,
 				enums: &enums,
 				aliases: &aliases,
+				type_params: &no_type_params,
 			};
 			let param_typs: Vec<Typ> =
 				params.iter().map(|p| types.resolve(&p.typ, p.span)).collect::<Result<_, _>>()?;
@@ -522,6 +568,7 @@ impl Compiler {
 				structs: &structs,
 				enums: &enums,
 				aliases: &aliases,
+				type_params: &no_type_params,
 			};
 			let params: Vec<(String, Typ, bool)> = params
 				.iter()
@@ -569,9 +616,33 @@ impl Compiler {
 			structs: &structs,
 			enums: &enums,
 			aliases: &aliases,
+			type_params: &no_type_params,
 		};
 		let typ = self.translate(&[], true, None, entry, &funcs, types, None, true)?;
 		let entry_id = self.finish_fn("oi_main");
+
+		// drain generic instances queued by calls we've seen
+		while let Some((sym, def, subst)) = self.pending.pop() {
+			let types = TypeCtx {
+				structs: &structs,
+				enums: &enums,
+				aliases: &aliases,
+				type_params: &subst,
+			};
+			let params: Vec<(String, Typ, bool)> = def
+				.params
+				.iter()
+				.map(|p| Ok((p.name.clone(), types.resolve(&p.typ, p.span)?, p.mutable)))
+				.collect::<Result<_, Diagnostic>>()?;
+			let ret = def
+				.ret
+				.as_ref()
+				.map(|(te, span)| Ok::<_, Diagnostic>((types.resolve(te, *span)?, *span)))
+				.transpose()?;
+			self.translate(&params, def.params_tuple, ret, &def.body, &funcs, types, None, false)?;
+			self.finish_fn(&sym);
+		}
+
 		let id = self.compile_entry(entry_id, typ, &funcs, types);
 
 		self.module.finalize_definitions().expect("finalize definitions");
@@ -596,6 +667,10 @@ impl Compiler {
 			structs: types.structs,
 			enums: types.enums,
 			aliases: types.aliases,
+			type_params: types.type_params,
+			generics: &self.generics,
+			mono: &mut self.mono,
+			pending: &mut self.pending,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,
 			ret: None,
@@ -662,6 +737,10 @@ impl Compiler {
 			structs: types.structs,
 			enums: types.enums,
 			aliases: types.aliases,
+			type_params: types.type_params,
+			generics: &self.generics,
+			mono: &mut self.mono,
+			pending: &mut self.pending,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,
 			ret,

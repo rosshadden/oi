@@ -56,14 +56,19 @@ impl<'a> Translator<'a> {
 			}
 			vals.push(val);
 		}
+		Ok(self.emit_call(&sig, &vals))
+	}
+
+	// Emit the actual call instruction for a resolved fn signature.
+	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> (Value, Typ) {
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
-		let call = self.b.ins().call(func, &vals);
+		let call = self.b.ins().call(func, vals);
 		let ret_val = if matches!(sig.ret, Typ::Tuple(ref f) if f.is_empty()) {
 			self.b.ins().iconst(self.int, 0)
 		} else {
 			self.b.inst_results(call)[0]
 		};
-		Ok((ret_val, sig.ret))
+		(ret_val, sig.ret.clone())
 	}
 
 	pub(super) fn call_concat(&mut self, a: Value, b: Value) -> Value {

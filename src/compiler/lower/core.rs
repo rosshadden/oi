@@ -7,6 +7,7 @@ impl<'a> Translator<'a> {
 			structs: self.structs,
 			enums: self.enums,
 			aliases: self.aliases,
+			type_params: self.type_params,
 		}
 	}
 
