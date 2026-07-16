@@ -443,7 +443,7 @@ where
 			.collect::<Vec<_>>()
 			.delimited_by(just(Token::LBracket), just(Token::RBracket));
 		let anon_fn = just(Token::Fn)
-			.ignore_then(captures)
+			.ignore_then(captures.or_not())
 			.then(params.clone().or_not())
 			.then(ret.clone())
 			.then(block.clone())

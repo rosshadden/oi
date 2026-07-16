@@ -57,7 +57,7 @@ pub enum Expr {
 
 	// `fn [captures]? (params)? ret? { body }`
 	AnonFn {
-		captures: Vec<Capture>,
+		captures: Option<Vec<Capture>>,
 		params: Vec<Param>,
 		params_tuple: bool,
 		ret: Option<Spanned<TypeExpr>>,
