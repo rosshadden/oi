@@ -128,3 +128,31 @@ fn or_tail_after_chain_fallback() {
 	"};
 	check(src, "-1");
 }
+
+#[test]
+fn or_tail_bare_literal() {
+	let src = indoc! {r#"
+		fn find(id int) ?string {
+			if id == 7 { return "found" }
+			return none
+		}
+		1 |> find or "anonymous"
+	"#};
+	check(src, "anonymous");
+}
+
+#[test]
+fn or_tail_bare_ident_calls_with_dollar() {
+	let src = indoc! {r#"
+		fn find(id int) !int {
+			if id == 7 { return 42 }
+			return error("missing")
+		}
+		fn handler[E](e E) int {
+			print(e.message())
+			0
+		}
+		find(1) or handler
+	"#};
+	check(src, "missing\n0");
+}

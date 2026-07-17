@@ -679,7 +679,7 @@ where
 		));
 
 		// or blocks
-		let or_tail = just(Token::Or).ignore_then(block.clone());
+		let or_tail = just(Token::Or).ignore_then(block.clone().or(core.clone().map(|e| vec![pipe_step(e)])));
 		core.then(or_tail.or_not()).map_with(|(value, body), ex| match body {
 			Some(body) => (
 				Expr::OrElse {
