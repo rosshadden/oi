@@ -79,6 +79,22 @@ impl<'a> Translator<'a> {
 
 				Expr::IndexAssign { name, index, value } => {
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::IndexAssign)?;
+					if let Typ::Map(k, v) = local.typ.clone() {
+						let (k, v) = (*k, *v);
+						let (tag, key_bits) = self.map_key(index, &k)?;
+						let (val, vtyp) = self.check_expr(value, &v)?;
+						if vtyp != v {
+							return Err(Diagnostic::new(
+								format!("cannot assign {vtyp} to {v} value of map"),
+								value.1.into_range(),
+							)
+							.with_label("type mismatch"));
+						}
+						let ptr = self.read_local(&local);
+						let val_bits = self.map_bits(val);
+						self.call_map_set(ptr, tag, key_bits, val_bits);
+						continue;
+					}
 					let elem = match &local.typ {
 						Typ::Array(e) | Typ::FixedArray(e, _) => (**e).clone(),
 						_ => {

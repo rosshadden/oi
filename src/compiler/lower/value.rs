@@ -104,6 +104,7 @@ impl<'a> Translator<'a> {
 				self.b.ins().store(MemFlags::new(), z, ptr, 8);
 				ptr
 			}
+			Typ::Map(..) => self.call_map_new(),
 		}
 	}
 

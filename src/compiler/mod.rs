@@ -46,6 +46,7 @@ pub(crate) enum Typ {
 	Range,
 	Fn(Vec<Typ>, Box<Typ>),
 	Closure(Vec<Typ>, Box<Typ>),
+	Map(Box<Typ>, Box<Typ>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -117,6 +118,7 @@ impl fmt::Display for Typ {
 				}
 				write!(f, ") {ret}")
 			}
+			Typ::Map(k, v) => write!(f, "Map[{k}, {v}]"),
 		}
 	}
 }
@@ -289,6 +291,10 @@ impl TypeCtx<'_> {
 				let params = params.iter().map(|p| self.resolve(p, span)).collect::<Result<_, _>>()?;
 				Ok(Typ::Fn(params, Box::new(self.resolve(ret, span)?)))
 			}
+			TypeExpr::Map(k, v) => Ok(Typ::Map(
+				Box::new(self.resolve(k, span)?),
+				Box::new(self.resolve(v, span)?),
+			)),
 		}
 	}
 
@@ -436,6 +442,9 @@ impl Default for Compiler {
 		builder.symbol(runtime::STR_CONTAINS, runtime::str_contains as *const u8);
 		builder.symbol(runtime::ASSERT_FAIL, runtime::assert_fail as *const u8);
 		builder.symbol(runtime::PANIC, runtime::panic as *const u8);
+		builder.symbol(runtime::MAP_NEW, runtime::map_new as *const u8);
+		builder.symbol(runtime::MAP_GET, runtime::map_get as *const u8);
+		builder.symbol(runtime::MAP_SET, runtime::map_set as *const u8);
 
 		let module = JITModule::new(builder);
 		Self {

@@ -124,6 +124,7 @@ impl<'a> Translator<'a> {
 			}
 
 			Typ::Fn(..) | Typ::Closure(..) => self.write_lit("<fn>", stderr),
+			Typ::Map(..) => self.write_lit("<map>", stderr),
 
 			_ => {
 				let tag = match typ {
@@ -143,7 +144,8 @@ impl<'a> Translator<'a> {
 					| Typ::AtomSum(_)
 					| Typ::Range
 					| Typ::Fn(..)
-					| Typ::Closure(..) => {
+					| Typ::Closure(..)
+					| Typ::Map(..) => {
 						unreachable!("handled above")
 					}
 				};

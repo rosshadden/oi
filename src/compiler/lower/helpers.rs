@@ -54,6 +54,18 @@ pub(super) fn array_elem(typ: &Typ) -> &Typ {
 	}
 }
 
+// The runtime tag used to hash a map key.
+pub(super) fn map_key_tag(typ: &Typ) -> Option<runtime::Tag> {
+	match typ {
+		Typ::Bool => Some(runtime::Tag::Bool),
+		Typ::Int(_) | Typ::ISize => Some(runtime::Tag::Int),
+		Typ::UInt(_) | Typ::USize => Some(runtime::Tag::UInt),
+		Typ::Float(_) => Some(runtime::Tag::Float),
+		Typ::Str | Typ::Error => Some(runtime::Tag::Str),
+		_ => None,
+	}
+}
+
 // The width of `i{N}` and `i{N}` casts.
 pub(super) fn int_cast_width(prefix: char, name: &str) -> Option<u16> {
 	name.strip_prefix(prefix)

@@ -335,12 +335,26 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::Index { collection, index } => {
-				let (ptr, typ) = self.array_operand(collection, "index")?;
-				let elem = array_elem(&typ).clone();
-				let idx = self.int_value(index, "array index")?;
-				let idx = self.b.ins().sextend(self.int, idx);
-				let (data, len) = self.array_parts(ptr, &typ);
-				Ok((self.load_index(data, len, &elem, idx), elem))
+				let (ptr, typ) = self.expr(collection)?;
+				match &typ {
+					Typ::Map(k, v) => {
+						let (k, v) = (*k.clone(), *v.clone());
+						let (tag, bits) = self.map_key(index, &k)?;
+						let raw = self.call_map_get(ptr, tag, bits);
+						Ok((self.unmap_bits(raw, &v), v))
+					}
+					Typ::Array(_) | Typ::FixedArray(..) => {
+						let elem = array_elem(&typ).clone();
+						let idx = self.int_value(index, "array index")?;
+						let idx = self.b.ins().sextend(self.int, idx);
+						let (data, len) = self.array_parts(ptr, &typ);
+						Ok((self.load_index(data, len, &elem, idx), elem))
+					}
+					_ => Err(
+						Diagnostic::new(format!("cannot index {typ}"), collection.1.into_range())
+							.with_label("not indexable"),
+					),
+				}
 			}
 
 			Expr::Slice { collection, start, end } => {

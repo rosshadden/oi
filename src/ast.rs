@@ -241,6 +241,7 @@ pub enum TypeExpr {
 	Option(Box<TypeExpr>),
 	Result(Box<TypeExpr>),
 	AtomSum(Vec<String>),
+	Map(Box<TypeExpr>, Box<TypeExpr>),
 }
 
 #[derive(Debug, Clone)]

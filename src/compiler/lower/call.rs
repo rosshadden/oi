@@ -137,4 +137,73 @@ impl<'a> Translator<'a> {
 		let call = self.b.ins().call(func, &[size]);
 		self.b.inst_results(call)[0]
 	}
+
+	// Pack a value into an i64 slot for the map's fixed width.
+	pub(super) fn map_bits(&mut self, val: Value) -> Value {
+		let cl = self.b.func.dfg.value_type(val);
+		let iv = if cl.is_float() {
+			self.b.ins().bitcast(cl_int_for_width(cl.bits() as u16), MemFlags::new(), val)
+		} else {
+			val
+		};
+		if cl.bits() < 64 {
+			self.b.ins().uextend(self.int, iv)
+		} else {
+			iv
+		}
+	}
+
+	// Recover a value's native width/kind.
+	pub(super) fn unmap_bits(&mut self, val: Value, typ: &Typ) -> Value {
+		let cl = cl_type(typ, self.int);
+		let iv = if cl.bits() < 64 {
+			self.b.ins().ireduce(cl_int_for_width(cl.bits() as u16), val)
+		} else {
+			val
+		};
+		if cl.is_float() {
+			self.b.ins().bitcast(cl, MemFlags::new(), iv)
+		} else {
+			iv
+		}
+	}
+
+	// Type-check a map index against key type `key_typ`.
+	pub(super) fn map_key(
+		&mut self,
+		index: &Spanned<Expr>,
+		key_typ: &Typ,
+	) -> Result<(runtime::Tag, Value), Diagnostic> {
+		let tag = map_key_tag(key_typ).ok_or_else(|| {
+			Diagnostic::new(format!("{key_typ} cannot be used as a map key"), index.1.into_range())
+				.with_label("unsupported key type")
+		})?;
+		let (val, typ) = self.check_expr(index, key_typ)?;
+		if &typ != key_typ {
+			return Err(
+				Diagnostic::new(format!("expected {key_typ} key, got {typ}"), index.1.into_range())
+					.with_label("wrong key type"),
+			);
+		}
+		Ok((tag, self.map_bits(val)))
+	}
+
+	pub(super) fn call_map_new(&mut self) -> Value {
+		let func = self.import_fn(runtime::MAP_NEW, &[], Some(self.int));
+		let call = self.b.ins().call(func, &[]);
+		self.b.inst_results(call)[0]
+	}
+
+	pub(super) fn call_map_get(&mut self, map: Value, tag: runtime::Tag, bits: Value) -> Value {
+		let func = self.import_fn(runtime::MAP_GET, &[self.int, self.int, self.int], Some(self.int));
+		let tag_v = self.b.ins().iconst(self.int, tag as i64);
+		let call = self.b.ins().call(func, &[map, tag_v, bits]);
+		self.b.inst_results(call)[0]
+	}
+
+	pub(super) fn call_map_set(&mut self, map: Value, tag: runtime::Tag, bits: Value, value: Value) {
+		let func = self.import_fn(runtime::MAP_SET, &[self.int, self.int, self.int, self.int], None);
+		let tag_v = self.b.ins().iconst(self.int, tag as i64);
+		self.b.ins().call(func, &[map, tag_v, bits, value]);
+	}
 }

@@ -67,7 +67,23 @@ where
 		let result = just(Token::Not).ignore_then(te.clone()).map(|t| TypeExpr::Result(Box::new(t)));
 		// atom(s)
 		let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a]) };
-		unit.or(fn_type).or(option).or(result).or(atom).or(name).or(tuple).or(array)
+		// maps
+		let map_type = just(Token::Ident("Map".to_string()))
+			.ignore_then(
+				te.clone()
+					.then_ignore(just(Token::Comma))
+					.then(te.clone())
+					.delimited_by(just(Token::LBracket), just(Token::RBracket)),
+			)
+			.map(|(k, v)| TypeExpr::Map(Box::new(k), Box::new(v)));
+		unit.or(fn_type)
+			.or(option)
+			.or(result)
+			.or(atom)
+			.or(map_type)
+			.or(name)
+			.or(tuple)
+			.or(array)
 	});
 
 	// param type is kept for the compiler to resolve

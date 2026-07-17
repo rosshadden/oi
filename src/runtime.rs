@@ -1,6 +1,7 @@
 //! Functions a compiled Oi program calls at runtime.
 //! Backend-agnostic: the JIT registers them as symbols, an object backend would link them in.
 
+use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
 
 pub const STR_CONCAT: &str = "oi_str_concat";
@@ -15,6 +16,9 @@ pub const STR_EQ: &str = "oi_str_eq";
 pub const STR_CONTAINS: &str = "oi_str_contains";
 pub const ASSERT_FAIL: &str = "oi_assert_fail";
 pub const PANIC: &str = "oi_panic";
+pub const MAP_NEW: &str = "oi_map_new";
+pub const MAP_GET: &str = "oi_map_get";
+pub const MAP_SET: &str = "oi_map_set";
 
 // Type tag shared with the compiler.
 #[repr(i64)]
@@ -166,4 +170,46 @@ pub extern "C" fn array_extend(dst: *mut i64, src: *const i64, elem_size: i64) {
 		std::ptr::copy_nonoverlapping(src_data as *const u8, dst_tail, (src_len * elem_size) as usize);
 		*dst.add(1) = new_len;
 	}
+}
+
+#[derive(PartialEq, Eq, Hash)]
+enum MapKey {
+	Raw(i64),
+	Str(Vec<u8>),
+}
+
+fn map_key(tag: Tag, bits: i64) -> MapKey {
+	match tag {
+		Tag::Str => MapKey::Str(unsafe { CStr::from_ptr(bits as *const c_char) }.to_bytes().to_vec()),
+		_ => MapKey::Raw(bits),
+	}
+}
+
+pub struct OiMap {
+	entries: HashMap<MapKey, i64>,
+}
+
+pub extern "C" fn map_new() -> *mut OiMap {
+	// TODO: address this without leaking
+	Box::into_raw(Box::new(OiMap {
+		entries: HashMap::new(),
+	}))
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn map_get(map: *mut OiMap, tag: Tag, bits: i64) -> i64 {
+	let map = unsafe { &*map };
+	match map.entries.get(&map_key(tag, bits)) {
+		Some(v) => *v,
+		None => {
+			eprintln!("key not found in map");
+			std::process::abort();
+		}
+	}
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn map_set(map: *mut OiMap, tag: Tag, bits: i64, value: i64) {
+	let map = unsafe { &mut *map };
+	map.entries.insert(map_key(tag, bits), value);
 }
