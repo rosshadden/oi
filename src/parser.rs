@@ -190,6 +190,21 @@ where
 			)
 		});
 
+	// map deletion
+	let map_delete = select! { Token::Ident(name) => name }
+		.then_ignore(just(Token::Dot))
+		.then_ignore(just(Token::Ident("delete".to_string())))
+		.then(expr.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)))
+		.map_with(|(name, key), ex| {
+			(
+				Expr::MapDelete {
+					name,
+					key: Box::new(key),
+				},
+				ex.span(),
+			)
+		});
+
 	// field assignment
 	let field_assign = select! { Token::Ident(name) => name }
 		.then_ignore(just(Token::Dot))
@@ -221,6 +236,7 @@ where
 		.or(field_assign)
 		.or(assign)
 		.or(index_assign)
+		.or(map_delete)
 		.or(append)
 		.or(expr.clone());
 

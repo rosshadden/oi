@@ -19,6 +19,7 @@ pub const PANIC: &str = "oi_panic";
 pub const MAP_NEW: &str = "oi_map_new";
 pub const MAP_GET: &str = "oi_map_get";
 pub const MAP_SET: &str = "oi_map_set";
+pub const MAP_DELETE: &str = "oi_map_delete";
 
 // Type tag shared with the compiler.
 #[repr(i64)]
@@ -212,4 +213,11 @@ pub extern "C" fn map_get(map: *mut OiMap, tag: Tag, bits: i64) -> i64 {
 pub extern "C" fn map_set(map: *mut OiMap, tag: Tag, bits: i64, value: i64) {
 	let map = unsafe { &mut *map };
 	map.entries.insert(map_key(tag, bits), value);
+}
+
+// Remove a map entry if present.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn map_delete(map: *mut OiMap, tag: Tag, bits: i64) {
+	let map = unsafe { &mut *map };
+	map.entries.remove(&map_key(tag, bits));
 }

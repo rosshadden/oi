@@ -119,6 +119,17 @@ impl<'a> Translator<'a> {
 					self.store_index(data, len, &elem, idx, val);
 				}
 
+				Expr::MapDelete { name, key } => {
+					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::IndexAssign)?;
+					let Typ::Map(k, _) = local.typ.clone() else {
+						return Err(Diagnostic::new(format!("`{name}` is not a map"), stmt.1.into_range())
+							.with_label("not a map"));
+					};
+					let (tag, key_bits) = self.map_key(key, &k)?;
+					let ptr = self.read_local(&local);
+					self.call_map_delete(ptr, tag, key_bits);
+				}
+
 				Expr::Append { name, value } => {
 					let local = self.mutable_local(name, stmt.1.into_range(), Mutation::Append)?;
 					let elem = match &local.typ {

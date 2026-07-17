@@ -664,6 +664,7 @@ impl<'a> Translator<'a> {
 			Expr::Return(..) => unreachable!("return in expression position"),
 			Expr::Break | Expr::Continue => unreachable!("break/continue in expression position"),
 			Expr::Append { .. } => unreachable!("append in expression position"),
+			Expr::MapDelete { .. } => unreachable!("map delete in expression position"),
 			Expr::Doc(_) => unreachable!("doc comment in expression position"),
 		}
 	}

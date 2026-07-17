@@ -206,4 +206,10 @@ impl<'a> Translator<'a> {
 		let tag_v = self.b.ins().iconst(self.int, tag as i64);
 		self.b.ins().call(func, &[map, tag_v, bits, value]);
 	}
+
+	pub(super) fn call_map_delete(&mut self, map: Value, tag: runtime::Tag, bits: Value) {
+		let func = self.import_fn(runtime::MAP_DELETE, &[self.int, self.int, self.int], None);
+		let tag_v = self.b.ins().iconst(self.int, tag as i64);
+		self.b.ins().call(func, &[map, tag_v, bits]);
+	}
 }

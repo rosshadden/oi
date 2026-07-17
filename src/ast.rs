@@ -133,6 +133,11 @@ pub enum Expr {
 		name: String,
 		value: Box<Spanned<Expr>>,
 	},
+	// `name.delete[key]`
+	MapDelete {
+		name: String,
+		key: Box<Spanned<Expr>>,
+	},
 
 	// `match subject { pattern, ... { body } ... else { body } }`
 	Match {
