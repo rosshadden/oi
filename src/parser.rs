@@ -305,19 +305,13 @@ where
 			.delimited_by(just(Token::LParen), just(Token::RParen))
 			.map_with(|elems, ex| (Expr::Tuple(elems), ex.span()));
 
-		let array_init = just(Token::LBracket)
-			.ignore_then(select! { Token::Int(n) => n }.or_not())
-			.then_ignore(just(Token::RBracket))
-			.then(type_expr.clone())
+		// map literal
+		let type_init = type_expr
+			.clone()
+			.filter(|t| matches!(t, TypeExpr::Array(_) | TypeExpr::FixedArray(..) | TypeExpr::Map(..)))
 			.then_ignore(just(Token::LBrace))
 			.then_ignore(just(Token::RBrace))
-			.map_with(|(n, elem), ex| {
-				let te = match n {
-					Some(n) => TypeExpr::FixedArray(Box::new(elem), n as usize),
-					None => TypeExpr::Array(Box::new(elem)),
-				};
-				(Expr::ArrayInit((te, ex.span())), ex.span())
-			});
+			.map_with(|te, ex| (Expr::TypeInit((te, ex.span())), ex.span()));
 
 		let option_init = just(Token::Question)
 			.ignore_then(type_expr.clone())
@@ -478,11 +472,11 @@ where
 			});
 
 		// atoms
-		let atom = leaf
+		let atom = type_init
+			.or(leaf)
 			.or(enum_shorthand)
 			.or(group)
 			.or(tuple)
-			.or(array_init)
 			.or(option_init)
 			.or(result_init)
 			.or(array)

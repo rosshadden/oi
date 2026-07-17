@@ -14,6 +14,18 @@ fn declare_and_set_get() {
 }
 
 #[test]
+fn init_expr_declare_and_set_get() {
+	check(
+		indoc! {r#"
+			mut m := Map[string, int]{}
+			m["one"] = 1
+			m["one"]
+		"#},
+		"1",
+	);
+}
+
+#[test]
 fn overwrite_key() {
 	check(
 		indoc! {r#"

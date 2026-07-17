@@ -25,8 +25,8 @@ pub enum Expr {
 		value: Option<Box<Spanned<Expr>>>,
 	},
 
-	// `[]T{}` or `[N]T{}`
-	ArrayInit(Spanned<TypeExpr>),
+	// `T{}`
+	TypeInit(Spanned<TypeExpr>),
 
 	// `?T(value)` or `?T(none)`
 	OptionInit {

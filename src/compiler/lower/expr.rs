@@ -329,7 +329,7 @@ impl<'a> Translator<'a> {
 				Ok((header, Typ::Array(Box::new(elem))))
 			}
 
-			Expr::ArrayInit((te, span)) => {
+			Expr::TypeInit((te, span)) => {
 				let typ = self.types().resolve(te, *span)?;
 				Ok((self.zero(&typ), typ))
 			}
