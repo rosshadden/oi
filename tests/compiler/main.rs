@@ -14,6 +14,7 @@ mod dollar;
 mod functions;
 mod io;
 mod methods;
+mod pipelines;
 mod statements;
 mod types;
 mod unit;
