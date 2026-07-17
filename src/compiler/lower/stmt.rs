@@ -28,7 +28,7 @@ impl<'a> Translator<'a> {
 						(Some(value), Some(target)) => match self.coerce_lit(value, &target)? {
 							Some(val) => (val, target),
 							None => {
-								let (val, found) = self.expr(value)?;
+								let (val, found) = self.check_expr(value, &target)?;
 								if found != target {
 									return Err(Diagnostic::new(
 										format!("expected {target}, got {found}"),

@@ -492,3 +492,31 @@ fn shorthand_coerces_in_match_tail_return() {
 		"blue",
 	);
 }
+
+#[test]
+fn shorthand_coerces_in_if_expr() {
+	check(
+		indoc! {"
+			enum Color { red green blue }
+			c Color := if false { .red } else { .blue }
+			c
+		"},
+		"blue",
+	);
+}
+
+#[test]
+fn shorthand_coerces_in_match_expr() {
+	check(
+		indoc! {r#"
+			enum Color { red green blue }
+			n := 9
+			c Color := match n {
+				1 { .red }
+				else { .blue }
+			}
+			c
+		"#},
+		"blue",
+	);
+}
