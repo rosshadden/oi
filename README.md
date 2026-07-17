@@ -6,7 +6,7 @@ You have been warned.
 
 See `examples/` for working examples, and [`ref/syntax.md`](ref/syntax.md) for more sci-fi theoretical future stuff.
 
-> Note: this readme is more about building the compiler itself.
+> NOTE: this readme is more about building the compiler itself.
 > Probably look at the website or docs or something to see something more universally helpful.
 
 ## Contributing
@@ -50,5 +50,7 @@ oi repl
 ## Docs
 
 - [rawsp33d.github.io/oi/](https://rawsp33d.github.io/oi/): simple website
+	> NOTE: the current iteration is not yet integrated into CI, and until it is you'll see the prior (useless) version.
+	> Clone and run `just serve` to see the latest docs until I get around to wiring everything up.
 - [`ref/syntax.md`](ref/syntax.md): canonical language design spec
 - [`ref/Oi.md`](ref/Oi.md): loose plan and direction, open questions
