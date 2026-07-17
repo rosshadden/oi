@@ -133,6 +133,8 @@ pub enum Token {
 	Not,
 	#[token("|")]
 	Pipe,
+	#[token("|>")]
+	Pipeline,
 
 	// grouping
 	#[token("(")]
@@ -229,6 +231,7 @@ impl fmt::Display for Token {
 			Token::OrOr => write!(f, "||"),
 			Token::Not => write!(f, "!"),
 			Token::Pipe => write!(f, "|"),
+			Token::Pipeline => write!(f, "|>"),
 			Token::LParen => write!(f, "("),
 			Token::RParen => write!(f, ")"),
 			Token::LBrace => write!(f, "{{"),

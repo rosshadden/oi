@@ -146,6 +146,12 @@ pub enum Expr {
 		else_body: Option<Vec<Spanned<Expr>>>,
 	},
 
+	// `value |> step`
+	Pipe {
+		value: Box<Spanned<Expr>>,
+		step: Box<Spanned<Expr>>,
+	},
+
 	// `value or { body }`
 	OrElse {
 		value: Box<Spanned<Expr>>,

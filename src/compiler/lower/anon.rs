@@ -145,6 +145,10 @@ fn collect(expr: &Expr, out: &mut HashSet<String>) {
 			child(value);
 			body.iter().for_each(&mut child);
 		}
+		Pipe { value, step } => {
+			child(value);
+			child(step);
+		}
 		AnonFn { body, .. } => body.iter().for_each(&mut child),
 		Add(a, b)
 		| Sub(a, b)

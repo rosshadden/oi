@@ -19,6 +19,21 @@ enum Access {
 	Method(String, Vec<Spanned<Expr>>),
 }
 
+fn pipe_step((e, span): Spanned<Expr>) -> Spanned<Expr> {
+	match e {
+		Expr::Ident(name) => (
+			Expr::Call {
+				name,
+				args: vec![(Expr::Dollar, span)],
+			},
+			span,
+		),
+		Expr::PropagateNone(inner) => (Expr::PropagateNone(Box::new(pipe_step(*inner))), span),
+		Expr::PropagateErr(inner) => (Expr::PropagateErr(Box::new(pipe_step(*inner))), span),
+		e => (e, span),
+	}
+}
+
 pub fn parser<'token, I>() -> impl Parser<'token, I, Vec<Spanned<Expr>>, extra::Err<Rich<'token, Token>>>
 where
 	I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
@@ -538,7 +553,7 @@ where
 
 		let core = atom.pratt((
 			// field/tuple/method access
-			postfix(8, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
+			postfix(9, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
 				Access::Fields(parts) => {
 					let mut cur = lhs;
 					for field in parts {
@@ -562,7 +577,7 @@ where
 				),
 			}),
 			// indexing and slicing
-			postfix(8, subscript, |lhs, sub, ex| {
+			postfix(9, subscript, |lhs, sub, ex| {
 				let collection = Box::new(lhs);
 				let e = match sub {
 					Subscript::Index(index) => Expr::Index {
@@ -578,75 +593,85 @@ where
 				(e, ex.span())
 			}),
 			// propagators
-			postfix(8, just(Token::Question), |lhs, _, ex| {
+			postfix(9, just(Token::Question), |lhs, _, ex| {
 				(Expr::PropagateNone(Box::new(lhs)), ex.span())
 			}),
-			postfix(8, just(Token::Not), |lhs, _, ex| {
+			postfix(9, just(Token::Not), |lhs, _, ex| {
 				(Expr::PropagateErr(Box::new(lhs)), ex.span())
 			}),
 			// unary
-			prefix(7, just(Token::Minus), |_, rhs, ex| {
+			prefix(8, just(Token::Minus), |_, rhs, ex| {
 				(Expr::Negative(Box::new(rhs)), ex.span())
 			}),
 			prefix(
-				7,
+				8,
 				just(Token::Not).then_ignore(result_shape.clone().not()),
 				|_, rhs, ex| (Expr::Not(Box::new(rhs)), ex.span()),
 			),
 			// arithmetic
-			infix(left(6), just(Token::Asterisk), |l, _, r, ex| {
+			infix(left(7), just(Token::Asterisk), |l, _, r, ex| {
 				(Expr::Mul(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(6), just(Token::Slash), |l, _, r, ex| {
+			infix(left(7), just(Token::Slash), |l, _, r, ex| {
 				(Expr::Div(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(6), just(Token::Percent), |l, _, r, ex| {
+			infix(left(7), just(Token::Percent), |l, _, r, ex| {
 				(Expr::Mod(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// arithmetic
-			infix(left(5), just(Token::Plus), |l, _, r, ex| {
+			infix(left(6), just(Token::Plus), |l, _, r, ex| {
 				(Expr::Add(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(5), just(Token::Minus), |l, _, r, ex| {
+			infix(left(6), just(Token::Minus), |l, _, r, ex| {
 				(Expr::Sub(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// relational
-			infix(left(4), just(Token::Lt), |l, _, r, ex| {
+			infix(left(5), just(Token::Lt), |l, _, r, ex| {
 				(Expr::Lt(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(4), just(Token::Gt), |l, _, r, ex| {
+			infix(left(5), just(Token::Gt), |l, _, r, ex| {
 				(Expr::Gt(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(4), just(Token::Le), |l, _, r, ex| {
+			infix(left(5), just(Token::Le), |l, _, r, ex| {
 				(Expr::Le(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(4), just(Token::Ge), |l, _, r, ex| {
+			infix(left(5), just(Token::Ge), |l, _, r, ex| {
 				(Expr::Ge(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// equality
-			infix(left(3), just(Token::Eq), |l, _, r, ex| {
+			infix(left(4), just(Token::Eq), |l, _, r, ex| {
 				(Expr::Eq(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(3), just(Token::Ne), |l, _, r, ex| {
+			infix(left(4), just(Token::Ne), |l, _, r, ex| {
 				(Expr::Ne(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// membership
-			infix(left(3), just(Token::In), |l, _, r, ex| {
+			infix(left(4), just(Token::In), |l, _, r, ex| {
 				(Expr::In(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// logical
-			infix(left(2), just(Token::AndAnd), |l, _, r, ex| {
+			infix(left(3), just(Token::AndAnd), |l, _, r, ex| {
 				(Expr::And(Box::new(l), Box::new(r)), ex.span())
 			}),
-			infix(left(1), just(Token::OrOr), |l, _, r, ex| {
+			infix(left(2), just(Token::OrOr), |l, _, r, ex| {
 				(Expr::Or(Box::new(l), Box::new(r)), ex.span())
 			}),
 			// ranges
-			infix(left(0), just(Token::DotDot), |l, _, r, ex| {
+			infix(left(1), just(Token::DotDot), |l, _, r, ex| {
 				(
 					Expr::Range {
 						start: Some(Box::new(l)),
 						end: Some(Box::new(r)),
+					},
+					ex.span(),
+				)
+			}),
+			// pipelines
+			infix(left(0), just(Token::Pipeline), |l, _, r, ex| {
+				(
+					Expr::Pipe {
+						value: Box::new(l),
+						step: Box::new(pipe_step(r)),
 					},
 					ex.span(),
 				)
