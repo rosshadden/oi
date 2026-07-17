@@ -137,3 +137,58 @@ fn wrong_value_type() {
 		.contains("type mismatch")
 	);
 }
+
+#[test]
+fn delete_key() {
+	check(
+		indoc! {r#"
+			mut m Map[string, int]
+			m["one"] = 1
+			m["two"] = 2
+			m.delete["one"]
+			m["two"]
+		"#},
+		"2",
+	);
+}
+
+#[test]
+fn delete_missing_key_is_noop() {
+	check(
+		indoc! {r#"
+			mut m Map[string, int]
+			m.delete["missing"]
+			1
+		"#},
+		"1",
+	);
+}
+
+#[test]
+fn deleted_key_then_lookup_panics() {
+	assert!(
+		fail(indoc! {r#"
+			mut m Map[string, int]
+			m["one"] = 1
+			m.delete["one"]
+			m["one"]
+		"#})
+		.contains("key not found")
+	);
+}
+
+#[test]
+fn delete_on_immutable_map_fails() {
+	assert!(
+		fail(indoc! {r#"
+			fn f(m Map[string, int]) int {
+				m.delete["one"]
+				m["one"]
+			}
+			mut n Map[string, int]
+			n["one"] = 1
+			f(n)
+		"#})
+		.contains("immutable")
+	);
+}
