@@ -24,6 +24,7 @@ fn pipe_step((e, span): Spanned<Expr>) -> Spanned<Expr> {
 		Expr::Ident(name) => (
 			Expr::Call {
 				name,
+				type_args: vec![],
 				args: vec![(Expr::Dollar, span)],
 			},
 			span,
@@ -298,10 +299,23 @@ where
 			.then(struct_body)
 			.map(|(name, fields)| Expr::StructLit { name, fields });
 
+		// explicit generic types
+		let call_type_args = type_expr
+			.clone()
+			.map_with(|t, ex| (t, ex.span()))
+			.separated_by(just(Token::Comma))
+			.at_least(1)
+			.collect::<Vec<_>>()
+			.delimited_by(just(Token::LBracket), just(Token::RBracket));
+
 		let var_or_call = select! { Token::Ident(name) => name }
-			.then(args.clone().map(Some).or_not().map(Option::flatten))
-			.map(|(name, args)| match args {
-				Some(args) => Expr::Call { name, args },
+			.then(call_type_args.or_not().then(args.clone()).or_not())
+			.map(|(name, call)| match call {
+				Some((type_args, args)) => Expr::Call {
+					name,
+					type_args: type_args.unwrap_or_default(),
+					args,
+				},
 				None => Expr::Ident(name),
 			});
 

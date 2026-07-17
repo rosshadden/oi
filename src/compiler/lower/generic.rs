@@ -47,6 +47,7 @@ impl<'a> Translator<'a> {
 		&mut self,
 		name: &str,
 		def: &GenericFnDef,
+		type_args: &[Spanned<TypeExpr>],
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<(Value, Typ), Diagnostic> {
@@ -58,6 +59,20 @@ impl<'a> Translator<'a> {
 			.with_label("wrong number of arguments"));
 		}
 		let mut subst = HashMap::new();
+		if !type_args.is_empty() && type_args.len() != def.type_params.len() {
+			return Err(Diagnostic::new(
+				format!(
+					"`{name}` expects {} type argument(s), got {}",
+					def.type_params.len(),
+					type_args.len()
+				),
+				span.into_range(),
+			)
+			.with_label("wrong number of type arguments"));
+		}
+		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
+			subst.insert(param.clone(), self.types().resolve(te, *te_span)?);
+		}
 		let mut vals = Vec::with_capacity(args.len());
 		for (arg, param) in args.iter().zip(&def.params) {
 			let (val, typ) = self.expr(arg)?;

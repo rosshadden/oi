@@ -119,7 +119,11 @@ impl<'a> Translator<'a> {
 				Ok((self.b.ins().bxor_imm(v, 1), Typ::Bool))
 			}
 
-			Expr::Call { name, args } => {
+			Expr::Call { name, type_args, args } => {
+				if !type_args.is_empty() && !self.generics.contains_key(name) {
+					return Err(Diagnostic::new(format!("`{name}` is not generic"), expr.1.into_range())
+						.with_label("unexpected type arguments"));
+				}
 				if let Some(local) = self.vars.get(name).cloned() {
 					let callee = self.read_local(&local);
 					return match local.typ.clone() {
@@ -139,7 +143,7 @@ impl<'a> Translator<'a> {
 					None => match self.funcs.get(name).cloned() {
 						Some(sig) => self.call_sig(name, sig, None, args, expr.1),
 						None => match self.generics.get(name).cloned() {
-							Some(def) => self.call_generic(name, &def, args, expr.1),
+							Some(def) => self.call_generic(name, &def, type_args, args, expr.1),
 							None => Err(
 								Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
 									.with_label("not defined"),

@@ -66,6 +66,7 @@ pub enum Expr {
 
 	Call {
 		name: String,
+		type_args: Vec<Spanned<TypeExpr>>,
 		args: Vec<Spanned<Expr>>,
 	},
 
