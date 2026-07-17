@@ -1,0 +1,169 @@
+---
+id: Oi
+aliases: []
+tags: []
+---
+# principles
+- general purpose system language
+- [almost?] everything is an expression
+- high emphasis on ergonomics
+- hopefully ends up being good for gamedev
+## [[syntax]]
+## [[projects/env/oi/lab|lab]]
+# facets
+- leading literals `oi`
+- trailing functions `oi`
+- named returns `oi go`
+- destructured named returns `fn divmod(a int, b int) (q int, r int) { (a / b, a % b) }` `oi go`
+- trailing struct literals `v`
+- bare `return` `v go`
+- strongly & statically typed `rust v go zig`
+- everything is an expression `rust julia revo`
+- destructuring / pattern matching `rust haskell`
+- implicit
+	- `return` `rust`
+	- `self` `lua revo`
+	- `Self` `rust`
+	- context `jai odin`
+- opt-in mutable `rust v`
+- pipes `Nushell revo`
+	- error-specific pipes (revo uses `|>~` though I won't) `revo`
+- `:atoms`/keywoards `clojure janet elixir revo`
+- optional types (`?`) `v zig`
+- result types (`!`) `v`
+- structs `c v go rust`
+- `or <expr>` `v odin`
+- ~~tuple structs `rust`~~ (nah, we already have this with short struct literals)
+- tuples `rust zig nim julia janet`
+- comptime `zig revo nim`
+- no parens needed for simple conditionals `v rust go nu`
+- generics `rust v`
+- `with` for cascading
+- metaprogramming
+- block expressions `rust`
+- compound types `rust`
+- `discard`/`pass` `nim gdscript`
+- macros `rust revo`
+- ~~multiple returns `v go lua`~~ (replaced by destuctured named returns)
+- enum literals `zig v`
+- doc comments `zig v rust`
+- namespaced variables/functions`clojure revo`
+- operator overloading `lua nim v rust`
+- `unreachable` `rust zig`
+- ~~`try foo()` `zig`~~ (no need for try/catch at all, we have `or`)
+- `defer` `v go zig`
+- `defer/err` (`errdefer`) `zig`
+- zeroed values `v go`
+- `unsafe` `v rust`
+- nu-like arrays and stuff `[1 2 3 4]` `nu`
+- unusual or arbitrary number precision `zig`
+- many things are tuples
+- documantation tests `rust`
+- first-class
+	- `assert` `rust v zig`
+	- `test` (and also `suite` and `test/skip`) `zig revo`
+	- `build` `zig revo`
+	- units and unit conversion (can be an imported stdlib that adds `impl`s)
+	- primitive data type for paths `nu nix gdscript just`
+- cli
+	- `oi build`
+	- `oi run`
+		- `oi run .` should behave like [`v run .`](https://docs.vlang.io/running-a-project-folder-with-several-files.html)
+	- `oi init`
+	- `oi fmt` (opinionated) `v go`
+	- `oi doc` `rust v go gdscript`
+	- `oi test` `rust v go`
+	- `oi watch`
+	- `oi repl`
+	- `oi lsp`
+# TODO
+- immediate
+	- [ ] backport these obsidian notes into the Oi repo
+- [ ] pipeline examples with `!` postfix collide with macros
+- [ ] revisit needing `print`, `assert`, et al to be macros
+	- V allows this without macros: `error('User ${id} not found')`
+	- maybe I can do away with the `!` macros postfix entirely, solving the clash with `Result`
+- [ ] implicit context
+- [x] shore up enum shorthands: `.foo` is enum syntax (payloads, patterns), `:foo` is atom coercion (prototyping, payload-less). both kept, non-overlapping roles. prefer `.foo` when enum exists.
+- [ ] computed values `swift`
+- [ ] ptr type (ptr, voidptr, rawptr) `nim v odin`
+- [ ] make another pass on generics. I don't love what I have now
+- [ ] make another pass on metaprogramming. I don't love what I have now
+- [ ] varargs
+	- v vs nim vs ?
+	- to mesh with "tuples everywhere", a vararg should take up one element in the params tuple
+		- this only matters behind the scenes
+		- `fn print(foo int, args ...string) { ... }` -> `(int, []string,)`
+- [ ] bit flags syntax
+- [ ] channels
+- [ ] units and unit conversion
+- [ ] enum methods `rust`
+- [ ] primitive data type for paths
+- [ ] `unsafe`
+- [ ] `@noinit` `v`
+- [ ] `@nozero`
+- [ ] ownership / memory model
+- [ ] `discard` and/or `pass`
+- [ ] union types
+- [ ] async
+	- not sure on model yet, but will probably start with V's and then figure out implementing a model with an effect system
+- [ ] FFI
+- [ ] some sort of `todo`/`unimplemented` macros `rust`
+- [x] a way to type a var without declaring it, like `var` in Go `go`
+- [ ] `loop match {...}` `revo`
+- [ ] `Contains` trait that lets any type be used with `in` operator
+- [ ] Algebraic Data Types (ADT) `rust`
+## consider
+- C++20 uses `operator|`, a naked `|` for pipelines
+	- back on the table now that `|x|` lambda fences are gone
+	- that said, `|>` has grown on me
+- mutable `$` by default or opt-in?
+- `loop <expr>` rather than any special case dispatch
+- adding colon before return type sig `fn foo(x int, y int): z int { ... }`
+- [x] `[]` in anon fns turns off implicit capture (non-capturing, not pure). `@pure` is the separate purity annotation; compiler-verified no IO/globals/impure calls. `@pure` implies non-capturing so [] is redundant alongside it.
+- I kind of like Rust's `pub(crate)` concept where you specify what it's public for
+- nushell's easy working with var parts in pipelines
+	- `("hi", "mom") |> "{$in.0}, {$in.1}!"`
+- `for/else`, `while/else` `python`
+- `match{}/or` (in addition to the planned `match{else}`)
+	- or at least clean up the usage of one of them
+- `if` unwrapping `v`
+- using `not` or `!` in pipelines to achieve things like V's `val !in arr`
+- `noop` macro
+- int/float suffixes `let y: i32 = 13i32; let f: f64 = 1.3f64;` `rust`
+- maybe allow omitting `x in ` in a loop, like `loop 0..4`, because you can always use `$`
+- maybe named tuple args aren't a good thing
+	- just making structs more lightweight to use might be better, idk
+- reconciling `type` for type aliases with var declarations (can maybe share syntax)
+- CLI help docs, like Nushell and Cargo
+# stdlib
+- `os`
+- `fs`
+- `net`
+- `math`
+- `json`
+- `log`
+- `slog`
+- `time`
+- `units`
+# influences
+- V
+- [revo](https://github.com/if-not-nil/revo)
+- Nushell
+	- structured data pipelines
+- Rust
+	- `impl`
+- Nim
+- Zig
+- Clojure
+	- metaprogramming
+	- homoiconicity
+- Janet
+- Lua
+- Jai
+- Odin
+- Julia
+- Elixir
+- Haskell
+- GDScript
+# [[archive]]
