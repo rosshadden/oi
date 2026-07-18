@@ -3,8 +3,6 @@ use std::fmt;
 use chumsky::span::SimpleSpan;
 use logos::{Lexer, Logos};
 
-pub enum Operator {}
-
 fn lex_block_comment(lex: &mut Lexer<Token>) {
 	let src = lex.remainder().as_bytes();
 	let mut depth = 1usize;
@@ -28,6 +26,10 @@ fn lex_block_comment(lex: &mut Lexer<Token>) {
 	lex.bump(i);
 }
 
+fn parse_radix(lex: &mut Lexer<Token>, radix: u32) -> Option<i64> {
+	i64::from_str_radix(&lex.slice()[2..].replace('_', ""), radix).ok()
+}
+
 #[derive(Logos, Clone, PartialEq, Debug)]
 #[logos(skip r"[ \t\r\n\f]+")]
 pub enum Token {
@@ -38,9 +40,9 @@ pub enum Token {
 	#[regex(r"(true|false)", |lex| lex.slice().parse().ok())]
 	Bool(bool),
 	#[regex(r"[0-9][0-9_]*", |lex| lex.slice().replace('_', "").parse().ok())]
-	#[regex(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*", |lex| i64::from_str_radix(&lex.slice()[2..].replace('_', ""), 16).ok())]
-	#[regex(r"0[bB][01][01_]*", |lex| i64::from_str_radix(&lex.slice()[2..].replace('_', ""), 2).ok())]
-	#[regex(r"0[oO][0-7][0-7_]*", |lex| i64::from_str_radix(&lex.slice()[2..].replace('_', ""), 8).ok())]
+	#[regex(r"0[xX][0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_radix(lex, 16))]
+	#[regex(r"0[bB][01][01_]*", |lex| parse_radix(lex, 2))]
+	#[regex(r"0[oO][0-7][0-7_]*", |lex| parse_radix(lex, 8))]
 	Int(i64),
 	#[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?", |lex| Some(lex.slice().replace('_', "")))]
 	#[regex(r"[0-9][0-9_]*[eE][+\-]?[0-9]+", |lex| Some(lex.slice().replace('_', "")))]

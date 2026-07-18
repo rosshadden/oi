@@ -44,18 +44,56 @@ where
 	// Declare `expr` up front so the statement parsers can reference it before it is defined.
 	let mut expr = Recursive::declare();
 
+	let ident = || select! { Token::Ident(name) => name };
+
+	fn paren<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
+	where
+		I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+		P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+	{
+		p.delimited_by(just(Token::LParen), just(Token::RParen))
+	}
+	fn brace<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
+	where
+		I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+		P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+	{
+		p.delimited_by(just(Token::LBrace), just(Token::RBrace))
+	}
+	fn bracket<'token, I, O, P>(p: P) -> impl Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone
+	where
+		I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+		P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+	{
+		p.delimited_by(just(Token::LBracket), just(Token::RBracket))
+	}
+	fn list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
+	where
+		I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+		P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+	{
+		p.separated_by(just(Token::Comma)).collect::<Vec<_>>()
+	}
+	fn loose_list<'token, I, O, P>(p: P) -> impl Parser<'token, I, Vec<O>, extra::Err<Rich<'token, Token>>> + Clone
+	where
+		I: ValueInput<'token, Token = Token, Span = SimpleSpan>,
+		P: Parser<'token, I, O, extra::Err<Rich<'token, Token>>> + Clone,
+	{
+		p.separated_by(just(Token::Comma).or_not()).allow_trailing().collect::<Vec<_>>()
+	}
+
 	// type annotations
 	let type_expr = recursive(|te| {
-		let name = select! { Token::Ident(t) => TypeExpr::Name(t) };
+		let name = ident().map(TypeExpr::Name);
 		let unit = just(Token::LParen).then(just(Token::RParen)).to(TypeExpr::Tuple(vec![]));
-		let tuple = te
-			.clone()
-			.separated_by(just(Token::Comma).or_not())
-			.allow_trailing()
-			.at_least(1)
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LParen), just(Token::RParen))
-			.map(TypeExpr::Tuple);
+		let tuple = paren(
+			te.clone()
+				.separated_by(just(Token::Comma).or_not())
+				.allow_trailing()
+				.at_least(1)
+				.collect::<Vec<_>>(),
+		)
+		.map(TypeExpr::Tuple);
 		// arrays
 		let array = just(Token::LBracket)
 			.ignore_then(select! { Token::Int(n) => n }.or_not())
@@ -66,13 +104,7 @@ where
 				None => TypeExpr::Array(Box::new(elem)),
 			});
 		let fn_type = just(Token::Fn)
-			.ignore_then(
-				te.clone()
-					.separated_by(just(Token::Comma).or_not())
-					.allow_trailing()
-					.collect::<Vec<_>>()
-					.delimited_by(just(Token::LParen), just(Token::RParen)),
-			)
+			.ignore_then(paren(loose_list(te.clone())))
 			.then(te.clone())
 			.map(|(params, ret)| TypeExpr::Fn(params, Box::new(ret)));
 		// options
@@ -85,12 +117,7 @@ where
 		let atom = select! { Token::Atom(a) => TypeExpr::AtomSum(vec![a]) };
 		// maps
 		let map_type = just(Token::Ident("Map".to_string()))
-			.ignore_then(
-				te.clone()
-					.then_ignore(just(Token::Comma))
-					.then(te.clone())
-					.delimited_by(just(Token::LBracket), just(Token::RBracket)),
-			)
+			.ignore_then(bracket(te.clone().then_ignore(just(Token::Comma)).then(te.clone())))
 			.map(|(k, v)| TypeExpr::Map(Box::new(k), Box::new(v)));
 		unit.or(fn_type)
 			.or(option)
@@ -106,7 +133,7 @@ where
 	// NOTE: a bare `self` receiver gets the type `Self`
 	let param = just(Token::Mut)
 		.or_not()
-		.then(select! { Token::Ident(name) => name })
+		.then(ident())
 		.then(type_expr.clone().or_not())
 		.map_with(|((mutable, name), typ), ex| Param {
 			typ: typ.unwrap_or(TypeExpr::Name("Self".into())),
@@ -116,32 +143,28 @@ where
 			mutable: mutable.is_some(),
 		});
 	// NOTE: a trailing comma forces a tuple even for one param
-	let params = param
-		.separated_by(just(Token::Comma))
-		.collect::<Vec<_>>()
-		.then(just(Token::Comma).or_not())
-		.delimited_by(just(Token::LParen), just(Token::RParen))
-		.map(|(params, trailing)| {
-			let tuple = params.len() != 1 || trailing.is_some();
-			(params, tuple)
-		});
+	let params = paren(
+		param
+			.separated_by(just(Token::Comma))
+			.collect::<Vec<_>>()
+			.then(just(Token::Comma).or_not()),
+	)
+	.map(|(params, trailing)| {
+		let tuple = params.len() != 1 || trailing.is_some();
+		(params, tuple)
+	});
 
 	// optional return type annotation
 	let ret = type_expr.clone().map_with(|t, ex| (t, ex.span())).or_not();
 
 	// generics
-	let type_params = select! { Token::Ident(name) => name }
-		.separated_by(just(Token::Comma))
-		.collect::<Vec<_>>()
-		.delimited_by(just(Token::LBracket), just(Token::RBracket))
-		.or_not()
-		.map(Option::unwrap_or_default);
+	let type_params = bracket(list(ident())).or_not().map(Option::unwrap_or_default);
 
 	// bindings
 	let annot = type_expr.clone().map_with(|t, ex| (t, ex.span()));
 	let bind = just(Token::Mut)
 		.or_not()
-		.then(select! { Token::Ident(name) => name })
+		.then(ident())
 		.then(annot.clone().or_not())
 		.then(just(Token::Bind).ignore_then(expr.clone()).or_not())
 		.try_map(|(((mutable, name), typ), value), span| {
@@ -158,7 +181,7 @@ where
 		.map_with(|e, ex| (e, ex.span()));
 
 	// assignment
-	let assign = select! { Token::Ident(name) => name }
+	let assign = ident()
 		.then_ignore(just(Token::Assign))
 		.then(expr.clone())
 		.map_with(|(name, value), ex| {
@@ -177,8 +200,8 @@ where
 		.map_with(|value, ex| (Expr::Return(value.map(Box::new)), ex.span()));
 
 	// index assignment
-	let index_assign = select! { Token::Ident(name) => name }
-		.then(expr.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)))
+	let index_assign = ident()
+		.then(bracket(expr.clone()))
 		.then_ignore(just(Token::Assign))
 		.then(expr.clone())
 		.map_with(|((name, index), value), ex| {
@@ -193,7 +216,7 @@ where
 		});
 
 	// array appending
-	let append = select! { Token::Ident(name) => name }
+	let append = ident()
 		.then_ignore(just(Token::LtLt))
 		.then(expr.clone())
 		.map_with(|(name, value), ex| {
@@ -207,10 +230,10 @@ where
 		});
 
 	// map deletion
-	let map_delete = select! { Token::Ident(name) => name }
+	let map_delete = ident()
 		.then_ignore(just(Token::Dot))
 		.then_ignore(just(Token::Ident("delete".to_string())))
-		.then(expr.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)))
+		.then(bracket(expr.clone()))
 		.map_with(|(name, key), ex| {
 			(
 				Expr::MapDelete {
@@ -222,9 +245,9 @@ where
 		});
 
 	// field assignment
-	let field_assign = select! { Token::Ident(name) => name }
+	let field_assign = ident()
 		.then_ignore(just(Token::Dot))
-		.then(select! { Token::Ident(field) => field })
+		.then(ident())
 		.then_ignore(just(Token::Assign))
 		.then(expr.clone())
 		.map_with(|((name, field), value), ex| {
@@ -257,11 +280,7 @@ where
 		.or(expr.clone());
 
 	// blocks
-	let block = stmt
-		.clone()
-		.repeated()
-		.collect::<Vec<_>>()
-		.delimited_by(just(Token::LBrace), just(Token::RBrace));
+	let block = brace(stmt.clone().repeated().collect::<Vec<_>>());
 
 	let definition = {
 		let literal = select! {
@@ -275,40 +294,34 @@ where
 		};
 
 		// variable vs. call vs. struct literal
-		let args = expr
-			.clone()
-			.separated_by(just(Token::Comma))
-			.allow_trailing()
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LParen), just(Token::RParen));
+		let args = paren(
+			expr.clone()
+				.separated_by(just(Token::Comma))
+				.allow_trailing()
+				.collect::<Vec<_>>(),
+		);
 
 		// named or positional field entry
-		let struct_field_entry = select! { Token::Ident(name) => name }
-			.then_ignore(just(Token::Colon))
-			.or_not()
-			.then(expr.clone());
-		let struct_body = struct_field_entry
-			.separated_by(just(Token::Comma).or_not())
-			.allow_trailing()
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LBrace), just(Token::RBrace));
+		let struct_field_entry = ident().then_ignore(just(Token::Colon)).or_not().then(expr.clone());
+		let struct_body = brace(loose_list(struct_field_entry.clone()));
 
 		// pull out struct literals separately (they have title case names) from vars/calls/whatever below
-		let struct_lit = select! { Token::Ident(name) => name }
+		let struct_lit = ident()
 			.filter(|name| name.starts_with(char::is_uppercase))
 			.then(struct_body)
 			.map(|(name, fields)| Expr::StructLit { name, fields });
 
 		// explicit generic types
-		let call_type_args = type_expr
-			.clone()
-			.map_with(|t, ex| (t, ex.span()))
-			.separated_by(just(Token::Comma))
-			.at_least(1)
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LBracket), just(Token::RBracket));
+		let call_type_args = bracket(
+			type_expr
+				.clone()
+				.map_with(|t, ex| (t, ex.span()))
+				.separated_by(just(Token::Comma))
+				.at_least(1)
+				.collect::<Vec<_>>(),
+		);
 
-		let var_or_call = select! { Token::Ident(name) => name }
+		let var_or_call = ident()
 			.then(call_type_args.or_not().then(args.clone()).or_not())
 			.map(|(name, call)| match call {
 				Some((type_args, args)) => Expr::Call {
@@ -336,19 +349,10 @@ where
 			.try_map(|text, span| Err(Rich::custom(span, format!("unexpected character `{text}`"))));
 
 		// grouping before tuple rule to avoid making 1ples, which are instead made with `(expr,)`
-		let group = expr.clone().delimited_by(just(Token::LParen), just(Token::RParen));
+		let group = paren(expr.clone());
 
-		let elem = select! { Token::Ident(name) => name }
-			.then_ignore(just(Token::Colon))
-			.or_not()
-			.then(expr.clone());
 		// tuple literal
-		let tuple = elem
-			.separated_by(just(Token::Comma).or_not())
-			.allow_trailing()
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LParen), just(Token::RParen))
-			.map_with(|elems, ex| (Expr::Tuple(elems), ex.span()));
+		let tuple = paren(loose_list(struct_field_entry)).map_with(|elems, ex| (Expr::Tuple(elems), ex.span()));
 
 		// map literal
 		let type_init = type_expr
@@ -360,7 +364,7 @@ where
 
 		let option_init = just(Token::Question)
 			.ignore_then(type_expr.clone())
-			.then(expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)))
+			.then(paren(expr.clone()))
 			.map_with(|(elem, arg), ex| {
 				(
 					Expr::OptionInit {
@@ -372,9 +376,7 @@ where
 			});
 
 		// result literal
-		let result_shape = type_expr
-			.clone()
-			.then(expr.clone().delimited_by(just(Token::LParen), just(Token::RParen)));
+		let result_shape = type_expr.clone().then(paren(expr.clone()));
 		let result_init = just(Token::Not).ignore_then(result_shape.clone()).map_with(|(elem, arg), ex| {
 			(
 				Expr::ResultInit {
@@ -386,13 +388,7 @@ where
 		});
 
 		// array literal
-		let array = expr
-			.clone()
-			.separated_by(just(Token::Comma).or_not())
-			.allow_trailing()
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LBracket), just(Token::RBracket))
-			.map_with(|elems, ex| (Expr::Array(elems), ex.span()));
+		let array = bracket(loose_list(expr.clone())).map_with(|elems, ex| (Expr::Array(elems), ex.span()));
 
 		let if_expr = recursive(|if_expr| {
 			just(Token::If)
@@ -431,13 +427,9 @@ where
 
 		// a for-loop binds/destructures into names
 		let pattern = {
-			let name = select! { Token::Ident(name) => name };
-			let tuple = name
-				.separated_by(just(Token::Comma))
-				.allow_trailing()
-				.collect::<Vec<_>>()
-				.delimited_by(just(Token::LParen), just(Token::RParen))
-				.map(Pattern::Tuple);
+			let name = ident();
+			let tuple =
+				paren(name.separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()).map(Pattern::Tuple);
 			tuple.or(name.map(Pattern::Name))
 		};
 		let for_expr = just(Token::Loop)
@@ -450,7 +442,7 @@ where
 		let continue_expr = just(Token::Continue).map_with(|_, ex| (Expr::Continue, ex.span()));
 
 		// match expression
-		let binding = select! { Token::Ident(n) => n }.then_ignore(just(Token::At)).or_not();
+		let binding = ident().then_ignore(just(Token::At)).or_not();
 		let match_arm = binding
 			.then(
 				expr.clone()
@@ -467,13 +459,12 @@ where
 			});
 		let match_expr = just(Token::Match)
 			.ignore_then(expr.clone())
-			.then(
+			.then(brace(
 				match_arm
 					.repeated()
 					.collect::<Vec<_>>()
-					.then(just(Token::Else).ignore_then(block.clone()).or_not())
-					.delimited_by(just(Token::LBrace), just(Token::RBrace)),
-			)
+					.then(just(Token::Else).ignore_then(block.clone()).or_not()),
+			))
 			.map_with(|(subject, (arms, else_body)), ex| {
 				(
 					Expr::Match {
@@ -486,17 +477,13 @@ where
 			});
 
 		// anonymous functions
-		let capture = select! { Token::Ident(name) => name };
+		let capture = ident();
 		let capture = just(Token::Move)
 			.ignore_then(capture)
 			.map(Capture::Move)
 			.or(just(Token::Mut).ignore_then(capture).map(Capture::Mut))
 			.or(capture.map(Capture::ReadOnly));
-		let captures = capture
-			.separated_by(just(Token::Comma))
-			.allow_trailing()
-			.collect::<Vec<_>>()
-			.delimited_by(just(Token::LBracket), just(Token::RBracket));
+		let captures = bracket(capture.separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>());
 		let anon_fn = just(Token::Fn)
 			.ignore_then(captures.or_not())
 			.then(params.clone().or_not())
@@ -537,13 +524,12 @@ where
 		// field/tuple/method access
 		let access = choice((
 			select! { Token::Int(n) => Access::Fields(vec![n.to_string()]) },
+			// NOTE: chained tuple access like `x.0.1` lexes `0.1` as a float, hence the split
 			select! { Token::Float(s) => Access::Fields(s.split('.').map(String::from).collect()) },
-			select! { Token::Ident(name) => name }
-				.then(args.clone().or_not())
-				.map(|(name, call)| match call {
-					Some(args) => Access::Method(name, args),
-					None => Access::Fields(vec![name]),
-				}),
+			ident().then(args.clone().or_not()).map(|(name, call)| match call {
+				Some(args) => Access::Method(name, args),
+				None => Access::Fields(vec![name]),
+			}),
 		));
 
 		// array subscripts
@@ -553,17 +539,15 @@ where
 		let with_start = expr
 			.clone()
 			.then(just(Token::DotDot).ignore_then(expr.clone().or_not()).or_not())
-			.map(|(e, extra)| match (e.0.clone(), extra) {
+			.map(|(e, extra)| match (e, extra) {
 				// closed range
-				(Expr::Range { start, end }, None) => Subscript::Slice(start.map(|s| *s), end.map(|e| *e)),
+				((Expr::Range { start, end }, _), None) => Subscript::Slice(start.map(|s| *s), end.map(|e| *e)),
 				// open range
-				(_, Some(end)) => Subscript::Slice(Some(e), end),
+				(e, Some(end)) => Subscript::Slice(Some(e), end),
 				// numeric index
-				(_, None) => Subscript::Index(e),
+				(e, None) => Subscript::Index(e),
 			});
-		let subscript = no_start_range
-			.or(with_start)
-			.delimited_by(just(Token::LBracket), just(Token::RBracket));
+		let subscript = bracket(no_start_range.or(with_start));
 
 		// infix operator builder
 		let binop = |prec, tok: Token, op: BinOp| {
@@ -575,19 +559,15 @@ where
 		let core = atom.pratt((
 			// field/tuple/method access
 			postfix(9, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
-				Access::Fields(parts) => {
-					let mut cur = lhs;
-					for field in parts {
-						cur = (
-							Expr::Field {
-								tuple: Box::new(cur),
-								field,
-							},
-							ex.span(),
-						);
-					}
-					cur
-				}
+				Access::Fields(parts) => parts.into_iter().fold(lhs, |cur, field| {
+					(
+						Expr::Field {
+							tuple: Box::new(cur),
+							field,
+						},
+						ex.span(),
+					)
+				}),
 				Access::Method(method, args) => (
 					Expr::MethodCall {
 						recv: Box::new(lhs),
@@ -686,7 +666,7 @@ where
 
 	// fn defs
 	let func = just(Token::Fn)
-		.ignore_then(select! { Token::Ident(name) => name })
+		.ignore_then(ident())
 		.then(type_params)
 		.then(params)
 		.then(ret)
@@ -706,7 +686,7 @@ where
 		});
 
 	// struct defs
-	let struct_field = select! { Token::Ident(name) => name }
+	let struct_field = ident()
 		.then(type_expr.clone())
 		.then(just(Token::Assign).ignore_then(expr.clone()).or_not())
 		.map_with(|((name, typ), default), ex| Param {
@@ -717,14 +697,8 @@ where
 			mutable: false,
 		});
 	let struct_def = just(Token::Struct)
-		.ignore_then(select! { Token::Ident(name) => name })
-		.then(
-			struct_field
-				.separated_by(just(Token::Comma).or_not())
-				.allow_trailing()
-				.collect::<Vec<_>>()
-				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
-		)
+		.ignore_then(ident())
+		.then(brace(loose_list(struct_field)))
 		.map_with(|(name, fields), ex| (Expr::StructDef { name, fields }, ex.span()));
 
 	// enum defs
@@ -732,29 +706,18 @@ where
 		.ignore_then(just(Token::Minus).or_not())
 		.then(select! { Token::Int(n) => n })
 		.map(|(neg, n)| if neg.is_some() { -n } else { n });
-	let payload = annot
-		.separated_by(just(Token::Comma))
-		.allow_trailing()
-		.collect::<Vec<_>>()
-		.delimited_by(just(Token::LParen), just(Token::RParen));
-	let variant =
-		select! { Token::Ident(v) => v }
-			.then(payload.or_not())
-			.then(disc.or_not())
-			.map(|((name, payload), disc)| EnumVariant {
-				name,
-				disc,
-				payload: payload.unwrap_or_default(),
-			});
+	let payload = paren(annot.separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>());
+	let variant = ident()
+		.then(payload.or_not())
+		.then(disc.or_not())
+		.map(|((name, payload), disc)| EnumVariant {
+			name,
+			disc,
+			payload: payload.unwrap_or_default(),
+		});
 	let enum_def = just(Token::Enum)
-		.ignore_then(select! { Token::Ident(name) => name })
-		.then(
-			variant
-				.separated_by(just(Token::Comma).or_not())
-				.allow_trailing()
-				.collect::<Vec<_>>()
-				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
-		)
+		.ignore_then(ident())
+		.then(brace(loose_list(variant)))
 		.try_map_with(|(name, variants), ex| {
 			let mut next = 0;
 			let mut seen = Vec::new();
@@ -777,19 +740,14 @@ where
 		.collect::<Vec<_>>()
 		.map(TypeExpr::AtomSum);
 	let type_alias = just(Token::Type)
-		.ignore_then(select! { Token::Ident(name) => name })
+		.ignore_then(ident())
 		.then_ignore(just(Token::Assign))
 		.then(atom_sum.or(type_expr))
 		.map_with(|(name, typ), ex| (Expr::TypeAlias { name, typ }, ex.span()));
 
 	let impl_block = just(Token::Impl)
-		.ignore_then(select! { Token::Ident(name) => name })
-		.then(
-			func.clone()
-				.repeated()
-				.collect::<Vec<_>>()
-				.delimited_by(just(Token::LBrace), just(Token::RBrace)),
-		)
+		.ignore_then(ident())
+		.then(brace(func.clone().repeated().collect::<Vec<_>>()))
 		.map_with(|(typ, methods), ex| (Expr::Impl { typ, methods }, ex.span()));
 
 	struct_def
