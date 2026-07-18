@@ -102,3 +102,16 @@ pub(super) fn unsigned_cc(icc: IntCC) -> IntCC {
 		other => other,
 	}
 }
+
+// Signed comparison codes for a `BinOp` comparison variant.
+pub(super) fn cmp_cc(op: BinOp) -> (IntCC, FloatCC) {
+	match op {
+		BinOp::Eq => (IntCC::Equal, FloatCC::Equal),
+		BinOp::Ne => (IntCC::NotEqual, FloatCC::NotEqual),
+		BinOp::Lt => (IntCC::SignedLessThan, FloatCC::LessThan),
+		BinOp::Gt => (IntCC::SignedGreaterThan, FloatCC::GreaterThan),
+		BinOp::Le => (IntCC::SignedLessThanOrEqual, FloatCC::LessThanOrEqual),
+		BinOp::Ge => (IntCC::SignedGreaterThanOrEqual, FloatCC::GreaterThanOrEqual),
+		_ => unreachable!("non-comparison op in cmp_cc"),
+	}
+}

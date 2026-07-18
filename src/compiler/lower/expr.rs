@@ -86,27 +86,103 @@ impl<'a> Translator<'a> {
 				Ok((out, typ))
 			}
 
-			Expr::Add(l, r) => self.binop(Op::Add, l, r, expr.1),
-			Expr::Sub(l, r) => self.binop(Op::Sub, l, r, expr.1),
-			Expr::Mul(l, r) => self.binop(Op::Mul, l, r, expr.1),
-			Expr::Div(l, r) => self.binop(Op::Div, l, r, expr.1),
-			Expr::Mod(l, r) => self.binop(Op::Mod, l, r, expr.1),
+			Expr::Binary(op, l, r) => match op {
+				BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => self.binop(*op, l, r, expr.1),
+				BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
+					let (icc, fcc) = cmp_cc(*op);
+					self.cmp(icc, fcc, l, r, expr.1)
+				}
+				BinOp::And => self.logical(true, l, r),
+				BinOp::Or => self.logical(false, l, r),
+				BinOp::In => {
+					let (lhs, rhs) = (l, r);
+					let (rhs_val, rhs_typ) = self.expr(rhs)?;
 
-			Expr::Eq(l, r) => self.cmp(IntCC::Equal, FloatCC::Equal, l, r, expr.1),
-			Expr::Ne(l, r) => self.cmp(IntCC::NotEqual, FloatCC::NotEqual, l, r, expr.1),
-			Expr::Lt(l, r) => self.cmp(IntCC::SignedLessThan, FloatCC::LessThan, l, r, expr.1),
-			Expr::Gt(l, r) => self.cmp(IntCC::SignedGreaterThan, FloatCC::GreaterThan, l, r, expr.1),
-			Expr::Le(l, r) => self.cmp(IntCC::SignedLessThanOrEqual, FloatCC::LessThanOrEqual, l, r, expr.1),
-			Expr::Ge(l, r) => self.cmp(
-				IntCC::SignedGreaterThanOrEqual,
-				FloatCC::GreaterThanOrEqual,
-				l,
-				r,
-				expr.1,
-			),
+					// substring check
+					if rhs_typ == Typ::Str {
+						let (lhs_val, lhs_typ) = self.expr(lhs)?;
+						if lhs_typ != Typ::Str {
+							return Err(
+								Diagnostic::new(format!("cannot search {lhs_typ} in Str"), lhs.1.into_range())
+									.with_label("type mismatch: value must be Str"),
+							);
+						}
+						let func = self.import_fn(runtime::STR_CONTAINS, &[self.int, self.int], Some(self.int));
+						let call = self.b.ins().call(func, &[rhs_val, lhs_val]);
+						return Ok((self.b.inst_results(call)[0], Typ::Bool));
+					}
 
-			Expr::And(l, r) => self.logical(true, l, r),
-			Expr::Or(l, r) => self.logical(false, l, r),
+					let elem = match rhs_typ {
+						Typ::Array(ref e) => (**e).clone(),
+						_ => {
+							return Err(Diagnostic::new(
+								format!("right side of `in` must be an array or Str, got {rhs_typ}"),
+								rhs.1.into_range(),
+							)
+							.with_label("not an array or string"));
+						}
+					};
+					let (val, val_typ) = self.expr(lhs)?;
+					if val_typ != elem {
+						return Err(Diagnostic::new(
+							format!("cannot search {val_typ} in {elem} array"),
+							lhs.1.into_range(),
+						)
+						.with_label("type mismatch"));
+					}
+
+					let arr = rhs_val;
+					let len = self.array_len(arr);
+					let data = self.array_data(arr);
+
+					let found = self.b.declare_var(self.int);
+					let i = self.b.declare_var(self.int);
+					let zero = self.b.ins().iconst(self.int, 0);
+					self.b.def_var(found, zero);
+					self.b.def_var(i, zero);
+
+					let (header, body, found_block, continue_block, exit) = (
+						self.b.create_block(),
+						self.b.create_block(),
+						self.b.create_block(),
+						self.b.create_block(),
+						self.b.create_block(),
+					);
+					self.b.ins().jump(header, &[]);
+
+					self.b.switch_to_block(header);
+					let iv = self.b.use_var(i);
+					let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, len);
+					self.b.ins().brif(more, body, &[], exit, &[]);
+					self.b.seal_block(body);
+
+					self.b.switch_to_block(body);
+					let iv = self.b.use_var(i);
+					let off = self.b.ins().imul_imm(iv, elem_size(&elem));
+					let addr = self.b.ins().iadd(data, off);
+					let elem_val = self.b.ins().load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
+					let equal = self.emit_eq(val, elem_val, &elem);
+					self.b.ins().brif(equal, found_block, &[], continue_block, &[]);
+					self.b.seal_block(found_block);
+					self.b.seal_block(continue_block);
+
+					self.b.switch_to_block(found_block);
+					let one = self.b.ins().iconst(self.int, 1);
+					self.b.def_var(found, one);
+					self.b.ins().jump(exit, &[]);
+					self.b.seal_block(exit);
+
+					self.b.switch_to_block(continue_block);
+					let iv = self.b.use_var(i);
+					let next = self.b.ins().iadd_imm(iv, 1);
+					self.b.def_var(i, next);
+					self.b.ins().jump(header, &[]);
+					self.b.seal_block(header);
+
+					self.b.switch_to_block(exit);
+					Ok((self.b.use_var(found), Typ::Bool))
+				}
+			},
 			Expr::Not(e) => {
 				let (v, typ) = self.expr(e)?;
 				if typ != Typ::Bool {
@@ -434,94 +510,6 @@ impl<'a> Translator<'a> {
 			},
 
 			Expr::For { pat, iter, body } => self.for_loop(pat, iter, body, expr.1),
-
-			Expr::In(lhs, rhs) => {
-				let (rhs_val, rhs_typ) = self.expr(rhs)?;
-
-				// substring check
-				if rhs_typ == Typ::Str {
-					let (lhs_val, lhs_typ) = self.expr(lhs)?;
-					if lhs_typ != Typ::Str {
-						return Err(
-							Diagnostic::new(format!("cannot search {lhs_typ} in Str"), lhs.1.into_range())
-								.with_label("type mismatch: value must be Str"),
-						);
-					}
-					let func = self.import_fn(runtime::STR_CONTAINS, &[self.int, self.int], Some(self.int));
-					let call = self.b.ins().call(func, &[rhs_val, lhs_val]);
-					return Ok((self.b.inst_results(call)[0], Typ::Bool));
-				}
-
-				let elem = match rhs_typ {
-					Typ::Array(ref e) => (**e).clone(),
-					_ => {
-						return Err(Diagnostic::new(
-							format!("right side of `in` must be an array or Str, got {rhs_typ}"),
-							rhs.1.into_range(),
-						)
-						.with_label("not an array or string"));
-					}
-				};
-				let (val, val_typ) = self.expr(lhs)?;
-				if val_typ != elem {
-					return Err(Diagnostic::new(
-						format!("cannot search {val_typ} in {elem} array"),
-						lhs.1.into_range(),
-					)
-					.with_label("type mismatch"));
-				}
-
-				let arr = rhs_val;
-				let len = self.array_len(arr);
-				let data = self.array_data(arr);
-
-				let found = self.b.declare_var(self.int);
-				let i = self.b.declare_var(self.int);
-				let zero = self.b.ins().iconst(self.int, 0);
-				self.b.def_var(found, zero);
-				self.b.def_var(i, zero);
-
-				let (header, body, found_block, continue_block, exit) = (
-					self.b.create_block(),
-					self.b.create_block(),
-					self.b.create_block(),
-					self.b.create_block(),
-					self.b.create_block(),
-				);
-				self.b.ins().jump(header, &[]);
-
-				self.b.switch_to_block(header);
-				let iv = self.b.use_var(i);
-				let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, len);
-				self.b.ins().brif(more, body, &[], exit, &[]);
-				self.b.seal_block(body);
-
-				self.b.switch_to_block(body);
-				let iv = self.b.use_var(i);
-				let off = self.b.ins().imul_imm(iv, elem_size(&elem));
-				let addr = self.b.ins().iadd(data, off);
-				let elem_val = self.b.ins().load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
-				let equal = self.emit_eq(val, elem_val, &elem);
-				self.b.ins().brif(equal, found_block, &[], continue_block, &[]);
-				self.b.seal_block(found_block);
-				self.b.seal_block(continue_block);
-
-				self.b.switch_to_block(found_block);
-				let one = self.b.ins().iconst(self.int, 1);
-				self.b.def_var(found, one);
-				self.b.ins().jump(exit, &[]);
-				self.b.seal_block(exit);
-
-				self.b.switch_to_block(continue_block);
-				let iv = self.b.use_var(i);
-				let next = self.b.ins().iadd_imm(iv, 1);
-				self.b.def_var(i, next);
-				self.b.ins().jump(header, &[]);
-				self.b.seal_block(header);
-
-				self.b.switch_to_block(exit);
-				Ok((self.b.use_var(found), Typ::Bool))
-			}
 
 			Expr::StructLit { name, fields } => {
 				// `Self {}` inside a method resolves to the impl's type

@@ -150,20 +150,7 @@ fn collect(expr: &Expr, out: &mut HashSet<String>) {
 			child(step);
 		}
 		AnonFn { body, .. } => body.iter().for_each(&mut child),
-		Add(a, b)
-		| Sub(a, b)
-		| Mul(a, b)
-		| Div(a, b)
-		| Mod(a, b)
-		| Eq(a, b)
-		| Ne(a, b)
-		| Lt(a, b)
-		| Gt(a, b)
-		| Le(a, b)
-		| Ge(a, b)
-		| And(a, b)
-		| Or(a, b)
-		| In(a, b) => {
+		Binary(_, a, b) => {
 			child(a);
 			child(b);
 		}

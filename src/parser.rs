@@ -1,4 +1,4 @@
-use crate::ast::{Capture, EnumVariant, Expr, MatchArm, Param, Pattern, Spanned, TypeExpr};
+use crate::ast::{BinOp, Capture, EnumVariant, Expr, MatchArm, Param, Pattern, Spanned, TypeExpr};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -565,6 +565,13 @@ where
 			.or(with_start)
 			.delimited_by(just(Token::LBracket), just(Token::RBracket));
 
+		// infix operator builder
+		let binop = |prec, tok: Token, op: BinOp| {
+			infix(left(prec), just(tok), move |l, _, r, ex| {
+				(Expr::Binary(op, Box::new(l), Box::new(r)), ex.span())
+			})
+		};
+
 		let core = atom.pratt((
 			// field/tuple/method access
 			postfix(9, just(Token::Dot).ignore_then(access), |lhs, acc, ex| match acc {
@@ -623,53 +630,23 @@ where
 				|_, rhs, ex| (Expr::Not(Box::new(rhs)), ex.span()),
 			),
 			// arithmetic
-			infix(left(7), just(Token::Asterisk), |l, _, r, ex| {
-				(Expr::Mul(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(7), just(Token::Slash), |l, _, r, ex| {
-				(Expr::Div(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(7), just(Token::Percent), |l, _, r, ex| {
-				(Expr::Mod(Box::new(l), Box::new(r)), ex.span())
-			}),
-			// arithmetic
-			infix(left(6), just(Token::Plus), |l, _, r, ex| {
-				(Expr::Add(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(6), just(Token::Minus), |l, _, r, ex| {
-				(Expr::Sub(Box::new(l), Box::new(r)), ex.span())
-			}),
+			binop(7, Token::Asterisk, BinOp::Mul),
+			binop(7, Token::Slash, BinOp::Div),
+			binop(7, Token::Percent, BinOp::Mod),
+			binop(6, Token::Plus, BinOp::Add),
+			binop(6, Token::Minus, BinOp::Sub),
 			// relational
-			infix(left(5), just(Token::Lt), |l, _, r, ex| {
-				(Expr::Lt(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(5), just(Token::Gt), |l, _, r, ex| {
-				(Expr::Gt(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(5), just(Token::Le), |l, _, r, ex| {
-				(Expr::Le(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(5), just(Token::Ge), |l, _, r, ex| {
-				(Expr::Ge(Box::new(l), Box::new(r)), ex.span())
-			}),
-			// equality
-			infix(left(4), just(Token::Eq), |l, _, r, ex| {
-				(Expr::Eq(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(4), just(Token::Ne), |l, _, r, ex| {
-				(Expr::Ne(Box::new(l), Box::new(r)), ex.span())
-			}),
-			// membership
-			infix(left(4), just(Token::In), |l, _, r, ex| {
-				(Expr::In(Box::new(l), Box::new(r)), ex.span())
-			}),
+			binop(5, Token::Lt, BinOp::Lt),
+			binop(5, Token::Gt, BinOp::Gt),
+			binop(5, Token::Le, BinOp::Le),
+			binop(5, Token::Ge, BinOp::Ge),
+			// equality | membership
+			binop(4, Token::Eq, BinOp::Eq),
+			binop(4, Token::Ne, BinOp::Ne),
+			binop(4, Token::In, BinOp::In),
 			// logical
-			infix(left(3), just(Token::AndAnd), |l, _, r, ex| {
-				(Expr::And(Box::new(l), Box::new(r)), ex.span())
-			}),
-			infix(left(2), just(Token::OrOr), |l, _, r, ex| {
-				(Expr::Or(Box::new(l), Box::new(r)), ex.span())
-			}),
+			binop(3, Token::AndAnd, BinOp::And),
+			binop(2, Token::OrOr, BinOp::Or),
 			// ranges
 			infix(left(1), just(Token::DotDot), |l, _, r, ex| {
 				(

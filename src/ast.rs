@@ -1,3 +1,5 @@
+use std::fmt;
+
 use chumsky::span::SimpleSpan;
 
 // A value paired with the span it came from.
@@ -215,31 +217,51 @@ pub enum Expr {
 	// unary
 	Negative(Box<Spanned<Expr>>),
 
-	// arithmetic
-	Add(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Sub(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Mul(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Div(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Mod(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-
-	// comparison
-	Eq(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Ne(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Lt(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Gt(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Le(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Ge(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-
-	// logical
-	And(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-	Or(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+	// arithmetic, comparison, logical, membership
+	Binary(BinOp, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 	Not(Box<Spanned<Expr>>),
-
-	// membership
-	In(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 
 	// meta
 	Doc(Vec<String>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BinOp {
+	Add,
+	Sub,
+	Mul,
+	Div,
+	Mod,
+	Eq,
+	Ne,
+	Lt,
+	Gt,
+	Le,
+	Ge,
+	And,
+	Or,
+	In,
+}
+
+impl fmt::Display for BinOp {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(match self {
+			BinOp::Add => "+",
+			BinOp::Sub => "-",
+			BinOp::Mul => "*",
+			BinOp::Div => "/",
+			BinOp::Mod => "%",
+			BinOp::Eq => "==",
+			BinOp::Ne => "!=",
+			BinOp::Lt => "<",
+			BinOp::Gt => ">",
+			BinOp::Le => "<=",
+			BinOp::Ge => ">=",
+			BinOp::And => "&&",
+			BinOp::Or => "||",
+			BinOp::In => "in",
+		})
+	}
 }
 
 // Type annotation.

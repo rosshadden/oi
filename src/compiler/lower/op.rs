@@ -81,7 +81,7 @@ impl<'a> Translator<'a> {
 
 	pub(super) fn binop(
 		&mut self,
-		op: Op,
+		op: BinOp,
 		l: &Spanned<Expr>,
 		r: &Spanned<Expr>,
 		span: Span,
@@ -90,7 +90,7 @@ impl<'a> Translator<'a> {
 		let (rv, rt) = self.expr(r)?;
 
 		// string concatenation
-		if let (Op::Add, Typ::Str, Typ::Str) = (op, &lt, &rt) {
+		if let (BinOp::Add, Typ::Str, Typ::Str) = (op, &lt, &rt) {
 			return Ok((self.call_concat(lv, rv), Typ::Str));
 		}
 
@@ -114,7 +114,7 @@ impl<'a> Translator<'a> {
 				);
 			}
 		};
-		if let (Op::Mod, NumKind::Float) = (op, kind) {
+		if let (BinOp::Mod, NumKind::Float) = (op, kind) {
 			// TODO: cranelift has no float remainder
 			return Err(
 				Diagnostic::new("`%` is not yet supported on floats".to_string(), span.into_range())
@@ -123,18 +123,19 @@ impl<'a> Translator<'a> {
 		}
 		let b = self.b.ins();
 		let out = match (op, kind) {
-			(Op::Add, NumKind::Float) => b.fadd(lv, rv),
-			(Op::Add, _) => b.iadd(lv, rv),
-			(Op::Sub, NumKind::Float) => b.fsub(lv, rv),
-			(Op::Sub, _) => b.isub(lv, rv),
-			(Op::Mul, NumKind::Float) => b.fmul(lv, rv),
-			(Op::Mul, _) => b.imul(lv, rv),
-			(Op::Div, NumKind::Float) => b.fdiv(lv, rv),
-			(Op::Div, NumKind::UInt) => b.udiv(lv, rv),
-			(Op::Div, NumKind::Int) => b.sdiv(lv, rv),
-			(Op::Mod, NumKind::Float) => unreachable!("float `%` rejected above"),
-			(Op::Mod, NumKind::UInt) => b.urem(lv, rv),
-			(Op::Mod, NumKind::Int) => b.srem(lv, rv),
+			(BinOp::Add, NumKind::Float) => b.fadd(lv, rv),
+			(BinOp::Add, _) => b.iadd(lv, rv),
+			(BinOp::Sub, NumKind::Float) => b.fsub(lv, rv),
+			(BinOp::Sub, _) => b.isub(lv, rv),
+			(BinOp::Mul, NumKind::Float) => b.fmul(lv, rv),
+			(BinOp::Mul, _) => b.imul(lv, rv),
+			(BinOp::Div, NumKind::Float) => b.fdiv(lv, rv),
+			(BinOp::Div, NumKind::UInt) => b.udiv(lv, rv),
+			(BinOp::Div, NumKind::Int) => b.sdiv(lv, rv),
+			(BinOp::Mod, NumKind::Float) => unreachable!("float `%` rejected above"),
+			(BinOp::Mod, NumKind::UInt) => b.urem(lv, rv),
+			(BinOp::Mod, NumKind::Int) => b.srem(lv, rv),
+			_ => unreachable!("non-arithmetic op in binop"),
 		};
 		// For non-standard widths, wrap the result back to the declared bit width.
 		let out = match &lt {

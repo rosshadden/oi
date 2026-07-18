@@ -49,27 +49,6 @@ pub(crate) enum Typ {
 	Map(Box<Typ>, Box<Typ>),
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Op {
-	Add,
-	Sub,
-	Mul,
-	Div,
-	Mod,
-}
-
-impl fmt::Display for Op {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(match self {
-			Op::Add => "+",
-			Op::Sub => "-",
-			Op::Mul => "*",
-			Op::Div => "/",
-			Op::Mod => "%",
-		})
-	}
-}
-
 // A struct field definition.
 #[derive(Clone, Debug)]
 pub(crate) struct FieldDef {
