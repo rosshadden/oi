@@ -1,6 +1,6 @@
 # various useful checks
 [parallel]
-check: fmt test lint
+check: build && fmt test lint
 
 # build
 [group("cargo")]
@@ -9,17 +9,17 @@ build:
 
 # run formatter
 [group("cargo")]
-fmt: build
+fmt:
 	cargo fmt
 
 # run lints
 [group("cargo")]
-lint: build
+lint:
 	cargo clippy --no-deps -- -D warnings
 
 # run tests
 [group("cargo")]
-test: build
+test:
 	cargo test
 
 # build rustdocs
