@@ -51,12 +51,15 @@ jobs:
           rm -rf ./www/static/docs
           mv ./target/doc/ ./www/static/docs/
 
+      - uses: actions/configure-pages@v6
+        id: pages
+
       - uses: getzola/github-pages@v1
         id: docs
         with:
           zola_version: v0.22.1
           working_directory: "www"
-          build_flags: "--base-url {{ steps.docs.outputs.page_url }}"
+          build_flags: "--base-url {{ steps.pages.outputs.base_url }}"
 
   deploy:
     needs: build
@@ -64,7 +67,7 @@ jobs:
 
     environment:
       name: github-pages
-      url: ${{ steps.docs.outputs.page_url }}
+      url: ${{ steps.pages.outputs.base_url }}
 
     steps:
       - uses: actions/deploy-pages@v5
