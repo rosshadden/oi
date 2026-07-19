@@ -19,10 +19,7 @@ theme = "github-dark"
 
 [extra]
 
-mode = "product"
-github = "https://github.com/rawsp33d/oi"
-
-keywords = ""
+keywords = "oi, language, programming-language, compiler"
 
 menu_links = [
 	{ name = "/", url = "/" },
@@ -32,4 +29,6 @@ menu_links = [
 	{ name = "source", url = "https://github.com/rawsp33d/oi" },
 ]
 
-theme_color = "#333"
+# zap
+mode = "product"
+github = "https://github.com/rawsp33d/oi"
