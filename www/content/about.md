@@ -80,6 +80,11 @@ Hopefully this doesn't come off as just a grab bag build-a-lang workshop.
 I think (read: hope) that Oi has its own cohesive narrative, working as more than the sum of its parts.
 Some of the more specific plagiarized features (*\***cough**\* `impl` \***cough**\**) will likely get revised/renamed/reworked in the near future, but at least for now it doesn't hide its intent.
 
+### okay, but why?
+Over two decades of learning and using some 50+ programming languages, I developed a taste for ergonomics.
+I've found that 
+> TODO: finish or scrap or something
+
 ## Musings from an old man
 
 Over my life and career I have learned and used and enjoyed a _lot_ of programming languages.

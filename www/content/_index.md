@@ -10,11 +10,14 @@ More specifically, it's for humans who love programming.
 Oi is designed such that the code you want to write is usually the code you actually write.
 Where other languages optimize for things like safety, perf, or simplicity, Oi optimizes for flow.
 
-Its features encourage uninterrupted thought:
+Its features encourage [flow](https://en.wikipedia.org/wiki/Flow_(psychology)):
+- expression oriented
 - implicit returns
-- emphasis on expressions
 - leading literals
 - trailing functions
+- trailing struct literals
 - pipelines
 - named returns
-- zero-value initialization
+- zero values
+- destructuring
+- error handling

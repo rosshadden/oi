@@ -98,6 +98,18 @@ This is especially useful when using inside pipelines.
 "goodbye" |> wrap("[", $, "]")
 ```
 
+## named returns
+
+Bindings may be provided to return signatures, creating a mutable zeroed value.
+
+```oi
+fn divmod(a int, b int) out (int, int) {
+	out.0 = a / b
+	out.1 = a % b
+	return
+}
+```
+
 ## first-class testing
 
 Tests are a part of the language, not an afterthought.
