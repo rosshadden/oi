@@ -50,7 +50,5 @@ oi repl
 ## Docs
 
 - [rawsp33d.github.io/oi/](https://rawsp33d.github.io/oi/): simple website
-	> NOTE: the current iteration is not yet integrated into CI, and until it is you'll see the prior (useless) version.
-	> Clone and run `just serve` to see the latest docs until I get around to wiring everything up.
 - [`ref/syntax.md`](ref/syntax.md): canonical language design spec
 - [`ref/Oi.md`](ref/Oi.md): loose plan and direction, open questions
