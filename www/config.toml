@@ -1,14 +1,15 @@
-base_url = "https://rawsp33d.github.io/oi"
 title = "Oi"
 description = "Your friendly neighborhood programming language."
+
+base_url = "https://rawsp33d.github.io/oi"
+
+compile_sass = true
+build_search_index = true
 
 theme = "zap"
 # theme = "adidoks"
 # theme = "book"
 # theme = "terminimal"
-
-compile_sass = true
-build_search_index = true
 
 [markdown]
 
@@ -21,14 +22,14 @@ theme = "github-dark"
 
 keywords = "oi, language, programming-language, compiler"
 
+# zap
+
+search_path = "$BASE_URL/search/"
+
 menu_links = [
-	{ name = "/", url = "/" },
-	{ name = "/features", url = "/features" },
-	{ name = "/about", url = "/about" },
-	{ name = "/docs", url = "/docs/oi" },
+	{ name = "/", url = "$BASE_URL/" },
+	{ name = "/features", url = "$BASE_URL/features" },
+	{ name = "/about", url = "$BASE_URL/about" },
+	{ name = "/docs", url = "$BASE_URL/docs/oi" },
 	{ name = "source", url = "https://github.com/rawsp33d/oi" },
 ]
-
-# zap
-mode = "product"
-github = "https://github.com/rawsp33d/oi"
