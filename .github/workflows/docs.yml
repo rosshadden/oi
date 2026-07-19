@@ -4,10 +4,12 @@ on:
   push:
     branches: [ main ]
     paths:
+      - "**"
       - "!.github/**.yml"
   pull_request:
     branches: [ main ]
     paths:
+      - "**"
       - "!.github/**.yml"
   workflow_dispatch:
 
@@ -54,6 +56,7 @@ jobs:
         with:
           zola_version: v0.22.1
           working_directory: "www"
+          build_flags: "--base-url {{ steps.docs.outputs.page_url }}"
 
   deploy:
     needs: build
