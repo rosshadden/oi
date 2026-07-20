@@ -1,32 +1,38 @@
 use super::*;
 
+#[derive(Clone, Copy)]
+enum Sign {
+	Signed,
+	Unsigned,
+}
+
 impl<'a> Translator<'a> {
 	// Widen/narrow integers.
 	// Sign-extend `val` to i64, clamp to `[low, hi]`.
-	pub(super) fn clamp_to_width(
+	fn clamp_to_width(
 		&mut self,
 		val: Value,
-		extend_signed: bool,
-		low: Option<(i64, bool)>,
+		extend: Sign,
+		low: Option<(i64, Sign)>,
 		hi: i64,
-		hi_unsigned: bool,
+		hi_sign: Sign,
 		target_cl: types::Type,
 	) -> Value {
 		let src_cl = self.b.func.dfg.value_type(val);
 		let v64 = if src_cl == types::I64 {
 			val
-		} else if extend_signed {
-			self.b.ins().sextend(types::I64, val)
 		} else {
-			self.b.ins().uextend(types::I64, val)
+			match extend {
+				Sign::Signed => self.b.ins().sextend(types::I64, val),
+				Sign::Unsigned => self.b.ins().uextend(types::I64, val),
+			}
 		};
 		let v64 = match low {
-			Some((low, lo_unsigned)) => {
+			Some((low, lo_sign)) => {
 				let lo_c = self.b.ins().iconst(types::I64, low);
-				let cc = if lo_unsigned {
-					IntCC::UnsignedLessThan
-				} else {
-					IntCC::SignedLessThan
+				let cc = match lo_sign {
+					Sign::Unsigned => IntCC::UnsignedLessThan,
+					Sign::Signed => IntCC::SignedLessThan,
 				};
 				let lt = self.b.ins().icmp(cc, v64, lo_c);
 				self.b.ins().select(lt, lo_c, v64)
@@ -34,10 +40,9 @@ impl<'a> Translator<'a> {
 			None => v64,
 		};
 		let hi_c = self.b.ins().iconst(types::I64, hi);
-		let cc = if hi_unsigned {
-			IntCC::UnsignedGreaterThan
-		} else {
-			IntCC::SignedGreaterThan
+		let cc = match hi_sign {
+			Sign::Unsigned => IntCC::UnsignedGreaterThan,
+			Sign::Signed => IntCC::SignedGreaterThan,
 		};
 		let gt = self.b.ins().icmp(cc, v64, hi_c);
 		let v64 = self.b.ins().select(gt, hi_c, v64);
@@ -266,10 +271,10 @@ impl<'a> Translator<'a> {
 				Typ::Int(w) if *w == target => val,
 				Typ::Int(_) => self.clamp_to_width(
 					val,
-					true,
-					Some((int_min(target), false)),
+					Sign::Signed,
+					Some((int_min(target), Sign::Signed)),
 					int_max(target),
-					false,
+					Sign::Signed,
 					target_cl,
 				),
 				Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) => {
@@ -296,8 +301,17 @@ impl<'a> Translator<'a> {
 			let target_cl = cl_type(&Typ::UInt(target), self.int);
 			let out = match &typ {
 				Typ::UInt(w) if *w == target => val,
-				Typ::UInt(_) => self.clamp_to_width(val, false, None, uint_max(target), true, target_cl),
-				Typ::Int(_) => self.clamp_to_width(val, true, Some((0, false)), uint_max(target), true, target_cl),
+				Typ::UInt(_) => {
+					self.clamp_to_width(val, Sign::Unsigned, None, uint_max(target), Sign::Unsigned, target_cl)
+				}
+				Typ::Int(_) => self.clamp_to_width(
+					val,
+					Sign::Signed,
+					Some((0, Sign::Signed)),
+					uint_max(target),
+					Sign::Unsigned,
+					target_cl,
+				),
 				_ => {
 					return Err(
 						Diagnostic::new(format!("cannot cast {typ} to u{target}"), args[0].1.into_range())

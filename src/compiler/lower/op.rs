@@ -235,6 +235,94 @@ impl<'a> Translator<'a> {
 		Ok((out, Typ::Bool))
 	}
 
+	// `lhs in rhs`.
+	pub(super) fn in_op(&mut self, lhs: &Spanned<Expr>, rhs: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
+		let (rhs_val, rhs_typ) = self.expr(rhs)?;
+
+		// substring
+		if rhs_typ == Typ::Str {
+			let (lhs_val, lhs_typ) = self.expr(lhs)?;
+			if lhs_typ != Typ::Str {
+				return Err(
+					Diagnostic::new(format!("cannot search {lhs_typ} in Str"), lhs.1.into_range())
+						.with_label("type mismatch: value must be Str"),
+				);
+			}
+			let func = self.import_fn(runtime::STR_CONTAINS, &[self.int, self.int], Some(self.int));
+			let call = self.b.ins().call(func, &[rhs_val, lhs_val]);
+			return Ok((self.b.inst_results(call)[0], Typ::Bool));
+		}
+
+		let elem = match rhs_typ {
+			Typ::Array(ref e) => (**e).clone(),
+			_ => {
+				return Err(Diagnostic::new(
+					format!("right side of `in` must be an array or Str, got {rhs_typ}"),
+					rhs.1.into_range(),
+				)
+				.with_label("not an array or string"));
+			}
+		};
+		let (val, val_typ) = self.expr(lhs)?;
+		if val_typ != elem {
+			return Err(
+				Diagnostic::new(format!("cannot search {val_typ} in {elem} array"), lhs.1.into_range())
+					.with_label("type mismatch"),
+			);
+		}
+
+		let arr = rhs_val;
+		let len = self.array_len(arr);
+		let data = self.array_data(arr);
+
+		let found = self.b.declare_var(self.int);
+		let i = self.b.declare_var(self.int);
+		let zero = self.b.ins().iconst(self.int, 0);
+		self.b.def_var(found, zero);
+		self.b.def_var(i, zero);
+
+		let (header, body, found_block, continue_block, exit) = (
+			self.b.create_block(),
+			self.b.create_block(),
+			self.b.create_block(),
+			self.b.create_block(),
+			self.b.create_block(),
+		);
+		self.b.ins().jump(header, &[]);
+
+		self.b.switch_to_block(header);
+		let iv = self.b.use_var(i);
+		let more = self.b.ins().icmp(IntCC::SignedLessThan, iv, len);
+		self.b.ins().brif(more, body, &[], exit, &[]);
+		self.b.seal_block(body);
+
+		self.b.switch_to_block(body);
+		let iv = self.b.use_var(i);
+		let off = self.b.ins().imul_imm(iv, elem_size(&elem));
+		let addr = self.b.ins().iadd(data, off);
+		let elem_val = self.b.ins().load(cl_type(&elem, self.int), MemFlags::new(), addr, 0);
+		let equal = self.emit_eq(val, elem_val, &elem);
+		self.b.ins().brif(equal, found_block, &[], continue_block, &[]);
+		self.b.seal_block(found_block);
+		self.b.seal_block(continue_block);
+
+		self.b.switch_to_block(found_block);
+		let one = self.b.ins().iconst(self.int, 1);
+		self.b.def_var(found, one);
+		self.b.ins().jump(exit, &[]);
+		self.b.seal_block(exit);
+
+		self.b.switch_to_block(continue_block);
+		let iv = self.b.use_var(i);
+		let next = self.b.ins().iadd_imm(iv, 1);
+		self.b.def_var(i, next);
+		self.b.ins().jump(header, &[]);
+		self.b.seal_block(header);
+
+		self.b.switch_to_block(exit);
+		Ok((self.b.use_var(found), Typ::Bool))
+	}
+
 	// Short-circuits. `&&` only evaluates the right side when the left is true, and `||` does the inverse.
 	pub(super) fn logical(
 		&mut self,

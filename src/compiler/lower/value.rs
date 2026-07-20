@@ -326,6 +326,109 @@ impl<'a> Translator<'a> {
 		}
 	}
 
+	// Struct literal.
+	// `Name {}`
+	pub(super) fn struct_lit(
+		&mut self,
+		name: &str,
+		fields: &[(Option<String>, Spanned<Expr>)],
+		span: Span,
+	) -> Result<(Value, Typ), Diagnostic> {
+		// `Self {}` inside a method resolves to the impl's type
+		let name = match name {
+			"Self" => self.self_type.clone().ok_or_else(|| {
+				Diagnostic::new("`Self` is only valid in an impl block", span.into_range())
+					.with_label("no enclosing impl")
+			})?,
+			_ => name.to_string(),
+		};
+		if self.enums.contains_key(name.as_str()) {
+			if !fields.is_empty() {
+				return Err(Diagnostic::new(
+					format!("enum `{name}` only supports `{name}{{}}` with no fields"),
+					span.into_range(),
+				)
+				.with_label("not a struct"));
+			}
+			let typ = Typ::Enum(name.clone());
+			return Ok((self.zero(&typ), typ));
+		}
+		let struct_fields = self.structs.get(name.as_str()).cloned().ok_or_else(|| {
+			Diagnostic::new(format!("unknown struct `{name}`"), span.into_range()).with_label("not defined")
+		})?;
+		let size = (struct_fields.len() * 8) as u32;
+		let slot = self
+			.b
+			.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, size, 0));
+		let ptr = self.b.ins().stack_addr(self.int, slot, 0);
+
+		for (i, f) in struct_fields.iter().enumerate() {
+			let init = if let Some(default_expr) = &f.default {
+				let (val, vtyp) = self.expr(default_expr)?;
+				if vtyp != f.typ {
+					return Err(Diagnostic::new(
+						format!("default value type mismatch: expected {}, got {vtyp}", f.typ),
+						default_expr.1.into_range(),
+					)
+					.with_label("type mismatch"));
+				}
+				val
+			} else {
+				self.zero(&f.typ)
+			};
+			self.b.ins().store(MemFlags::new(), init, ptr, (i * 8) as i32);
+		}
+
+		if !fields.is_empty() {
+			let positional = fields[0].0.is_none();
+			if positional {
+				if fields.len() != struct_fields.len() {
+					return Err(Diagnostic::new(
+						format!(
+							"`{name}` has {} fields but {} values were provided",
+							struct_fields.len(),
+							fields.len()
+						),
+						span.into_range(),
+					)
+					.with_label("wrong number of fields"));
+				}
+				for (i, (_, value)) in fields.iter().enumerate() {
+					let expected = struct_fields[i].typ.clone();
+					let (val, vtyp) = self.check_expr(value, &expected)?;
+					if vtyp != expected {
+						return Err(
+							Diagnostic::new(format!("expected {expected}, got {vtyp}"), value.1.into_range())
+								.with_label("type mismatch"),
+						);
+					}
+					self.b.ins().store(MemFlags::new(), val, ptr, (i * 8) as i32);
+				}
+			} else {
+				for (field_name, value) in fields {
+					let fname = field_name.as_deref().ok_or_else(|| {
+						Diagnostic::new("cannot mix named and positional fields", value.1.into_range())
+							.with_label("missing field name")
+					})?;
+					let idx = struct_fields.iter().position(|f| f.name == fname).ok_or_else(|| {
+						Diagnostic::new(format!("`{name}` has no field `{fname}`"), value.1.into_range())
+							.with_label("no such field")
+					})?;
+					let expected = struct_fields[idx].typ.clone();
+					let (val, vtyp) = self.check_expr(value, &expected)?;
+					if vtyp != expected {
+						return Err(
+							Diagnostic::new(format!("expected {expected}, got {vtyp}"), value.1.into_range())
+								.with_label("type mismatch"),
+						);
+					}
+					self.b.ins().store(MemFlags::new(), val, ptr, (idx * 8) as i32);
+				}
+			}
+		}
+		Ok((ptr, Typ::Struct(name.clone(), struct_fields)))
+	}
+
 	pub(super) fn struct_copy(&mut self, src: Value, fields: &[FieldDef]) -> Value {
 		let size = (fields.len() * 8) as u32;
 		let slot = self

@@ -26,68 +26,47 @@ impl<'a> Translator<'a> {
 		self.b.seal_block(then_block);
 		self.b.seal_block(else_block);
 
-		// result var and merge block are created on the first non-diverging branch
-		let mut result: Option<Variable> = None;
-		let mut result_typ: Option<Typ> = None;
-		let mut merge: Option<Block> = None;
-
-		// branch-local bindings must not leak into the enclosing scope
-		let saved = self.vars.clone();
+		let merge = self.b.create_block();
+		let mut result: Option<(Variable, Typ)> = None;
 
 		self.b.switch_to_block(then_block);
-		let then_flow = self.block_tail(then, target)?;
-		self.vars = saved.clone();
-		if let Some((v, t)) = then_flow {
-			let var = self.b.declare_var(cl_type(&t, self.int));
-			self.b.def_var(var, v);
-			let m = self.b.create_block();
-			self.b.ins().jump(m, &[]);
-			result = Some(var);
-			result_typ = Some(t);
-			merge = Some(m);
+		let then_flow = self.scoped(|s| s.block_tail(then, target))?;
+		if let Some(vt) = then_flow {
+			self.contribute("if", vt, &mut result, merge, span)?;
 		}
 
 		self.b.switch_to_block(else_block);
-		let else_flow = match els {
-			Some(els) => self.block_tail(els, target)?,
+		let else_flow = self.scoped(|s| match els {
+			Some(els) => s.block_tail(els, target),
 			None => {
-				let t = result_typ.clone().or_else(|| target.cloned()).unwrap_or(Typ::Tuple(vec![]));
-				let z = self.zero(&t);
-				Some((z, t))
+				let t = result
+					.as_ref()
+					.map(|(_, t)| t.clone())
+					.or_else(|| target.cloned())
+					.unwrap_or(Typ::Tuple(vec![]));
+				let z = s.zero(&t);
+				Ok(Some((z, t)))
 			}
-		};
-		self.vars = saved;
-		if let Some((v, t)) = else_flow {
-			match &result_typ {
-				Some(rt) if rt != &t => {
-					return Err(Diagnostic::new(
-						format!("`if` branches have mismatched types: {rt} and {t}"),
-						span.into_range(),
-					)
-					.with_label("both branches must yield the same type"));
-				}
-				Some(_) => self.b.def_var(result.unwrap(), v),
-				None => {
-					let var = self.b.declare_var(cl_type(&t, self.int));
-					self.b.def_var(var, v);
-					result = Some(var);
-					result_typ = Some(t);
-				}
-			}
-			let m = merge.unwrap_or_else(|| self.b.create_block());
-			self.b.ins().jump(m, &[]);
-			merge = Some(m);
+		})?;
+		if let Some(vt) = else_flow {
+			self.contribute("if", vt, &mut result, merge, span)?;
 		}
 
-		match merge {
-			Some(m) => {
-				self.b.switch_to_block(m);
-				self.b.seal_block(m);
-				let typ = result_typ.unwrap();
-				Ok(Some((self.b.use_var(result.unwrap()), typ)))
-			}
-			None => Ok(None),
-		}
+		Ok(if let Some((var, typ)) = result {
+			self.b.switch_to_block(merge);
+			self.b.seal_block(merge);
+			Some((self.b.use_var(var), typ))
+		} else {
+			None
+		})
+	}
+
+	// Evaluate `f` in a child scope.
+	fn scoped<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, Diagnostic>) -> Result<T, Diagnostic> {
+		let saved = self.vars.clone();
+		let r = f(self);
+		self.vars = saved;
+		r
 	}
 
 	// `match`
@@ -213,24 +192,24 @@ impl<'a> Translator<'a> {
 
 			self.b.seal_block(arm_body);
 			self.b.switch_to_block(arm_body);
-			let saved = self.vars.clone();
-			if let Some(name) = &arm.binding {
-				self.vars.insert(name.clone(), Local::plain(sv_var, st.clone(), false));
-			}
-			let sv = self.b.use_var(sv_var);
-			let base = match &st {
-				Typ::Array(_) | Typ::FixedArray(..) => self.array_parts(sv, &st).0,
-				_ => sv,
-			};
-			for (name, typ, off) in &binds {
-				let cl = cl_type(typ, self.int);
-				let fv = self.b.ins().load(cl, MemFlags::new(), base, *off);
-				let var = self.b.declare_var(cl);
-				self.b.def_var(var, fv);
-				self.vars.insert(name.clone(), Local::plain(var, typ.clone(), false));
-			}
-			let flow = self.block_tail(&arm.body, target)?;
-			self.vars = saved;
+			let flow = self.scoped(|s| {
+				if let Some(name) = &arm.binding {
+					s.vars.insert(name.clone(), Local::plain(sv_var, st.clone(), false));
+				}
+				let sv = s.b.use_var(sv_var);
+				let base = match &st {
+					Typ::Array(_) | Typ::FixedArray(..) => s.array_parts(sv, &st).0,
+					_ => sv,
+				};
+				for (name, typ, off) in &binds {
+					let cl = cl_type(typ, s.int);
+					let fv = s.b.ins().load(cl, MemFlags::new(), base, *off);
+					let var = s.b.declare_var(cl);
+					s.b.def_var(var, fv);
+					s.vars.insert(name.clone(), Local::plain(var, typ.clone(), false));
+				}
+				s.block_tail(&arm.body, target)
+			})?;
 			if let Some(vt) = flow {
 				self.contribute("match", vt, &mut result, merge, span)?;
 			}
@@ -239,10 +218,7 @@ impl<'a> Translator<'a> {
 		self.b.switch_to_block(else_blk);
 		self.b.seal_block(else_blk);
 		let else_flow = if let Some(els) = else_body {
-			let saved = self.vars.clone();
-			let flow = self.block_tail(els, target)?;
-			self.vars = saved;
-			flow
+			self.scoped(|s| s.block_tail(els, target))?
 		} else {
 			let t = match &result {
 				Some((_, t)) => t.clone(),
@@ -338,9 +314,7 @@ impl<'a> Translator<'a> {
 		} else {
 			(self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))
 		});
-		let saved_vars = self.vars.clone();
-		let flow = self.block(body)?;
-		self.vars = saved_vars;
+		let flow = self.scoped(|s| s.block(body))?;
 		self.dollar = saved_dollar;
 		if let Some(vt) = flow {
 			self.contribute("or", vt, &mut result, merge, span)?;
@@ -505,10 +479,7 @@ impl<'a> Translator<'a> {
 		};
 
 		self.loops.push(LoopFrame { top, exit });
-		// bindings inside the loop must not leak past it
-		let saved = self.vars.clone();
-		let flow = self.block(body)?;
-		self.vars = saved;
+		let flow = self.scoped(|s| s.block(body))?;
 		let frame = self.loops.pop().expect("loop frame");
 
 		if flow.is_some() {
@@ -588,14 +559,14 @@ impl<'a> Translator<'a> {
 				)
 			}
 		};
-		let saved = self.vars.clone();
-		self.bind_pattern(pat, val, &typ, span)?;
-		self.loops.push(LoopFrame {
-			top: latch,
-			exit: Some(exit),
-		});
-		let flow = self.block(body)?;
-		self.vars = saved;
+		let flow = self.scoped(|s| {
+			s.bind_pattern(pat, val, &typ, span)?;
+			s.loops.push(LoopFrame {
+				top: latch,
+				exit: Some(exit),
+			});
+			s.block(body)
+		})?;
 		self.loops.pop().expect("loop frame");
 
 		if flow.is_some() {
