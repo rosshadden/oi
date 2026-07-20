@@ -1,4 +1,4 @@
-use crate::support::oi;
+use crate::support::{oi, oi_in};
 
 #[test]
 fn missing_file_errors() {
@@ -14,11 +14,7 @@ fn default_file_is_main_oi_in_cwd() {
 	let dir = std::env::temp_dir().join(format!("oi_run_default_{}", std::process::id()));
 	std::fs::create_dir_all(&dir).unwrap();
 	std::fs::write(dir.join("main.oi"), "1 + 2").unwrap();
-	let out = std::process::Command::new(env!("CARGO_BIN_EXE_oi"))
-		.current_dir(&dir)
-		.arg("run")
-		.output()
-		.unwrap();
+	let out = oi_in(&dir, &["run"], None);
 	std::fs::remove_dir_all(&dir).ok();
 	assert!(
 		out.status.success(),
