@@ -1052,15 +1052,13 @@ fn main() {
 		panic!($.message())
 	}
 	
-	# postfix `!` propagates error up to the caller
-	# caller must return !T, or it panics if used in main()
+	# postfix `?` propagates up to the caller: error out of a !T fn, none out of a ?T fn
+	# panics if used in main()
 	fn load_config(path string) !Config {
-		raw := fs.read(path)!
-		parse(raw)!
+		raw := fs.read(path)?
+		parse(raw)?
 	}
 	
-	# postfix `?` propagates none up to the caller
-	# caller must return ?T
 	fn display_name(id int) ?string {
 		user := repo.find_user_if_exists(id)?
 		user.name
@@ -1077,7 +1075,7 @@ fn main() {
 		if b == 0 { return error("division by zero") }
 		(a / b, a % b)
 	}
-	(q, r) := checked_divmod(10, 3)!
+	(q, r) := checked_divmod(10, 3)?
 	
 	# custom error types
 	# embed Error for default impls, only override what you need
@@ -1217,7 +1215,7 @@ fn main() {
 	
 	// create enum from value
 	print(Cycle.from(10) or { Cycle.three })
-	print(Cycle.from("two")!)
+	print(Cycle.from("two")?)
 	print(Cycle.from(:three) or Cycle{})
 	
 	// convert an enum value to a string
@@ -1309,12 +1307,12 @@ fn main() {
 	
 	# if a function is the last argument of a call, it may be written after the parens
 	retry(3) fn {
-		fetch(url)!
+		fetch(url)?
 	}
 	
 	# if no named params are needed, the `fn` may be omitted (`$` is still accessible)
 	retry(3) {
-		fetch(url)!
+		fetch(url)?
 	}
 	
 	# if the trailing function is the only argument, the parens may be omitted too
@@ -1330,7 +1328,7 @@ fn main() {
 		assert!(user.can_register())
 	}
 	retry 3 {
-		fetch(url)!
+		fetch(url)?
 	}
 	timeout 5.sec {
 		slow_call()
@@ -1353,7 +1351,7 @@ fn main() {
 	# defer
 	
 	# defer takes an expression
-	mut f := os.create("out.log")!
+	mut f := os.create("out.log")?
 	defer f.close()
 	
 	# blocks are expressions too
@@ -1394,8 +1392,8 @@ fn main() {
 		or "anonymous"
 	
 	# any error short circuits
-	"result-aware" |> upper!
-	result := input |> trim |> upper |> save!
+	"result-aware" |> upper?
+	result := input |> trim |> upper |> save?
 	
 	# Each step gets the piped value as `$`.
 	# A bare fn (ex: `trim`) is ran with the input as the first param (`trim` == `trim($)`).
@@ -1433,8 +1431,8 @@ fn main() {
 		}
 	assert!(result == :fn_done)
 	config := os.env("config_path")
-		|> read_file!
-		|> parse!
+		|> read_file?
+		|> parse?
 		or {
 			log.warn("Config load failed: {$}. Using default.")
 			default_config()
@@ -1470,7 +1468,7 @@ fn main() {
 		|> wrap("[", $, "]")
 		|> {
 			log.info("saving {$}...")
-			save($)!
+			save($)?
 		}
 		or log
 	
@@ -1512,8 +1510,8 @@ fn main() {
 	const PLATFORM_DEFAULT = comp if BUILD_OS == :windows { "\\r\\n" } else { "\\n" }
 	
 	# embedded resources
-	const image = comp fs.read_bytes("assets/cats.png")!
-	const shader = comp fs.read("shaders/urmom.glsl")!
+	const image = comp fs.read_bytes("assets/cats.png")?
+	const shader = comp fs.read("shaders/urmom.glsl")?
 	
 	# or block expressions
 	const VERSION_INFO = comp {
@@ -1522,8 +1520,8 @@ fn main() {
 		"{branch}@{sha[0..7]}"
 	}
 	const CONFIG = comp {
-		raw := fs.read("build.toml")!
-		toml.parse(raw)!
+		raw := fs.read("build.toml")?
+		toml.parse(raw)?
 	}
 	comp {
 		# comptime assertions
@@ -1532,7 +1530,7 @@ fn main() {
 	
 	# function calls can have comptime args
 	fn open_typed(comp T type, path string) !T {
-		raw := open(path)!
+		raw := open(path)?
 		deserialize(T, raw)
 	}
 	
