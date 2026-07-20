@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
+use std::mem::size_of;
 
 pub const STR_CONCAT: &str = "oi_str_concat";
 pub const ALLOC: &str = "oi_alloc";
@@ -33,6 +34,28 @@ pub enum Tag {
 	Raw,
 }
 
+impl Tag {
+	// Checked conversion from the raw i64 the JIT passes across the ABI.
+	fn from_i64(v: i64) -> Tag {
+		match v {
+			0 => Tag::Bool,
+			1 => Tag::Int,
+			2 => Tag::UInt,
+			3 => Tag::Float,
+			4 => Tag::Str,
+			5 => Tag::Raw,
+			_ => {
+				eprintln!("invalid tag: {v}");
+				std::process::abort();
+			}
+		}
+	}
+}
+
+unsafe fn cstr<'a>(ptr: *const u8) -> &'a CStr {
+	unsafe { CStr::from_ptr(ptr as *const c_char) }
+}
+
 // Render one value to a string.
 fn render(tag: Tag, bits: i64, width: i64, quote: bool) -> String {
 	match tag {
@@ -45,7 +68,7 @@ fn render(tag: Tag, bits: i64, width: i64, quote: bool) -> String {
 			_ => format!("{:?}", f64::from_bits(bits as u64)),
 		},
 		Tag::Str | Tag::Raw => {
-			let s = unsafe { CStr::from_ptr(bits as *const c_char) }.to_string_lossy();
+			let s = unsafe { cstr(bits as *const u8) }.to_string_lossy();
 			if quote && matches!(tag, Tag::Str) {
 				format!("{s:?}")
 			} else {
@@ -56,8 +79,8 @@ fn render(tag: Tag, bits: i64, width: i64, quote: bool) -> String {
 }
 
 // Write a rendered value fragment.
-pub extern "C" fn write(tag: Tag, bits: i64, width: i64, quote: i64, stderr: i64) {
-	let s = render(tag, bits, width, quote != 0);
+pub extern "C" fn write(tag: i64, bits: i64, width: i64, quote: i64, stderr: i64) {
+	let s = render(Tag::from_i64(tag), bits, width, quote != 0);
 	if stderr != 0 { eprint!("{s}") } else { print!("{s}") }
 }
 
@@ -74,102 +97,130 @@ pub extern "C" fn panic_oob(index: i64, len: i64) {
 	std::process::abort();
 }
 
-// Print an assertion failure message and abort.
-pub extern "C" fn assert_fail(msg: *const u8) {
-	let msg = unsafe { CStr::from_ptr(msg as *const c_char) }.to_string_lossy();
-	eprintln!("assertion failed: {msg}");
+// Print `{prefix}{msg}` and abort.
+unsafe fn abort_with(prefix: &str, msg: *const u8) -> ! {
+	let msg = unsafe { cstr(msg) }.to_string_lossy();
+	eprintln!("{prefix}{msg}");
 	std::process::abort();
 }
 
-// Print a panic message and abort.
-pub extern "C" fn panic(msg: *const u8) {
-	let msg = unsafe { CStr::from_ptr(msg as *const c_char) }.to_string_lossy();
-	eprintln!("panic: {msg}");
-	std::process::abort();
+/// Print an assertion failure message and abort.
+/// # Safety
+/// `msg` must be a valid NUL-terminated C string.
+pub unsafe extern "C" fn assert_fail(msg: *const u8) {
+	unsafe { abort_with("assertion failed: ", msg) }
 }
 
-pub extern "C" fn str_contains(collection: *const u8, value: *const u8) -> i64 {
-	let h = unsafe { CStr::from_ptr(collection as *const c_char) }.to_string_lossy();
-	let n = unsafe { CStr::from_ptr(value as *const c_char) }.to_string_lossy();
+/// Print a panic message and abort.
+/// # Safety
+/// `msg` must be a valid NUL-terminated C string.
+pub unsafe extern "C" fn panic(msg: *const u8) {
+	unsafe { abort_with("panic: ", msg) }
+}
+
+/// # Safety
+/// `collection` and `value` must be valid NUL-terminated C strings.
+pub unsafe extern "C" fn str_contains(collection: *const u8, value: *const u8) -> i64 {
+	let h = unsafe { cstr(collection) }.to_string_lossy();
+	let n = unsafe { cstr(value) }.to_string_lossy();
 	h.contains(n.as_ref()) as i64
 }
 
-// Compare two 0-terminated strings.
-pub extern "C" fn str_eq(a: *const u8, b: *const u8) -> i64 {
-	let a = unsafe { CStr::from_ptr(a as *const c_char) };
-	let b = unsafe { CStr::from_ptr(b as *const c_char) };
+/// Compare two 0-terminated strings.
+/// # Safety
+/// `a` and `b` must be valid NUL-terminated C strings.
+pub unsafe extern "C" fn str_eq(a: *const u8, b: *const u8) -> i64 {
+	let a = unsafe { cstr(a) };
+	let b = unsafe { cstr(b) };
 	(a == b) as i64
 }
 
-// Concatenate two 0-terminated strings into a fresh one.
-pub extern "C" fn str_concat(a: *const u8, b: *const u8) -> *const u8 {
-	let a = unsafe { CStr::from_ptr(a as *const c_char) }.to_bytes();
-	let b = unsafe { CStr::from_ptr(b as *const c_char) }.to_bytes();
+/// Concatenate two 0-terminated strings into a fresh one.
+/// # Safety
+/// `a` and `b` must be valid NUL-terminated C strings.
+pub unsafe extern "C" fn str_concat(a: *const u8, b: *const u8) -> *const u8 {
+	let a = unsafe { cstr(a) }.to_bytes();
+	let b = unsafe { cstr(b) }.to_bytes();
 	let mut out = Vec::with_capacity(a.len() + b.len() + 1);
 	out.extend_from_slice(a);
 	out.extend_from_slice(b);
 	out.push(0);
-	// TODO: address this without leaking
 	Box::leak(out.into_boxed_slice()).as_ptr()
 }
 
 // Allocate `size` zeroed bytes for a composite value (e.g. a tuple's field slots).
 pub extern "C" fn alloc(size: i64) -> *mut u8 {
-	// TODO: address this without leaking
 	let size = size.max(1) as usize;
 	Box::leak(vec![0u8; size].into_boxed_slice()).as_mut_ptr()
 }
 
-// View the range `[start, end)` of an array.
-// The view shares the parent's element buffer.
-// Panics if out of range.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn slice(header: *const i64, start: i64, end: i64, elem_size: i64) -> *const i64 {
-	let (data, len) = unsafe { (*header, *header.add(1)) };
+// Array header layout shared with the compiler (lower/array.rs, offsets 0/8/16).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Header {
+	data: i64,
+	len: i64,
+	cap: i64,
+}
+
+/// View the range `[start, end)` of an array.
+/// The view shares the parent's element buffer.
+/// Panics if out of range.
+/// # Safety
+/// `header` must point to a valid array header (see `Header`).
+pub unsafe extern "C" fn slice(header: *const Header, start: i64, end: i64, elem_size: i64) -> *const Header {
+	let Header { data, len, .. } = unsafe { *header };
 	if start < 0 || start > end || end > len {
 		eprintln!("slice range {start}..{end} out of bounds for array of length {len}");
 		std::process::abort();
 	}
 	let view_len = end - start;
-	let out = alloc(24) as *mut i64;
+	let out = alloc(size_of::<Header>() as i64) as *mut Header;
 	unsafe {
-		*out = data + start * elem_size;
-		*out.add(1) = view_len;
-		*out.add(2) = view_len; // cap == len: slice can't grow in-place
+		// cap == len: slice can't grow in-place
+		*out = Header {
+			data: data + start * elem_size,
+			len: view_len,
+			cap: view_len,
+		};
 	}
 	out
 }
 
-// Ensure the array has capacity for at least `min_cap` elements.
-// Grows by doubling, at least to `min_cap`. Updates data and cap in place.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn array_reserve(header: *mut i64, min_cap: i64, elem_size: i64) {
-	let (data, len, cap) = unsafe { (*header, *header.add(1), *header.add(2)) };
+/// Ensure the array has capacity for at least `min_cap` elements.
+/// Grows by doubling, at least to `min_cap`. Updates data and cap in place.
+/// # Safety
+/// `header` must point to a valid array header (see `Header`).
+pub unsafe extern "C" fn array_reserve(header: *mut Header, min_cap: i64, elem_size: i64) {
+	let Header { data, len, cap } = unsafe { *header };
 	if min_cap <= cap {
 		return;
 	}
-	let new_cap = cap.max(1) * 2;
-	let new_cap = new_cap.max(min_cap);
+	let new_cap = (cap.max(1) * 2).max(min_cap);
 	let new_data = alloc(new_cap * elem_size);
 	unsafe {
 		std::ptr::copy_nonoverlapping(data as *const u8, new_data, (len * elem_size) as usize);
-		*header = new_data as i64;
-		*header.add(2) = new_cap;
+		(*header).data = new_data as i64;
+		(*header).cap = new_cap;
 	}
 }
 
-// Append all elements of `src` to `dst`, growing dst's buffer as needed.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn array_extend(dst: *mut i64, src: *const i64, elem_size: i64) {
-	let (_, dst_len, _) = unsafe { (*dst, *dst.add(1), *dst.add(2)) };
-	let (src_data, src_len) = unsafe { (*src, *src.add(1)) };
-	array_reserve(dst, dst_len + src_len, elem_size);
-	let new_len = dst_len + src_len;
+/// Append all elements of `src` to `dst`, growing dst's buffer as needed.
+/// # Safety
+/// `dst` and `src` must point to valid array headers (see `Header`).
+pub unsafe extern "C" fn array_extend(dst: *mut Header, src: *const Header, elem_size: i64) {
+	let dst_len = unsafe { (*dst).len };
+	let Header {
+		data: src_data,
+		len: src_len,
+		..
+	} = unsafe { *src };
+	unsafe { array_reserve(dst, dst_len + src_len, elem_size) };
 	unsafe {
-		let dst_data = *dst as *mut u8;
+		let dst_data = (*dst).data as *mut u8;
 		let dst_tail = dst_data.add((dst_len * elem_size) as usize);
 		std::ptr::copy_nonoverlapping(src_data as *const u8, dst_tail, (src_len * elem_size) as usize);
-		*dst.add(1) = new_len;
+		(*dst).len = dst_len + src_len;
 	}
 }
 
@@ -181,7 +232,7 @@ enum MapKey {
 
 fn map_key(tag: Tag, bits: i64) -> MapKey {
 	match tag {
-		Tag::Str => MapKey::Str(unsafe { CStr::from_ptr(bits as *const c_char) }.to_bytes().to_vec()),
+		Tag::Str => MapKey::Str(unsafe { cstr(bits as *const u8) }.to_bytes().to_vec()),
 		_ => MapKey::Raw(bits),
 	}
 }
@@ -191,16 +242,16 @@ pub struct OiMap {
 }
 
 pub extern "C" fn map_new() -> *mut OiMap {
-	// TODO: address this without leaking
 	Box::into_raw(Box::new(OiMap {
 		entries: HashMap::new(),
 	}))
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn map_get(map: *mut OiMap, tag: Tag, bits: i64) -> i64 {
+/// # Safety
+/// `map` must be a valid, live `OiMap` pointer.
+pub unsafe extern "C" fn map_get(map: *mut OiMap, tag: i64, bits: i64) -> i64 {
 	let map = unsafe { &*map };
-	match map.entries.get(&map_key(tag, bits)) {
+	match map.entries.get(&map_key(Tag::from_i64(tag), bits)) {
 		Some(v) => *v,
 		None => {
 			eprintln!("key not found in map");
@@ -209,15 +260,17 @@ pub extern "C" fn map_get(map: *mut OiMap, tag: Tag, bits: i64) -> i64 {
 	}
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn map_set(map: *mut OiMap, tag: Tag, bits: i64, value: i64) {
+/// # Safety
+/// `map` must be a valid, live `OiMap` pointer.
+pub unsafe extern "C" fn map_set(map: *mut OiMap, tag: i64, bits: i64, value: i64) {
 	let map = unsafe { &mut *map };
-	map.entries.insert(map_key(tag, bits), value);
+	map.entries.insert(map_key(Tag::from_i64(tag), bits), value);
 }
 
-// Remove a map entry if present.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn map_delete(map: *mut OiMap, tag: Tag, bits: i64) {
+/// Remove a map entry if present.
+/// # Safety
+/// `map` must be a valid, live `OiMap` pointer.
+pub unsafe extern "C" fn map_delete(map: *mut OiMap, tag: i64, bits: i64) {
 	let map = unsafe { &mut *map };
-	map.entries.remove(&map_key(tag, bits));
+	map.entries.remove(&map_key(Tag::from_i64(tag), bits));
 }
