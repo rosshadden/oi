@@ -110,17 +110,8 @@ impl<'a> Translator<'a> {
 			.with_label("called here"));
 		};
 
-		let types = TypeCtx {
-			structs: self.structs,
-			enums: self.enums,
-			aliases: self.aliases,
-			type_params: &subst,
-		};
-		let params: Vec<(String, Typ, bool)> = def
-			.params
-			.iter()
-			.map(|p| Ok((p.name.clone(), types.resolve(&p.typ, p.span)?, p.mutable)))
-			.collect::<Result<_, Diagnostic>>()?;
+		let types = TypeCtx::new(self.structs, self.enums, self.aliases, &subst);
+		let params = types.resolve_params(&def.params)?;
 		let ret = types.resolve(ret_te, *ret_span)?;
 
 		let mut sig = self.module.make_signature();

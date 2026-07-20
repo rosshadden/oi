@@ -13,15 +13,18 @@ use crate::runtime;
 mod lower;
 use lower::Translator;
 
-type FnItem<'a> = (
-	String,
-	&'a [Param],
-	bool,
-	&'a Option<Spanned<TypeExpr>>,
-	&'a [Spanned<Expr>],
-);
+struct FnItem<'a> {
+	key: String,
+	params: &'a [Param],
+	params_tuple: bool,
+	ret: &'a Option<Spanned<TypeExpr>>,
+	body: &'a [Spanned<Expr>],
+}
 
 type EnumItem<'a> = (&'a str, &'a [EnumVariant]);
+
+// resolved params with an optional return annotation
+type ParamsRet = (Vec<(String, Typ, bool)>, Option<(Typ, Span)>);
 
 // TODO: PartialEq compares tuple field names, but comparisons should ignore them
 #[derive(Clone, PartialEq, Debug)]
@@ -147,6 +150,16 @@ pub(crate) struct VariantInfo {
 	pub payload: Vec<Typ>,
 }
 
+impl VariantInfo {
+	pub fn new(name: impl Into<String>, disc: i64, payload: Vec<Typ>) -> Self {
+		VariantInfo {
+			name: name.into(),
+			disc,
+			payload,
+		}
+	}
+}
+
 // An enum is a tagged union if any variant has fields.
 pub(crate) fn enum_boxed(variants: &[VariantInfo]) -> bool {
 	variants.iter().any(|v| !v.payload.is_empty())
@@ -160,31 +173,15 @@ pub(crate) fn enum_slots(variants: &[VariantInfo]) -> usize {
 
 pub(crate) fn option_variants(inner: &Typ) -> Vec<VariantInfo> {
 	vec![
-		VariantInfo {
-			name: "none".to_string(),
-			disc: 0,
-			payload: vec![],
-		},
-		VariantInfo {
-			name: "some".to_string(),
-			disc: 1,
-			payload: vec![inner.clone()],
-		},
+		VariantInfo::new("none", 0, vec![]),
+		VariantInfo::new("some", 1, vec![inner.clone()]),
 	]
 }
 
 pub(crate) fn result_variants(inner: &Typ) -> Vec<VariantInfo> {
 	vec![
-		VariantInfo {
-			name: "ok".to_string(),
-			disc: 0,
-			payload: vec![inner.clone()],
-		},
-		VariantInfo {
-			name: "err".to_string(),
-			disc: 1,
-			payload: vec![Typ::Error],
-		},
+		VariantInfo::new("ok", 0, vec![inner.clone()]),
+		VariantInfo::new("err", 1, vec![Typ::Error]),
 	]
 }
 
@@ -193,11 +190,7 @@ pub(crate) fn atom_sum_variants(names: &[String]) -> Vec<VariantInfo> {
 	names
 		.iter()
 		.enumerate()
-		.map(|(disc, name)| VariantInfo {
-			name: name.clone(),
-			disc: disc as i64,
-			payload: vec![],
-		})
+		.map(|(disc, name)| VariantInfo::new(name.clone(), disc as i64, vec![]))
 		.collect()
 }
 
@@ -205,12 +198,7 @@ pub(crate) fn atom_sum_variants(names: &[String]) -> Vec<VariantInfo> {
 // TODO: only primitive payloads work right now
 fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnostic> {
 	let (structs, enums, aliases, type_params) = (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new());
-	let types = TypeCtx {
-		structs: &structs,
-		enums: &enums,
-		aliases: &aliases,
-		type_params: &type_params,
-	};
+	let types = TypeCtx::new(&structs, &enums, &aliases, &type_params);
 	let mut next = 0;
 	variants
 		.iter()
@@ -238,6 +226,42 @@ pub(crate) struct TypeCtx<'a> {
 	pub enums: &'a HashMap<String, Vec<VariantInfo>>,
 	pub aliases: &'a HashMap<String, TypeExpr>,
 	pub type_params: &'a HashMap<String, Typ>,
+}
+
+impl<'a> TypeCtx<'a> {
+	pub fn new(
+		structs: &'a HashMap<String, Vec<FieldDef>>,
+		enums: &'a HashMap<String, Vec<VariantInfo>>,
+		aliases: &'a HashMap<String, TypeExpr>,
+		type_params: &'a HashMap<String, Typ>,
+	) -> Self {
+		TypeCtx {
+			structs,
+			enums,
+			aliases,
+			type_params,
+		}
+	}
+}
+
+// Try to parse `name` as `<prefix><width>`.
+fn int_width(
+	name: &str,
+	prefix: char,
+	ctor: fn(u16) -> Typ,
+	label: &str,
+	span: Span,
+) -> Option<Result<Typ, Diagnostic>> {
+	let rest = name.strip_prefix(prefix)?;
+	let w = rest.parse::<u16>().ok()?;
+	if w == 0 || w > 64 {
+		return Some(Err(Diagnostic::new(
+			format!("{label} width {w} out of range"),
+			span.into_range(),
+		)
+		.with_label("width must be 1-64")));
+	}
+	Some(Ok(ctor(w)))
 }
 
 impl TypeCtx<'_> {
@@ -293,27 +317,11 @@ impl TypeCtx<'_> {
 			"()" => return Ok(Typ::Tuple(vec![])),
 			_ => {}
 		}
-		if let Some(rest) = name.strip_prefix('i')
-			&& let Ok(w) = rest.parse::<u16>()
-		{
-			if w == 0 || w > 64 {
-				return Err(
-					Diagnostic::new(format!("integer width {w} out of range"), span.into_range())
-						.with_label("width must be 1-64"),
-				);
-			}
-			return Ok(Typ::Int(w));
+		if let Some(result) = int_width(name, 'i', Typ::Int, "integer", span) {
+			return result;
 		}
-		if let Some(rest) = name.strip_prefix('u')
-			&& let Ok(w) = rest.parse::<u16>()
-		{
-			if w == 0 || w > 64 {
-				return Err(
-					Diagnostic::new(format!("unsigned integer width {w} out of range"), span.into_range())
-						.with_label("width must be 1-64"),
-				);
-			}
-			return Ok(Typ::UInt(w));
+		if let Some(result) = int_width(name, 'u', Typ::UInt, "unsigned integer", span) {
+			return result;
 		}
 		if let Some(rest) = name.strip_prefix('f')
 			&& let Ok(w) = rest.parse::<u16>()
@@ -339,6 +347,28 @@ impl TypeCtx<'_> {
 			return Ok(Typ::Enum(name.to_string()));
 		}
 		Err(Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type"))
+	}
+
+	// Resolve a param list to `(name, type, mutable)` triples.
+	pub fn resolve_params(&self, params: &[Param]) -> Result<Vec<(String, Typ, bool)>, Diagnostic> {
+		params
+			.iter()
+			.map(|p| Ok((p.name.clone(), self.resolve(&p.typ, p.span)?, p.mutable)))
+			.collect()
+	}
+
+	// Resolve a param list plus an optional return type annotation.
+	pub fn resolve_params_ret(
+		&self,
+		params: &[Param],
+		ret: &Option<Spanned<TypeExpr>>,
+	) -> Result<ParamsRet, Diagnostic> {
+		let params = self.resolve_params(params)?;
+		let ret = ret
+			.as_ref()
+			.map(|(te, span)| Ok::<_, Diagnostic>((self.resolve(te, *span)?, *span)))
+			.transpose()?;
+		Ok((params, ret))
 	}
 }
 
@@ -464,7 +494,13 @@ impl Compiler {
 							..
 						} = &m.0
 						{
-							others.push((format!("{typ}.{name}"), params, *params_tuple, ret, body));
+							others.push(FnItem {
+								key: format!("{typ}.{name}"),
+								params,
+								params_tuple: *params_tuple,
+								ret,
+								body,
+							});
 						}
 					}
 				}
@@ -496,7 +532,13 @@ impl Compiler {
 					ret,
 					body,
 					..
-				} => others.push((name.clone(), params, *params_tuple, ret, body)),
+				} => others.push(FnItem {
+					key: name.clone(),
+					params,
+					params_tuple: *params_tuple,
+					ret,
+					body,
+				}),
 				Expr::Doc(_) => {}
 				_ => loose_refs.push(item),
 			}
@@ -510,60 +552,55 @@ impl Compiler {
 			.map(|(name, variants)| Ok((name.to_string(), build_variants(variants)?)))
 			.collect::<Result<_, _>>()?;
 
-		let mut structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		// TODO: struct fields can't reference other structs yet, so resolve against none
 		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		let no_type_params: HashMap<String, Typ> = HashMap::new();
-		let field_types = TypeCtx {
-			structs: &no_structs,
-			enums: &enums,
-			aliases: &aliases,
-			type_params: &no_type_params,
-		};
-		for (name, fields) in &struct_items {
-			let resolved = fields
-				.iter()
-				.map(|p| {
-					field_types.resolve(&p.typ, p.span).map(|t| FieldDef {
-						name: p.name.clone(),
-						typ: t,
-						default: p.default.clone(),
+		let field_types = TypeCtx::new(&no_structs, &enums, &aliases, &no_type_params);
+		let structs: HashMap<String, Vec<FieldDef>> = struct_items
+			.iter()
+			.map(|(name, fields)| {
+				let resolved = fields
+					.iter()
+					.map(|p| {
+						field_types.resolve(&p.typ, p.span).map(|t| FieldDef {
+							name: p.name.clone(),
+							typ: t,
+							default: p.default.clone(),
+						})
 					})
-				})
-				.collect::<Result<Vec<_>, _>>()?;
-			structs.insert(name.to_string(), resolved);
-		}
+					.collect::<Result<Vec<_>, _>>()?;
+				Ok((name.to_string(), resolved))
+			})
+			.collect::<Result<_, Diagnostic>>()?;
 
 		// hoist functions with an explicit return type
 		let int = self.module.target_config().pointer_type();
 		let mut funcs: HashMap<String, FnSig> = HashMap::new();
-		for (key, params, _, ret, _) in &others {
-			let Some((ret_te, ret_span)) = ret else { continue };
+		for item in &others {
+			let Some((ret_te, ret_span)) = item.ret else { continue };
 			let mut aliases = aliases.clone();
-			if let Some(t) = key.rsplit_once('.').map(|(t, _)| t) {
+			if let Some(t) = item.key.rsplit_once('.').map(|(t, _)| t) {
 				aliases.insert("Self".into(), TypeExpr::Name(t.into()));
 			}
-			let types = TypeCtx {
-				structs: &structs,
-				enums: &enums,
-				aliases: &aliases,
-				type_params: &no_type_params,
-			};
-			let param_typs: Vec<Typ> =
-				params.iter().map(|p| types.resolve(&p.typ, p.span)).collect::<Result<_, _>>()?;
+			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params);
+			let param_typs: Vec<Typ> = item
+				.params
+				.iter()
+				.map(|p| types.resolve(&p.typ, p.span))
+				.collect::<Result<_, _>>()?;
 			let ret = types.resolve(ret_te, *ret_span)?;
 			let mut sig = self.module.make_signature();
 			sig.params.extend(param_typs.iter().map(|t| AbiParam::new(cl_type(t, int))));
 			if !matches!(ret, Typ::Tuple(ref f) if f.is_empty()) {
 				sig.returns.push(AbiParam::new(cl_type(&ret, int)));
 			}
-			let sym = format!("oi_{}", key.replace('.', "__"));
+			let sym = format!("oi_{}", item.key.replace('.', "__"));
 			let id = self
 				.module
 				.declare_function(&sym, Linkage::Local, &sig)
 				.expect("declare function");
 			funcs.insert(
-				key.clone(),
+				item.key.clone(),
 				FnSig {
 					id,
 					params: param_typs,
@@ -572,32 +609,30 @@ impl Compiler {
 			);
 		}
 
-		for (key, params, params_tuple, ret, body) in &others {
-			let self_type = key.rsplit_once('.').map(|(t, _)| t);
+		for item in &others {
+			let self_type = item.key.rsplit_once('.').map(|(t, _)| t);
 			let mut aliases = aliases.clone();
 			if let Some(t) = self_type {
 				aliases.insert("Self".into(), TypeExpr::Name(t.into()));
 			}
-			let types = TypeCtx {
-				structs: &structs,
-				enums: &enums,
-				aliases: &aliases,
-				type_params: &no_type_params,
-			};
-			let params: Vec<(String, Typ, bool)> = params
-				.iter()
-				.map(|p| Ok((p.name.clone(), types.resolve(&p.typ, p.span)?, p.mutable)))
-				.collect::<Result<_, Diagnostic>>()?;
-			let ret = ret
-				.as_ref()
-				.map(|(te, span)| Ok::<_, Diagnostic>((types.resolve(te, *span)?, *span)))
-				.transpose()?;
-			let sym = format!("oi_{}", key.replace('.', "__"));
-			let ret = self.translate(&params, *params_tuple, ret, body, &funcs, types, self_type, false, &[])?;
+			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params);
+			let (params, ret) = types.resolve_params_ret(item.params, item.ret)?;
+			let sym = format!("oi_{}", item.key.replace('.', "__"));
+			let ret = self.translate(
+				&params,
+				item.params_tuple,
+				ret,
+				item.body,
+				&funcs,
+				types,
+				self_type,
+				false,
+				&[],
+			)?;
 			let id = self.finish_fn(&sym);
 			let param_typs = params.iter().map(|(_, t, _)| t.clone()).collect();
 			funcs.insert(
-				key.clone(),
+				item.key.clone(),
 				FnSig {
 					id,
 					params: param_typs,
@@ -626,33 +661,14 @@ impl Compiler {
 			}
 		};
 
-		let types = TypeCtx {
-			structs: &structs,
-			enums: &enums,
-			aliases: &aliases,
-			type_params: &no_type_params,
-		};
+		let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params);
 		let typ = self.translate(&[], true, None, entry, &funcs, types, None, true, &[])?;
 		let entry_id = self.finish_fn("oi_main");
 
 		// drain generic instances queued by calls we've seen
 		while let Some((sym, def, subst)) = self.pending.pop() {
-			let types = TypeCtx {
-				structs: &structs,
-				enums: &enums,
-				aliases: &aliases,
-				type_params: &subst,
-			};
-			let params: Vec<(String, Typ, bool)> = def
-				.params
-				.iter()
-				.map(|p| Ok((p.name.clone(), types.resolve(&p.typ, p.span)?, p.mutable)))
-				.collect::<Result<_, Diagnostic>>()?;
-			let ret = def
-				.ret
-				.as_ref()
-				.map(|(te, span)| Ok::<_, Diagnostic>((types.resolve(te, *span)?, *span)))
-				.transpose()?;
+			let types = TypeCtx::new(&structs, &enums, &aliases, &subst);
+			let (params, ret) = types.resolve_params_ret(&def.params, &def.ret)?;
 			self.translate(
 				&params,
 				def.params_tuple,
