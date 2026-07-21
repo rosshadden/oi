@@ -71,6 +71,19 @@ fn fn_type_alias_parses() {
 }
 
 #[test]
+fn alias_of_result_long_form() {
+	let src = indoc! {r#"
+		type Found = Result[int, Error]
+		fn find(x int) Found {
+			if x > 0 { return x }
+			return error("negative")
+		}
+		find(5)
+	"#};
+	check(src, "ok");
+}
+
+#[test]
 fn unknown_alias_target_errors() {
 	let src = indoc! {"
 		type Foo = Nope

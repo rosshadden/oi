@@ -279,7 +279,17 @@ impl TypeCtx<'_> {
 			TypeExpr::Array(elem) => Ok(Typ::Array(Box::new(self.resolve(elem, span)?))),
 			TypeExpr::FixedArray(elem, n) => Ok(Typ::FixedArray(Box::new(self.resolve(elem, span)?), *n)),
 			TypeExpr::Option(inner) => Ok(Typ::Option(Box::new(self.resolve(inner, span)?))),
-			TypeExpr::Result(inner) => Ok(Typ::Result(Box::new(self.resolve(inner, span)?))),
+			TypeExpr::Result(inner, err) => {
+				if let Some(e) = err
+					&& !matches!(e.as_ref(), TypeExpr::Name(n) if n == "Error")
+				{
+					return Err(
+						Diagnostic::new("custom error types aren't supported yet", span.into_range())
+							.with_label("`Error` is the only accepted error type"),
+					);
+				}
+				Ok(Typ::Result(Box::new(self.resolve(inner, span)?)))
+			}
 			TypeExpr::AtomSum(names) => {
 				let mut seen = HashSet::new();
 				if let Some(dup) = names.iter().find(|n| !seen.insert(*n)) {

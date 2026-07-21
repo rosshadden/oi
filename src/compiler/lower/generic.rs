@@ -22,7 +22,7 @@ fn unify(
 		(TypeExpr::Array(e), Typ::Array(c)) => unify(e, c, params, subst),
 		(TypeExpr::FixedArray(e, n), Typ::FixedArray(c, cn)) if n == cn => unify(e, c, params, subst),
 		(TypeExpr::Option(e), Typ::Option(c)) => unify(e, c, params, subst),
-		(TypeExpr::Result(e), Typ::Result(c)) => unify(e, c, params, subst),
+		(TypeExpr::Result(e, _), Typ::Result(c)) => unify(e, c, params, subst),
 		(TypeExpr::Tuple(elems), Typ::Tuple(fields)) if elems.len() == fields.len() => {
 			elems.iter().zip(fields).try_for_each(|(e, (_, f))| unify(e, f, params, subst))
 		}

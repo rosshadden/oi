@@ -135,3 +135,23 @@ fn bare_none_return_wraps() {
 	"};
 	check(src, "none");
 }
+
+#[test]
+fn long_form_matches_shorthand() {
+	let src = indoc! {"
+		fn find(id int) Option[int] {
+			if id == 7 { return 42 }
+			return none
+		}
+		find(7) or { -1 }
+	"};
+	check(src, "42");
+	let src = indoc! {"
+		fn find(id int) Option[int] {
+			if id == 7 { return 42 }
+			return none
+		}
+		find(1) or { -1 }
+	"};
+	check(src, "-1");
+}

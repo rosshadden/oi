@@ -151,3 +151,51 @@ fn error_unknown_method() {
 	let err = fail(r#"error("oops").code()"#);
 	assert!(err.contains("`Error` has no method `code`"), "got: {err}");
 }
+
+#[test]
+fn long_form_matches_shorthand() {
+	let src = indoc! {r#"
+		fn load(path string) Result[int, Error] {
+			if path == "ok" { return 42 }
+			return error("missing")
+		}
+		fn double(path string) Result[int, Error] {
+			v := load(path)?
+			v * 2
+		}
+		double("ok") or { -1 }
+	"#};
+	check(src, "84");
+	let src = indoc! {r#"
+		fn load(path string) Result[int, Error] {
+			if path == "ok" { return 42 }
+			return error("missing")
+		}
+		fn double(path string) Result[int, Error] {
+			v := load(path)?
+			v * 2
+		}
+		double("nope") or {
+			print($)
+			0
+		}
+	"#};
+	check(src, "missing\n0");
+}
+
+#[test]
+fn long_form_nested() {
+	let src = indoc! {r#"
+		fn load() Result[[]int, Error] {
+			return [1, 2, 3]
+		}
+		load() or { [-1] }
+	"#};
+	check(src, "[1, 2, 3]");
+}
+
+#[test]
+fn long_form_rejects_custom_error() {
+	let err = fail("fn load() Result[int, MyError] { 42 }\nload()");
+	assert!(err.contains("custom error types aren't supported yet"), "got: {err}");
+}

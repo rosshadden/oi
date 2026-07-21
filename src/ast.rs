@@ -271,7 +271,7 @@ pub enum TypeExpr {
 	FixedArray(Box<TypeExpr>, usize),
 	Fn(Vec<TypeExpr>, Box<TypeExpr>),
 	Option(Box<TypeExpr>),
-	Result(Box<TypeExpr>),
+	Result(Box<TypeExpr>, Option<Box<TypeExpr>>),
 	AtomSum(Vec<String>),
 	Map(Box<TypeExpr>, Box<TypeExpr>),
 }
