@@ -64,12 +64,12 @@ log.group :process
 ```oi
 # if a function is the last argument of a call, it may be written after the parens.
 retry(3) fn {
-	fetch(url)!
+	fetch(url)?
 }
 
 # if no named params are needed, the `fn` may be omitted
 retry(3) {
-	fetch(url)!
+	fetch(url)?
 }
 
 # if the trailing function is the only argument, the parens may be omitted too

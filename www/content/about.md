@@ -40,16 +40,16 @@ test "charlotte's web" {
 	assert(charlotte.write() == "some pig")
 }
 retry 3 {
-	fetch(url)!
+	fetch(url)?
 }
 timeout 5 {
-	slow_call()!
+	slow_call()?
 }
 
 # $ + trailing functions
 db.transaction {
-	$.insert(user)!
-	$.insert(order)!
+	$.insert(user)?
+	$.insert(order)?
 }
 
 # $ + pipelines
