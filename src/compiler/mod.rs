@@ -194,11 +194,8 @@ pub(crate) fn atom_sum_variants(names: &[String]) -> Vec<VariantInfo> {
 		.collect()
 }
 
-// Assign discriminants and resolve payload types.
-// TODO: only primitive payloads work right now
-fn build_variants(variants: &[EnumVariant]) -> Result<Vec<VariantInfo>, Diagnostic> {
-	let (structs, enums, aliases, type_params) = (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new());
-	let types = TypeCtx::new(&structs, &enums, &aliases, &type_params);
+// Assign discriminants and resolve payload types against `types`.
+fn build_variants(variants: &[EnumVariant], types: TypeCtx) -> Result<Vec<VariantInfo>, Diagnostic> {
 	let mut next = 0;
 	variants
 		.iter()
@@ -557,15 +554,14 @@ impl Compiler {
 		let aliases: HashMap<String, TypeExpr> =
 			alias_items.iter().map(|(name, te)| (name.to_string(), (*te).clone())).collect();
 
-		let enums: HashMap<String, Vec<VariantInfo>> = enum_items
-			.iter()
-			.map(|(name, variants)| Ok((name.to_string(), build_variants(variants)?)))
-			.collect::<Result<_, _>>()?;
+		// name-only registry
+		let enum_names: HashMap<String, Vec<VariantInfo>> =
+			enum_items.iter().map(|(name, _)| (name.to_string(), Vec::new())).collect();
 
 		// TODO: struct fields can't reference other structs yet, so resolve against none
 		let no_structs: HashMap<String, Vec<FieldDef>> = HashMap::new();
 		let no_type_params: HashMap<String, Typ> = HashMap::new();
-		let field_types = TypeCtx::new(&no_structs, &enums, &aliases, &no_type_params);
+		let field_types = TypeCtx::new(&no_structs, &enum_names, &aliases, &no_type_params);
 		let structs: HashMap<String, Vec<FieldDef>> = struct_items
 			.iter()
 			.map(|(name, fields)| {
@@ -582,6 +578,12 @@ impl Compiler {
 				Ok((name.to_string(), resolved))
 			})
 			.collect::<Result<_, Diagnostic>>()?;
+
+		let variant_types = TypeCtx::new(&structs, &enum_names, &aliases, &no_type_params);
+		let enums: HashMap<String, Vec<VariantInfo>> = enum_items
+			.iter()
+			.map(|(name, variants)| Ok((name.to_string(), build_variants(variants, variant_types)?)))
+			.collect::<Result<_, _>>()?;
 
 		// hoist functions with an explicit return type
 		let int = self.module.target_config().pointer_type();

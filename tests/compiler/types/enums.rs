@@ -297,6 +297,65 @@ fn payload_ordering_rejected() {
 }
 
 #[test]
+fn struct_payload() {
+	check(
+		indoc! {r#"
+			struct Point { x int, y int }
+			enum Shape { dot rect(Point) }
+			s := Shape.rect(Point{ x: 3, y: 4 })
+			match s {
+				.rect(p) { print(p) }
+				.dot {}
+			}
+		"#},
+		"Point{x: 3, y: 4}",
+	);
+}
+
+#[test]
+fn enum_payload() {
+	check(
+		indoc! {r#"
+			enum A { one two }
+			enum B { wrap(A) empty }
+			b := B.wrap(A.two)
+			match b {
+				.wrap(a) {
+					match a {
+						.one { "one" }
+						.two { "two" }
+					}
+				}
+				.empty { "none" }
+			}
+		"#},
+		"two",
+	);
+}
+
+#[test]
+fn alias_payload() {
+	check(
+		indoc! {"
+			type Meters = f64
+			enum Dist { unknown known(Meters) }
+			d := Dist.known(5.0)
+			match d {
+				.known(m) { m }
+				.unknown { 0.0 }
+			}
+		"},
+		"5.0",
+	);
+}
+
+#[test]
+fn payload_unknown_type_rejected() {
+	let err = fail("enum A { wrap(NoSuchType) }");
+	assert!(err.contains("unknown type"), "got: {err}");
+}
+
+#[test]
 fn explicit_disc_default_is_first() {
 	check("enum E { a = 5, b c }\nmut x E\nx", "a");
 }
