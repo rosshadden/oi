@@ -79,8 +79,8 @@ tags: []
 # TODO
 - immediate
 	- [ ] backport these obsidian notes into the Oi repo
-- [ ] pipeline examples with `!` postfix collide with macros
-- [ ] revisit needing `print`, `assert`, et al to be macros
+- [x] pipeline examples with `!` postfix collide with macros
+- [x] revisit needing `print`, `assert`, et al to be macros
 	- V allows this without macros: `error('User ${id} not found')`
 	- maybe I can do away with the `!` macros postfix entirely, solving the clash with `Result`
 - [ ] implicit context
@@ -88,7 +88,7 @@ tags: []
 - [ ] computed values `swift`
 - [ ] ptr type (ptr, voidptr, rawptr) `nim v odin`
 - [ ] make another pass on generics. I don't love what I have now
-- [ ] make another pass on metaprogramming. I don't love what I have now
+- [x] make another pass on metaprogramming. I don't love what I have now
 - [ ] varargs
 	- v vs nim vs ?
 	- to mesh with "tuples everywhere", a vararg should take up one element in the params tuple
