@@ -1562,34 +1562,44 @@ fn main() {
 	
 	## macros
 	
-	# a macro is a comptime fn over ASTs, defined with `fn name!`
-	# macro calls end in a !
+	# a macro is a comptime fn over `Ast`, defined with `fn name!`
+	# macros end in a !, which suspends normal parsing and collects the body
+	# args arrive as parsed `Ast` by default
 	
-	# TODO: quote/$ below are a placeholder, I don't have this part fleshed out yet
+	# quasi-quote evals to `Ast`
+	# paired backticks around valid Oi
+	q := `2 + 2`
+	
+	# %name unquotes a comptime value, %{expr} unquotes an expression
+	n := 2
+	doubled := `%n + %{compute_rhs()}`
+	
+	# %{...xs} spreads an []Ast across a sequence position (call args, array elems, statements, match arms)
+	args := [`1`, `2`, `3`]
+	ast := `sum(%{...args})`
+	
+	# quotes are bidirectional
+	match expr {
+		`foo(%x, %y)` => swap_args(x, y)
+		_ => expr
+	}
+	
 	fn derive!(input Ast, traits Ast) Ast {
 		# input is the parsed struct, traits is the list passed to @derive!()
 		name := input.type_name()
 		fields := input.struct_fields()
-		quote {
-			$(traits.map(fn (t) {
-				match t.name() {
-					"Eq" => quote {
-						impl Eq for $name {
-							fn eq(self, other Self) bool {
-								$(fields.map(fn (f) { quote { self.$f == other.$f } }).join(" && "))
-							}
-						}
-					}
-					"Debug" => quote {
-						impl Debug for $name {
-							fn debug(self) string {
-								# ... build using $fields
-							}
-						}
-					}
+		impls := traits.items().map(fn (t) {
+			match t.name() {
+				"Eq" => {
+					checks := fields.map(fn (f) { `self.%f == other.%f` })
+					`impl Eq for %name {
+						fn eq(self, other Self) bool { %{checks.reduce(fn (a, b) { `%a && %b` })} }
+					}`
 				}
-			}))
-		}
+				"Debug" => `impl Debug for %name { ... }`
+			}
+		})
+		`%{...impls}`
 	}
 	
 	# `@name!` runs a macro on the following expression
@@ -1602,8 +1612,8 @@ fn main() {
 	# paren-less statement form. the argument runs to end of statement, parenthesize to compose
 	assert! foo.bar() == 5
 
-	# ! suspends normal parsing, so a body can hold non-Oi tokens
-	# TODO: do macro args arrive as parsed Ast or raw tokens by default?
+	# a Tokens param opts a macro into the raw stream, for embedded DSLs whose bodies aren't valid Oi
+	fn sql!(body Tokens) Ast { ... }
 	sql! { SELECT * FROM users WHERE id = {id} }
 
 	# reflection in `comp`
