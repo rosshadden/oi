@@ -464,6 +464,15 @@ where
 
 		// match expression
 		let binding = ident().then_ignore(just(Token::At)).or_not();
+		let arm_end = choice((
+			just(Token::Comma).ignored(),
+			just(Token::RBrace).rewind().ignored(),
+			just(Token::Else).rewind().ignored(),
+		));
+		let arm_body = block
+			.clone()
+			.then_ignore(just(Token::Comma).or_not())
+			.or(expr.clone().map(|e| vec![e]).then_ignore(arm_end));
 		let match_arm = binding
 			.then(
 				expr.clone()
@@ -472,7 +481,8 @@ where
 					.at_least(1)
 					.collect::<Vec<_>>(),
 			)
-			.then(block.clone())
+			.then_ignore(just(Token::FatArrow))
+			.then(arm_body.clone())
 			.map(|((binding, patterns), body)| MatchArm {
 				binding,
 				patterns,
@@ -481,10 +491,12 @@ where
 		let match_expr = just(Token::Match)
 			.ignore_then(expr.clone())
 			.then(brace(
-				match_arm
-					.repeated()
-					.collect::<Vec<_>>()
-					.then(just(Token::Else).ignore_then(block.clone()).or_not()),
+				match_arm.repeated().collect::<Vec<_>>().then(
+					just(Token::Else)
+						.ignore_then(just(Token::FatArrow))
+						.ignore_then(arm_body)
+						.or_not(),
+				),
 			))
 			.map_with(|(subject, (arms, else_body)), ex| {
 				(

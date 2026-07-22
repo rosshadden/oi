@@ -6,8 +6,8 @@ fn shorthand_round_trip() {
 		enum Opt[T] { nope, some(T) }
 		fn get() Opt[int] { .some(5) }
 		match get() {
-			.some(n) { n }
-			.nope { -1 }
+			.some(n) => n,
+			.nope => -1,
 		}
 	"};
 	check(src, "5");
@@ -19,8 +19,8 @@ fn nope_arm() {
 		enum Opt[T] { nope, some(T) }
 		fn get() Opt[int] { .nope }
 		match get() {
-			.some(n) { n }
-			.nope { -1 }
+			.some(n) => n,
+			.nope => -1,
 		}
 	"};
 	check(src, "-1");
@@ -32,8 +32,8 @@ fn generic_fn_round_trip() {
 		enum Opt[T] { nope, some(T) }
 		fn wrap[T](v T) Opt[T] { .some(v) }
 		match wrap(9) {
-			.some(n) { n }
-			.nope { -1 }
+			.some(n) => n,
+			.nope => -1,
 		}
 	"};
 	check(src, "9");
@@ -45,8 +45,8 @@ fn two_instances_coexist() {
 		enum Opt[T] { nope, some(T) }
 		fn geti() Opt[int] { .some(1) }
 		fn gets() Opt[string] { .some("hi") }
-		match geti() { .some(n) { print(n) } .nope {} }
-		match gets() { .some(s) { print(s) } .nope {} }
+		match geti() { .some(n) => print(n), .nope => {} }
+		match gets() { .some(s) => print(s), .nope => {} }
 	"#};
 	check(src, "1\nhi");
 }
@@ -77,8 +77,8 @@ fn recursive_payload() {
 		enum Tree[T] { leaf(T), node(Tree[T]) }
 		fn f() Tree[int] { .node(.leaf(5)) }
 		match f() {
-			.leaf(v) { v }
-			.node(inner) { match inner { .leaf(v) { v } .node(x) { -1 } } }
+			.leaf(v) => v,
+			.node(inner) => match inner { .leaf(v) => v, .node(x) => -1, },
 		}
 	"};
 	check(src, "5");

@@ -62,8 +62,8 @@ fn match_binds_some() {
 		indoc! {r#"
 			o := ?int(42)
 			match o {
-				.some(n) { n }
-				.none { -1 }
+				.some(n) => n,
+				.none => -1,
 			}
 		"#},
 		"42",
@@ -76,8 +76,8 @@ fn match_none_arm() {
 		indoc! {r#"
 			o := ?int(none)
 			match o {
-				.some(n) { n }
-				.none { -1 }
+				.some(n) => n,
+				.none => -1,
 			}
 		"#},
 		"-1",
@@ -86,7 +86,7 @@ fn match_none_arm() {
 
 #[test]
 fn match_non_exhaustive_errors() {
-	let err = fail("o := ?int(42)\nmatch o {\n\t.some(n) { n }\n}");
+	let err = fail("o := ?int(42)\nmatch o {\n\t.some(n) => n,\n}");
 	assert!(err.contains("non-exhaustive match, missing: none"), "got: {err}");
 }
 
@@ -105,8 +105,8 @@ fn fn_param_type() {
 	let src = indoc! {"
 		fn unwrap_or(o ?int, fallback int) int {
 			match o {
-				.some(n) { n }
-				.none { fallback }
+				.some(n) => n,
+				.none => fallback,
 			}
 		}
 		unwrap_or(?int(42), 0)

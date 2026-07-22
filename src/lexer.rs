@@ -97,6 +97,8 @@ pub enum Token {
 	Bind,
 	#[token("=")]
 	Assign,
+	#[token("=>")]
+	FatArrow,
 
 	// binary operators
 	#[token("+")]
@@ -213,6 +215,7 @@ impl fmt::Display for Token {
 			Token::Ident(name) => write!(f, "{name}"),
 			Token::Bind => write!(f, ":="),
 			Token::Assign => write!(f, "="),
+			Token::FatArrow => write!(f, "=>"),
 			Token::Atom(name) => write!(f, ":{name}"),
 			Token::DotDot => write!(f, ".."),
 			Token::Dot => write!(f, "."),

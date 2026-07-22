@@ -47,8 +47,8 @@ fn atom_in_match() {
 	check(
 		r#"x := :ok
 match x {
-	:ok { "yes" }
-	else { "no" }
+	:ok => "yes",
+	else => "no",
 }"#,
 		"yes",
 	);

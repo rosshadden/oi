@@ -56,8 +56,8 @@ fn match_binds_ok() {
 		indoc! {r#"
 			r := !int(42)
 			match r {
-				.ok(n) { n }
-				.err(e) { -1 }
+				.ok(n) => n,
+				.err(e) => -1,
 			}
 		"#},
 		"42",
@@ -70,8 +70,8 @@ fn match_err_arm() {
 		indoc! {r#"
 			r := !int(error("oops"))
 			match r {
-				.ok(n) { n }
-				.err(e) { -1 }
+				.ok(n) => n,
+				.err(e) => -1,
 			}
 		"#},
 		"-1",
@@ -80,7 +80,7 @@ fn match_err_arm() {
 
 #[test]
 fn match_non_exhaustive_errors() {
-	let err = fail("r := !int(42)\nmatch r {\n\t.ok(n) { n }\n}");
+	let err = fail("r := !int(42)\nmatch r {\n\t.ok(n) => n,\n}");
 	assert!(err.contains("non-exhaustive match, missing: err"), "got: {err}");
 }
 
@@ -99,8 +99,8 @@ fn fn_param_type() {
 	let src = indoc! {"
 		fn unwrap_or(r !int, fallback int) int {
 			match r {
-				.ok(n) { n }
-				.err(e) { fallback }
+				.ok(n) => n,
+				.err(e) => fallback,
 			}
 		}
 		unwrap_or(!int(42), 0)

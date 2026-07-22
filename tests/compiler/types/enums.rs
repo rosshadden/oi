@@ -81,9 +81,9 @@ fn in_match() {
 			enum Color { red green blue }
 			c := Color.green
 			match c {
-				Color.red { "r" }
-				Color.green { "g" }
-				else { "?" }
+				Color.red => "r",
+				Color.green => "g",
+				else => "?",
 			}
 		"#},
 		"g",
@@ -122,9 +122,9 @@ fn shorthand_in_match() {
 			enum Color { red green blue }
 			c := Color.green
 			match c {
-				.red { "r" }
-				.green { "g" }
-				else { "?" }
+				.red => "r",
+				.green => "g",
+				else => "?",
 			}
 		"#},
 		"g",
@@ -227,8 +227,8 @@ fn payload_match_binds_fields() {
 			enum Opt { nope some(int) }
 			o := Opt.some(7)
 			match o {
-				.some(n) { n }
-				.nope { -1 }
+				.some(n) => n,
+				.nope => -1,
 			}
 		"#},
 		"7",
@@ -242,8 +242,8 @@ fn payload_match_fieldless_arm() {
 			enum Opt { nope some(int) }
 			o Opt := .nope
 			match o {
-				.some(n) { n }
-				.nope { -1 }
+				.some(n) => n,
+				.nope => -1,
 			}
 		"#},
 		"-1",
@@ -257,8 +257,8 @@ fn payload_match_multiple_fields() {
 			enum Shape { rect(int, int) tri(int, int, int) }
 			s := Shape.rect(3, 4)
 			match s {
-				.rect(w, h) { w * h }
-				.tri(a, b, c) { a + b + c }
+				.rect(w, h) => w * h,
+				.tri(a, b, c) => a + b + c,
 			}
 		"#},
 		"12",
@@ -268,7 +268,7 @@ fn payload_match_multiple_fields() {
 #[test]
 fn shorthand_payload_construct() {
 	check(
-		"enum Opt { nope some(int) }\no Opt := .some(5)\nmatch o { .some(n) { n } .nope { 0 } }",
+		"enum Opt { nope some(int) }\no Opt := .some(5)\nmatch o { .some(n) => n, .nope => 0 }",
 		"5",
 	);
 }
@@ -304,8 +304,8 @@ fn struct_payload() {
 			enum Shape { dot rect(Point) }
 			s := Shape.rect(Point{ x: 3, y: 4 })
 			match s {
-				.rect(p) { print(p) }
-				.dot {}
+				.rect(p) => print(p),
+				.dot => {}
 			}
 		"#},
 		"Point{x: 3, y: 4}",
@@ -320,13 +320,11 @@ fn enum_payload() {
 			enum B { wrap(A) empty }
 			b := B.wrap(A.two)
 			match b {
-				.wrap(a) {
-					match a {
-						.one { "one" }
-						.two { "two" }
-					}
-				}
-				.empty { "none" }
+				.wrap(a) => match a {
+					.one => "one",
+					.two => "two",
+				},
+				.empty => "none",
 			}
 		"#},
 		"two",
@@ -341,8 +339,8 @@ fn alias_payload() {
 			enum Dist { unknown known(Meters) }
 			d := Dist.known(5.0)
 			match d {
-				.known(m) { m }
-				.unknown { 0.0 }
+				.known(m) => m,
+				.unknown => 0.0,
 			}
 		"},
 		"5.0",
@@ -542,8 +540,8 @@ fn shorthand_coerces_in_match_tail_return() {
 			enum Color { red green blue }
 			fn fav(n int) Color {
 				match n {
-					1 { .red }
-					else { .blue }
+					1 => .red,
+					else => .blue,
 				}
 			}
 			fav(9)
@@ -571,8 +569,8 @@ fn shorthand_coerces_in_match_expr() {
 			enum Color { red green blue }
 			n := 9
 			c Color := match n {
-				1 { .red }
-				else { .blue }
+				1 => .red,
+				else => .blue,
 			}
 			c
 		"#},

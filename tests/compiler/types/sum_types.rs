@@ -74,8 +74,8 @@ fn matching() {
 			type Status = :ok | :err
 			x Status := :err
 			match x {
-				:ok { "good" }
-				:err { "bad" }
+				:ok => "good",
+				:err => "bad",
 			}
 		"#},
 		"bad",
@@ -85,8 +85,8 @@ fn matching() {
 			type Status = :ok | :err
 			x Status := :err
 			match x {
-				:ok { "good" }
-				_ { "fallback" }
+				:ok => "good",
+				_ => "fallback",
 			}
 		"#},
 		"fallback",
@@ -95,7 +95,7 @@ fn matching() {
 			type Status = :ok | :err
 			x Status := :err
 			match x {
-				:ok { "good" }
+				:ok => "good",
 			}
 		"#});
 	assert!(err.contains("non-exhaustive match, missing: err"), "got: {err}");
