@@ -6,7 +6,7 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
 
-use crate::ast::{EnumVariant, Expr, Param, Span, Spanned, TypeExpr};
+use crate::ast::{EnumVariant, Expr, Param, Span, Spanned, TypeExpr, TypeParam};
 use crate::diagnostics::Diagnostic;
 use crate::runtime;
 
@@ -393,7 +393,7 @@ pub(crate) struct GenericFnDef {
 	pub params_tuple: bool,
 	pub ret: Option<Spanned<TypeExpr>>,
 	pub body: Vec<Spanned<Expr>>,
-	pub type_params: Vec<String>,
+	pub type_params: Vec<TypeParam>,
 	pub captures: Vec<(String, Typ, bool)>,
 }
 

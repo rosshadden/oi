@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, Capture, EnumVariant, Expr, MatchArm, Param, Pattern, Spanned, TypeExpr};
+use crate::ast::{BinOp, Capture, EnumVariant, Expr, MatchArm, Param, Pattern, Spanned, TypeExpr, TypeParam};
 use crate::lexer::Token;
 
 use chumsky::{
@@ -169,7 +169,10 @@ where
 	let ret = type_expr.clone().map_with(|t, ex| (t, ex.span())).or_not();
 
 	// generics
-	let type_params = bracket(list(ident())).or_not().map(Option::unwrap_or_default);
+	let type_param = ident()
+		.then(just(Token::Colon).ignore_then(ident()).or_not())
+		.map(|(name, bound)| TypeParam { name, bound });
+	let type_params = bracket(list(type_param)).or_not().map(Option::unwrap_or_default);
 
 	// bindings
 	let annot = type_expr.clone().map_with(|t, ex| (t, ex.span()));

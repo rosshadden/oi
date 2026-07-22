@@ -1,14 +1,15 @@
 use super::*;
+use crate::ast::TypeParam;
 
 // Extend `subst` by matching a declared type against a concrete arg type.
 fn unify(
 	declared: &TypeExpr,
 	concrete: &Typ,
-	params: &[String],
+	params: &[TypeParam],
 	subst: &mut HashMap<String, Typ>,
 ) -> Result<(), String> {
 	if let TypeExpr::Name(n) = declared
-		&& params.contains(n)
+		&& params.iter().any(|p| &p.name == n)
 	{
 		return match subst.get(n) {
 			Some(bound) if bound != concrete => Err(format!("`{n}` bound to both {bound} and {concrete}")),
@@ -32,11 +33,11 @@ fn unify(
 }
 
 // A monomorph cache key.
-fn mangle(name: &str, subst: &HashMap<String, Typ>, order: &[String]) -> String {
+fn mangle(name: &str, subst: &HashMap<String, Typ>, order: &[TypeParam]) -> String {
 	let mut sym = format!("oi_{name}");
 	for p in order {
 		sym.push('$');
-		sym.push_str(&subst[p].to_string());
+		sym.push_str(&subst[&p.name].to_string());
 	}
 	sym
 }
@@ -71,7 +72,7 @@ impl<'a> Translator<'a> {
 			.with_label("wrong number of type arguments"));
 		}
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
-			subst.insert(param.clone(), self.types().resolve(te, *te_span)?);
+			subst.insert(param.name.clone(), self.types().resolve(te, *te_span)?);
 		}
 		let mut vals = Vec::with_capacity(args.len());
 		for (arg, param) in args.iter().zip(&def.params) {
@@ -80,11 +81,12 @@ impl<'a> Translator<'a> {
 				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
 			vals.push(val);
 		}
-		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(*p)) {
-			return Err(
-				Diagnostic::new(format!("cannot infer type parameter `{missing}`"), span.into_range())
-					.with_label("not determined by any argument"),
-			);
+		if let Some(missing) = def.type_params.iter().find(|p| !subst.contains_key(&p.name)) {
+			return Err(Diagnostic::new(
+				format!("cannot infer type parameter `{}`", missing.name),
+				span.into_range(),
+			)
+			.with_label("not determined by any argument"));
 		}
 		let sig = self.declare_instance(name, def, subst, span)?;
 		Ok(self.emit_call(&sig, &vals))

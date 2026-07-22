@@ -50,7 +50,7 @@ pub enum Expr {
 
 	Fn {
 		name: String,
-		type_params: Vec<String>,
+		type_params: Vec<TypeParam>,
 		params: Vec<Param>,
 		params_tuple: bool,
 		ret: Option<Spanned<TypeExpr>>,
@@ -308,6 +308,13 @@ pub enum Capture {
 	ReadOnly(String),
 	Mut(String),
 	Move(String),
+}
+
+// Generic type parameter.
+#[derive(Debug, Clone)]
+pub struct TypeParam {
+	pub name: String,
+	pub bound: Option<String>,
 }
 
 // A function parameter or struct field declaration.

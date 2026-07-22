@@ -126,3 +126,25 @@ fn explicit_type_arg_on_non_generic_errors() {
 	"});
 	assert!(err.contains("is not generic"), "got: {err}");
 }
+
+#[test]
+fn bounded_type_param_parses_and_runs() {
+	let src = indoc! {"
+		fn biggest[T: Ord](a T, b T) T {
+			if a > b { a } else { b }
+		}
+		biggest(3, 7)
+	"};
+	check(src, "7");
+}
+
+#[test]
+fn bounded_type_param_with_explicit_type_arg() {
+	let src = indoc! {"
+		fn biggest[T: Ord](a T, b T) T {
+			if a > b { a } else { b }
+		}
+		biggest[int](3, 7)
+	"};
+	check(src, "7");
+}
