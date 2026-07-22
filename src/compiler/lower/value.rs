@@ -164,14 +164,18 @@ impl<'a> Translator<'a> {
 	}
 
 	// The variant table of a named enum.
-	pub(super) fn enum_variants(&self, name: &str) -> &'a [VariantInfo] {
-		self.enums.get(name).map(Vec::as_slice).unwrap_or(&[])
+	pub(super) fn enum_variants(&self, name: &str) -> Vec<VariantInfo> {
+		self.enums
+			.get(name)
+			.cloned()
+			.or_else(|| self.generics.instances.borrow().get(name).cloned())
+			.unwrap_or_default()
 	}
 
 	// Variant table for any type that carries variants.
 	pub(super) fn variants_of(&self, typ: &Typ) -> Vec<VariantInfo> {
 		match typ {
-			Typ::Enum(name) => self.enum_variants(name).to_vec(),
+			Typ::Enum(name) => self.enum_variants(name),
 			Typ::Option(inner) => option_variants(inner),
 			Typ::Result(inner) => result_variants(inner),
 			Typ::AtomSum(names) => atom_sum_variants(names),
@@ -252,14 +256,11 @@ impl<'a> Translator<'a> {
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<(Value, Typ), Diagnostic> {
-		let v = self
-			.enums
-			.get(name)
-			.and_then(|vs| vs.iter().find(|v| v.name == variant))
-			.ok_or_else(|| {
-				Diagnostic::new(format!("enum `{name}` has no variant `{variant}`"), span.into_range())
-					.with_label("no such variant")
-			})?;
+		let variants = self.enum_variants(name);
+		let v = variants.iter().find(|v| v.name == variant).ok_or_else(|| {
+			Diagnostic::new(format!("enum `{name}` has no variant `{variant}`"), span.into_range())
+				.with_label("no such variant")
+		})?;
 		let (disc, payload) = (v.disc, v.payload.clone());
 		if args.len() != payload.len() {
 			let msg = format!(
@@ -278,7 +279,7 @@ impl<'a> Translator<'a> {
 			}
 			fields.push(fv);
 		}
-		let val = self.make_enum(self.enum_variants(name), disc, &fields);
+		let val = self.make_enum(&variants, disc, &fields);
 		Ok((val, Typ::Enum(name.to_string())))
 	}
 
@@ -356,7 +357,7 @@ impl<'a> Translator<'a> {
 		}
 		let struct_fields = match self.structs.get(name.as_str()) {
 			Some(fields) => fields.clone(),
-			None => match self.generic_structs.get(name.as_str()).cloned() {
+			None => match self.generics.structs.get(name.as_str()).cloned() {
 				Some(def) => return self.generic_struct_lit(&name, def, fields, span),
 				None => {
 					return Err(Diagnostic::new(format!("unknown struct `{name}`"), span.into_range())

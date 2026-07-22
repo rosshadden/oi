@@ -112,7 +112,7 @@ impl<'a> Translator<'a> {
 			.with_label("called here"));
 		};
 
-		let types = TypeCtx::new(self.structs, self.enums, self.aliases, &subst, self.generic_structs);
+		let types = TypeCtx::new(self.structs, self.enums, self.aliases, &subst, self.generics);
 		let params = types.resolve_params(&def.params)?;
 		let ret = types.resolve(ret_te, *ret_span)?;
 

@@ -109,7 +109,7 @@ impl<'a> Translator<'a> {
 			}
 
 			Expr::Call { name, type_args, args } => {
-				if !type_args.is_empty() && !self.generics.contains_key(name) {
+				if !type_args.is_empty() && !self.generic_fns.contains_key(name) {
 					return Err(Diagnostic::new(format!("`{name}` is not generic"), expr.1.into_range())
 						.with_label("unexpected type arguments"));
 				}
@@ -131,7 +131,7 @@ impl<'a> Translator<'a> {
 					Some(result) => Ok(result),
 					None => match self.funcs.get(name).cloned() {
 						Some(sig) => self.call_sig(name, sig, None, args, expr.1),
-						None => match self.generics.get(name).cloned() {
+						None => match self.generic_fns.get(name).cloned() {
 							Some(def) => self.call_generic(name, &def, type_args, args, expr.1),
 							None => Err(
 								Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
@@ -165,7 +165,8 @@ impl<'a> Translator<'a> {
 					let (recv_val, recv_typ) = self.expr(recv)?;
 					if let Typ::Enum(enum_name) = &recv_typ {
 						if method == "str" && args.is_empty() {
-							let s = self.enum_name_str(self.enum_variants(enum_name), recv_val);
+							let variants = self.enum_variants(enum_name);
+							let s = self.enum_name_str(&variants, recv_val);
 							return Ok((s, Typ::Str));
 						}
 						return Err(Diagnostic::new(

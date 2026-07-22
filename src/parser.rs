@@ -716,7 +716,7 @@ where
 		});
 	let struct_def = just(Token::Struct)
 		.ignore_then(ident())
-		.then(type_params)
+		.then(type_params.clone())
 		.then(brace(loose_list(struct_field)))
 		.map_with(|((name, type_params), fields), ex| {
 			(
@@ -745,8 +745,9 @@ where
 		});
 	let enum_def = just(Token::Enum)
 		.ignore_then(ident())
+		.then(type_params)
 		.then(brace(loose_list(variant)))
-		.try_map_with(|(name, variants), ex| {
+		.try_map_with(|((name, type_params), variants), ex| {
 			let mut next = 0;
 			let mut seen = Vec::new();
 			for v in &variants {
@@ -758,7 +759,14 @@ where
 				seen.push(d);
 				next = d + 1;
 			}
-			Ok((Expr::EnumDef { name, variants }, ex.span()))
+			Ok((
+				Expr::EnumDef {
+					name,
+					type_params,
+					variants,
+				},
+				ex.span(),
+			))
 		});
 
 	// type aliases

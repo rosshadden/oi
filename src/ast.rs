@@ -203,6 +203,7 @@ pub enum Expr {
 	// `enum Name {}`
 	EnumDef {
 		name: String,
+		type_params: Vec<TypeParam>,
 		variants: Vec<EnumVariant>,
 	},
 	// `.variant` or `.variant(args)`

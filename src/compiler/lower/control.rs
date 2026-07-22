@@ -416,7 +416,7 @@ impl<'a> Translator<'a> {
 
 		let target = Typ::Result(Box::new(Typ::Enum(name.to_string())));
 		let target_variants = self.variants_of(&target);
-		let variants = self.enum_variants(name).to_vec();
+		let variants = self.enum_variants(name);
 
 		let err = self.str_const("no matching variant");
 		let mut result = self.make_enum(&target_variants, 1, &[err]);
