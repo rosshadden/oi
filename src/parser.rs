@@ -745,7 +745,7 @@ where
 		});
 	let enum_def = just(Token::Enum)
 		.ignore_then(ident())
-		.then(type_params)
+		.then(type_params.clone())
 		.then(brace(loose_list(variant)))
 		.try_map_with(|((name, type_params), variants), ex| {
 			let mut next = 0;
@@ -783,8 +783,18 @@ where
 
 	let impl_block = just(Token::Impl)
 		.ignore_then(ident())
+		.then(type_params.clone())
 		.then(brace(func.clone().repeated().collect::<Vec<_>>()))
-		.map_with(|(typ, methods), ex| (Expr::Impl { typ, methods }, ex.span()));
+		.map_with(|((typ, type_params), methods), ex| {
+			(
+				Expr::Impl {
+					typ,
+					type_params,
+					methods,
+				},
+				ex.span(),
+			)
+		});
 
 	struct_def
 		.or(enum_def)

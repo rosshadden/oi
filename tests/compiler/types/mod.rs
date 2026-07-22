@@ -4,6 +4,7 @@ mod atoms;
 mod booleans;
 mod enums;
 mod generic_enums;
+mod generic_methods;
 mod generic_structs;
 mod generics;
 mod literals;

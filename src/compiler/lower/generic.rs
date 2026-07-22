@@ -7,6 +7,7 @@ pub(super) fn unify(
 	concrete: &Typ,
 	params: &[TypeParam],
 	subst: &mut HashMap<String, Typ>,
+	generics: &Generics,
 ) -> Result<(), String> {
 	if let TypeExpr::Name(n) = declared
 		&& params.iter().any(|p| &p.name == n)
@@ -20,12 +21,23 @@ pub(super) fn unify(
 		};
 	}
 	match (declared, concrete) {
-		(TypeExpr::Array(e), Typ::Array(c)) => unify(e, c, params, subst),
-		(TypeExpr::FixedArray(e, n), Typ::FixedArray(c, cn)) if n == cn => unify(e, c, params, subst),
-		(TypeExpr::Option(e), Typ::Option(c)) => unify(e, c, params, subst),
-		(TypeExpr::Result(e, _), Typ::Result(c)) => unify(e, c, params, subst),
-		(TypeExpr::Tuple(elems), Typ::Tuple(fields)) if elems.len() == fields.len() => {
-			elems.iter().zip(fields).try_for_each(|(e, (_, f))| unify(e, f, params, subst))
+		(TypeExpr::Array(e), Typ::Array(c)) => unify(e, c, params, subst, generics),
+		(TypeExpr::FixedArray(e, n), Typ::FixedArray(c, cn)) if n == cn => unify(e, c, params, subst, generics),
+		(TypeExpr::Option(e), Typ::Option(c)) => unify(e, c, params, subst, generics),
+		(TypeExpr::Result(e, _), Typ::Result(c)) => unify(e, c, params, subst, generics),
+		(TypeExpr::Tuple(elems), Typ::Tuple(fields)) if elems.len() == fields.len() => elems
+			.iter()
+			.zip(fields)
+			.try_for_each(|(e, (_, f))| unify(e, f, params, subst, generics)),
+		(TypeExpr::Generic(_, gargs), Typ::Struct(sname, _)) => {
+			let cached = generics.instance_args.borrow().get(sname).cloned();
+			match cached {
+				Some(cargs) => gargs
+					.iter()
+					.zip(&cargs)
+					.try_for_each(|(g, c)| unify(g, c, params, subst, generics)),
+				None => Ok(()),
+			}
 		}
 		// a non-param name, atom-sum, etc: trust it, the call emits against the real signature anyway
 		_ => Ok(()),
@@ -34,7 +46,7 @@ pub(super) fn unify(
 
 // A monomorph cache key.
 fn mangle(name: &str, subst: &HashMap<String, Typ>, order: &[TypeParam]) -> String {
-	let mut sym = format!("oi_{name}");
+	let mut sym = format!("oi_{}", name.replace('.', "__"));
 	for p in order {
 		sym.push('$');
 		sym.push_str(&subst[&p.name].to_string());
@@ -50,11 +62,17 @@ impl<'a> Translator<'a> {
 		def: &GenericFnDef,
 		type_args: &[Spanned<TypeExpr>],
 		args: &[Spanned<Expr>],
+		recv: Option<(Value, Typ)>,
 		span: Span,
 	) -> Result<(Value, Typ), Diagnostic> {
-		if args.len() != def.params.len() {
+		let self_n = recv.is_some() as usize;
+		if args.len() + self_n != def.params.len() {
 			return Err(Diagnostic::new(
-				format!("`{name}` expects {} argument(s), got {}", def.params.len(), args.len()),
+				format!(
+					"`{name}` expects {} argument(s), got {}",
+					def.params.len() - self_n,
+					args.len()
+				),
 				span.into_range(),
 			)
 			.with_label("wrong number of arguments"));
@@ -74,10 +92,17 @@ impl<'a> Translator<'a> {
 		for (param, (te, te_span)) in def.type_params.iter().zip(type_args) {
 			subst.insert(param.name.clone(), self.types().resolve(te, *te_span)?);
 		}
-		let mut vals = Vec::with_capacity(args.len());
-		for (arg, param) in args.iter().zip(&def.params) {
+		let mut vals = Vec::with_capacity(args.len() + self_n);
+		let mut declared = def.params.iter();
+		if let Some((rval, rtyp)) = &recv {
+			let rparam = declared.next().unwrap();
+			unify(&rparam.typ, rtyp, &def.type_params, &mut subst, self.generics)
+				.map_err(|msg| Diagnostic::new(msg, span.into_range()).with_label("type mismatch"))?;
+			vals.push(*rval);
+		}
+		for (arg, param) in args.iter().zip(declared) {
 			let (val, typ) = self.expr(arg)?;
-			unify(&param.typ, &typ, &def.type_params, &mut subst)
+			unify(&param.typ, &typ, &def.type_params, &mut subst, self.generics)
 				.map_err(|msg| Diagnostic::new(msg, arg.1.into_range()).with_label("type mismatch"))?;
 			vals.push(val);
 		}

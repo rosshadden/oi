@@ -132,7 +132,7 @@ impl<'a> Translator<'a> {
 					None => match self.funcs.get(name).cloned() {
 						Some(sig) => self.call_sig(name, sig, None, args, expr.1),
 						None => match self.generic_fns.get(name).cloned() {
-							Some(def) => self.call_generic(name, &def, type_args, args, expr.1),
+							Some(def) => self.call_generic(name, &def, type_args, args, None, expr.1),
 							None => Err(
 								Diagnostic::new(format!("undefined function `{name}`"), expr.1.into_range())
 									.with_label("not defined"),
@@ -156,7 +156,7 @@ impl<'a> Translator<'a> {
 				}
 
 				// method call is static when `recv` names a struct
-				let (sname, recv_val) = if let Expr::Ident(name) = &recv.0
+				let (sname, recv) = if let Expr::Ident(name) = &recv.0
 					&& !self.vars.contains_key(name)
 					&& self.structs.contains_key(name)
 				{
@@ -187,7 +187,7 @@ impl<'a> Translator<'a> {
 						);
 					}
 					match &recv_typ {
-						Typ::Struct(name, _) => (name.clone(), Some(recv_val)),
+						Typ::Struct(name, _) => (name.clone(), Some((recv_val, recv_typ))),
 						_ => {
 							return Err(
 								Diagnostic::new(format!("`{recv_typ}` has no methods"), recv.1.into_range())
@@ -197,11 +197,17 @@ impl<'a> Translator<'a> {
 					}
 				};
 				let key = format!("{sname}.{method}");
-				let sig = self.funcs.get(&key).cloned().ok_or_else(|| {
+				if let Some(sig) = self.funcs.get(&key).cloned() {
+					return self.call_sig(&key, sig, recv.map(|(v, _)| v), args, expr.1);
+				}
+				let gkey = format!("{}.{method}", sname.split('[').next().unwrap());
+				if let Some(def) = self.generic_fns.get(&gkey).cloned() {
+					return self.call_generic(&gkey, &def, &[], args, recv, expr.1);
+				}
+				Err(
 					Diagnostic::new(format!("`{sname}` has no method `{method}`"), expr.1.into_range())
-						.with_label("no such method")
-				})?;
-				self.call_sig(&key, sig, recv_val, args, expr.1)
+						.with_label("no such method"),
+				)
 			}
 
 			// a tuple is a heap block of pointer-sized slots, one per field

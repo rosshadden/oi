@@ -385,8 +385,15 @@ impl TypeCtx<'_> {
 				})
 			})
 			.collect::<Result<Vec<_>, _>>()?;
-		let args: Vec<_> = def.type_params.iter().map(|p| subst[&p.name].to_string()).collect();
-		Ok(Typ::Struct(format!("{name}[{}]", args.join(", ")), fields))
+		let concrete: Vec<Typ> = def.type_params.iter().map(|p| subst[&p.name].clone()).collect();
+		let args: Vec<_> = concrete.iter().map(Typ::to_string).collect();
+		let display = format!("{name}[{}]", args.join(", "));
+		self.generics
+			.instance_args
+			.borrow_mut()
+			.entry(display.clone())
+			.or_insert(concrete);
+		Ok(Typ::Struct(display, fields))
 	}
 
 	// Substitute `subst` into a generic enum's variants.
@@ -538,6 +545,29 @@ pub(crate) struct Generics {
 	pub enums: HashMap<String, GenericEnumDef>,
 	// enum instances keyed by display name (`Opt[int]`)
 	pub instances: RefCell<HashMap<String, Vec<VariantInfo>>>,
+	// struct instances' concrete type args keyed by display name (`Box[int]`)
+	pub instance_args: RefCell<HashMap<String, Vec<Typ>>>,
+}
+
+// Rewrite `Self` type refs to the owning type.
+fn replace_self(te: &TypeExpr, self_ty: &TypeExpr) -> TypeExpr {
+	match te {
+		TypeExpr::Name(n) if n == "Self" => self_ty.clone(),
+		TypeExpr::Array(e) => TypeExpr::Array(Box::new(replace_self(e, self_ty))),
+		TypeExpr::FixedArray(e, n) => TypeExpr::FixedArray(Box::new(replace_self(e, self_ty)), *n),
+		TypeExpr::Option(e) => TypeExpr::Option(Box::new(replace_self(e, self_ty))),
+		TypeExpr::Result(e, err) => TypeExpr::Result(Box::new(replace_self(e, self_ty)), err.clone()),
+		TypeExpr::Tuple(es) => TypeExpr::Tuple(es.iter().map(|e| replace_self(e, self_ty)).collect()),
+		TypeExpr::Fn(ps, r) => TypeExpr::Fn(
+			ps.iter().map(|p| replace_self(p, self_ty)).collect(),
+			Box::new(replace_self(r, self_ty)),
+		),
+		TypeExpr::Map(k, v) => TypeExpr::Map(Box::new(replace_self(k, self_ty)), Box::new(replace_self(v, self_ty))),
+		TypeExpr::Generic(name, args) => {
+			TypeExpr::Generic(name.clone(), args.iter().map(|a| replace_self(a, self_ty)).collect())
+		}
+		other => other.clone(),
+	}
 }
 
 #[derive(Clone)]
@@ -657,17 +687,24 @@ impl Compiler {
 				}
 				Expr::EnumDef { name, variants, .. } => enum_items.push((name.as_str(), variants.as_slice())),
 				Expr::TypeAlias { name, typ } => alias_items.push((name.as_str(), typ)),
-				Expr::Impl { typ, methods } => {
+				Expr::Impl {
+					typ,
+					type_params,
+					methods,
+				} => {
 					for m in methods {
-						if let Expr::Fn {
+						let Expr::Fn {
 							name,
+							type_params: mtp,
 							params,
 							params_tuple,
 							ret,
 							body,
-							..
 						} = &m.0
-						{
+						else {
+							continue;
+						};
+						if type_params.is_empty() && mtp.is_empty() {
 							others.push(FnItem {
 								key: format!("{typ}.{name}"),
 								params,
@@ -675,7 +712,35 @@ impl Compiler {
 								ret,
 								body,
 							});
+							continue;
 						}
+						let self_ty = if type_params.is_empty() {
+							TypeExpr::Name(typ.clone())
+						} else {
+							let args = type_params.iter().map(|p| TypeExpr::Name(p.name.clone())).collect();
+							TypeExpr::Generic(typ.clone(), args)
+						};
+						let params = params
+							.iter()
+							.map(|p| Param {
+								typ: replace_self(&p.typ, &self_ty),
+								..p.clone()
+							})
+							.collect();
+						let ret = ret.as_ref().map(|(te, span)| (replace_self(te, &self_ty), *span));
+						let mut all_params = type_params.clone();
+						all_params.extend(mtp.clone());
+						self.generics.insert(
+							format!("{typ}.{name}"),
+							GenericFnDef {
+								params,
+								params_tuple: *params_tuple,
+								ret,
+								body: body.clone(),
+								type_params: all_params,
+								captures: vec![],
+							},
+						);
 					}
 				}
 				Expr::Fn { name, body, .. } if name == "main" => main_body = Some(body),

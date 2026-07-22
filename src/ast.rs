@@ -185,6 +185,7 @@ pub enum Expr {
 
 	Impl {
 		typ: String,
+		type_params: Vec<TypeParam>,
 		methods: Vec<Spanned<Expr>>,
 	},
 

@@ -480,7 +480,7 @@ impl<'a> Translator<'a> {
 				})?,
 			};
 			let (val, vtyp) = self.expr(value)?;
-			unify(&def.fields[idx].typ, &vtyp, &def.type_params, &mut subst)
+			unify(&def.fields[idx].typ, &vtyp, &def.type_params, &mut subst, self.generics)
 				.map_err(|msg| Diagnostic::new(msg, value.1.into_range()).with_label("type mismatch"))?;
 			provided.push((idx, val, vtyp, value.1));
 		}
