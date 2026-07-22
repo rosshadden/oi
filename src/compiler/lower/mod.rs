@@ -10,7 +10,8 @@ use cranelift_module::{DataDescription, Linkage, Module};
 
 use super::{
 	FieldDef, FnSig, GenericFnDef, GenericStructDef, Generics, Local, LoopFrame, Pending, Typ, TypeCtx, VariantInfo,
-	atom_sum_variants, cl_int_for_width, cl_type, elem_size, enum_boxed, enum_slots, option_variants, result_variants,
+	atom_sum_variants, cl_int_for_width, cl_type, elem_size, enum_boxed, enum_slots, oi_symbol, option_variants,
+	result_variants,
 };
 use crate::ast::{BinOp, Expr, MatchArm, Pattern, Span, Spanned, TypeExpr};
 use crate::diagnostics::Diagnostic;
@@ -37,7 +38,7 @@ pub(super) struct Translator<'a> {
 	pub b: FunctionBuilder<'a>,
 	pub vars: HashMap<String, Local>,
 	pub params: Vec<Local>,
-	pub dollar: Option<(Value, Typ)>,
+	pub dollar: Option<TypedVal>,
 	pub module: &'a mut JITModule,
 	pub funcs: &'a HashMap<String, FnSig>,
 	pub structs: &'a HashMap<String, Vec<FieldDef>>,
@@ -68,3 +69,4 @@ enum Mutation {
 // A destructured binding.
 // `(name, type, offset)`
 type Bind = (String, Typ, i32);
+pub(super) type TypedVal = (Value, Typ);

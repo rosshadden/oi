@@ -85,7 +85,7 @@ impl<'a> Translator<'a> {
 		l: &Spanned<Expr>,
 		r: &Spanned<Expr>,
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let (lv, lt) = self.expr(l)?;
 		let (rv, rt) = self.expr(r)?;
 
@@ -153,7 +153,7 @@ impl<'a> Translator<'a> {
 		l: &Spanned<Expr>,
 		r: &Spanned<Expr>,
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		// evaluate the typed/pinned side first so a `.variant` shorthand can borrow its enum type
 		let ((lv, lt), (rv, rt)) = if let Expr::EnumShorthand { .. } = &l.0 {
 			let (rv, rt) = self.expr(r)?;
@@ -236,7 +236,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// `lhs in rhs`.
-	pub(super) fn in_op(&mut self, lhs: &Spanned<Expr>, rhs: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
+	pub(super) fn in_op(&mut self, lhs: &Spanned<Expr>, rhs: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let (rhs_val, rhs_typ) = self.expr(rhs)?;
 
 		// substring
@@ -329,7 +329,7 @@ impl<'a> Translator<'a> {
 		and: bool,
 		l: &Spanned<Expr>,
 		r: &Spanned<Expr>,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let (lv, lt) = self.expr(l)?;
 		if lt != Typ::Bool {
 			return Err(Diagnostic::new(format!("expected Bool, got {lt}"), l.1.into_range())

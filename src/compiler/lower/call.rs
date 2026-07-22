@@ -26,7 +26,7 @@ impl<'a> Translator<'a> {
 		recv: Option<Value>,
 		args: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let self_n = recv.is_some() as usize;
 		if args.len() + self_n != sig.params.len() {
 			return Err(Diagnostic::new(
@@ -60,10 +60,10 @@ impl<'a> Translator<'a> {
 	}
 
 	// Emit the actual call instruction for a resolved fn signature.
-	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> (Value, Typ) {
+	pub(super) fn emit_call(&mut self, sig: &FnSig, vals: &[Value]) -> TypedVal {
 		let func = self.module.declare_func_in_func(sig.id, self.b.func);
 		let call = self.b.ins().call(func, vals);
-		let ret_val = if matches!(sig.ret, Typ::Tuple(ref f) if f.is_empty()) {
+		let ret_val = if sig.ret.is_unit() {
 			self.b.ins().iconst(self.int, 0)
 		} else {
 			self.b.inst_results(call)[0]
@@ -82,7 +82,7 @@ impl<'a> Translator<'a> {
 		ret: &Typ,
 		args: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		if args.len() != params.len() {
 			return Err(Diagnostic::new(
 				format!("`{name}` expects {} argument(s), got {}", params.len(), args.len()),
@@ -107,7 +107,7 @@ impl<'a> Translator<'a> {
 			sig.params.push(AbiParam::new(self.int));
 			vals.push(env);
 		}
-		let is_unit = matches!(ret, Typ::Tuple(f) if f.is_empty());
+		let is_unit = ret.is_unit();
 		if !is_unit {
 			sig.returns.push(AbiParam::new(cl_type(ret, self.int)));
 		}

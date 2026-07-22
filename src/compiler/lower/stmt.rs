@@ -3,7 +3,7 @@ use super::*;
 impl<'a> Translator<'a> {
 	// Evaluate a block of statements, returning the final value.
 	// Returns None if the block diverged (every path returned/broke).
-	pub fn block(&mut self, stmts: &[Spanned<Expr>]) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	pub fn block(&mut self, stmts: &[Spanned<Expr>]) -> Result<Option<TypedVal>, Diagnostic> {
 		self.block_tail(stmts, None)
 	}
 
@@ -12,8 +12,8 @@ impl<'a> Translator<'a> {
 		&mut self,
 		stmts: &[Spanned<Expr>],
 		tail: Option<&Typ>,
-	) -> Result<Option<(Value, Typ)>, Diagnostic> {
-		let mut last = (self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]));
+	) -> Result<Option<TypedVal>, Diagnostic> {
+		let mut last = self.unit_value();
 		for (i, stmt) in stmts.iter().enumerate() {
 			let stmt_target = if i + 1 == stmts.len() { tail } else { None };
 			match &stmt.0 {
@@ -189,7 +189,7 @@ impl<'a> Translator<'a> {
 							None => self.expr(e)?,
 						},
 						None => {
-							let typ = self.ret.as_ref().map_or(Typ::Tuple(vec![]), |(t, _)| t.clone());
+							let typ = self.ret.as_ref().map_or(Typ::unit(), |(t, _)| t.clone());
 							(self.zero(&typ), typ)
 						}
 					};
@@ -296,7 +296,7 @@ impl<'a> Translator<'a> {
 
 	// Autowrap return types.
 	// idk whether it'll be more general in the future, but for now this is for `Option` and `Result`.
-	fn autowrap_return(&mut self, val: Value, typ: Typ) -> (Value, Typ) {
+	fn autowrap_return(&mut self, val: Value, typ: Typ) -> TypedVal {
 		match self.ret.as_ref().map(|(t, _)| t.clone()) {
 			Some(Typ::Option(inner)) if typ == *inner => {
 				let v = self.make_enum(&option_variants(&inner), 1, &[val]);
@@ -326,7 +326,7 @@ impl<'a> Translator<'a> {
 			)
 			.with_label("wrong return type"));
 		}
-		if matches!(typ, Typ::Tuple(ref f) if f.is_empty()) {
+		if typ.is_unit() {
 			self.b.ins().return_(&[]);
 			if self.ret.is_none() {
 				self.ret = Some((typ, span));

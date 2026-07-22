@@ -1,7 +1,7 @@
 use super::*;
 
 impl<'a> Translator<'a> {
-	pub fn expr(&mut self, expr: &Spanned<Expr>) -> Result<(Value, Typ), Diagnostic> {
+	pub fn expr(&mut self, expr: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		match &expr.0 {
 			Expr::Int(n) => {
 				if (i32::MIN as i64..=i32::MAX as i64).contains(n) {
@@ -213,7 +213,7 @@ impl<'a> Translator<'a> {
 			// a tuple is a heap block of pointer-sized slots, one per field
 			Expr::Tuple(elems) => {
 				if elems.is_empty() {
-					return Ok((self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![])));
+					return Ok(self.unit_value());
 				}
 				let ptr = self.call_alloc(elems.len());
 				let mut fields = Vec::with_capacity(elems.len());

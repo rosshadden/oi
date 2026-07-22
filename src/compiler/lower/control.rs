@@ -11,7 +11,7 @@ impl<'a> Translator<'a> {
 		els: Option<&[Spanned<Expr>]>,
 		target: Option<&Typ>,
 		span: Span,
-	) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	) -> Result<Option<TypedVal>, Diagnostic> {
 		let (cv, ct) = self.expr(cond)?;
 		if ct != Typ::Bool {
 			return Err(
@@ -43,7 +43,7 @@ impl<'a> Translator<'a> {
 					.as_ref()
 					.map(|(_, t)| t.clone())
 					.or_else(|| target.cloned())
-					.unwrap_or(Typ::Tuple(vec![]));
+					.unwrap_or(Typ::unit());
 				let z = s.zero(&t);
 				Ok(Some((z, t)))
 			}
@@ -78,7 +78,7 @@ impl<'a> Translator<'a> {
 		else_body: Option<&[Spanned<Expr>]>,
 		target: Option<&Typ>,
 		span: Span,
-	) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	) -> Result<Option<TypedVal>, Diagnostic> {
 		let (sv, st) = self.expr(subject)?;
 		let sv_var = self.b.declare_var(cl_type(&st, self.int));
 		self.b.def_var(sv_var, sv);
@@ -222,7 +222,7 @@ impl<'a> Translator<'a> {
 		} else {
 			let t = match &result {
 				Some((_, t)) => t.clone(),
-				None => target.cloned().unwrap_or(Typ::Tuple(vec![])),
+				None => target.cloned().unwrap_or(Typ::unit()),
 			};
 			Some((self.zero(&t), t))
 		};
@@ -244,7 +244,7 @@ impl<'a> Translator<'a> {
 	pub(super) fn contribute(
 		&mut self,
 		kw: &str,
-		(v, t): (Value, Typ),
+		(v, t): TypedVal,
 		result: &mut Option<(Variable, Typ)>,
 		merge: Block,
 		span: Span,
@@ -277,7 +277,7 @@ impl<'a> Translator<'a> {
 		value: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(value)?;
 		let (inner, happy) = match &typ {
 			Typ::Option(inner) => ((**inner).clone(), 1),
@@ -312,7 +312,7 @@ impl<'a> Translator<'a> {
 		self.dollar = Some(if matches!(typ, Typ::Result(_)) {
 			(self.b.ins().load(self.int, MemFlags::new(), val, 8), Typ::Error)
 		} else {
-			(self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))
+			self.unit_value()
 		});
 		let flow = self.scoped(|s| s.block(body))?;
 		self.dollar = saved_dollar;
@@ -329,7 +329,7 @@ impl<'a> Translator<'a> {
 	// Unwraps `?T`/`!T`.
 	// Returns `none`/error from the enclosing fn on the sad path.
 	// Panics when called in `main`.
-	pub(super) fn propagate(&mut self, value: &Spanned<Expr>, span: Span) -> Result<(Value, Typ), Diagnostic> {
+	pub(super) fn propagate(&mut self, value: &Spanned<Expr>, span: Span) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(value)?;
 		let (is_result, inner) = match &typ {
 			Typ::Option(inner) => (false, (**inner).clone()),
@@ -400,7 +400,7 @@ impl<'a> Translator<'a> {
 		name: &str,
 		args: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		if args.len() != 1 {
 			let msg = format!("`{name}.from` takes 1 argument, got {}", args.len());
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of arguments"));
@@ -447,7 +447,7 @@ impl<'a> Translator<'a> {
 		&mut self,
 		cond: Option<&Spanned<Expr>>,
 		body: &[Spanned<Expr>],
-	) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	) -> Result<Option<TypedVal>, Diagnostic> {
 		let top = self.b.create_block();
 		self.b.ins().jump(top, &[]);
 		self.b.switch_to_block(top);
@@ -486,7 +486,7 @@ impl<'a> Translator<'a> {
 			Some(exit) => {
 				self.b.switch_to_block(exit);
 				self.b.seal_block(exit);
-				Ok(Some((self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))))
+				Ok(Some(self.unit_value()))
 			}
 			// an infinite loop with no `break` never falls through
 			None => Ok(None),
@@ -499,10 +499,10 @@ impl<'a> Translator<'a> {
 		iter: &Spanned<Expr>,
 		body: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let (val, typ) = self.expr(iter)?;
 		// counter var, upper bound, and (data ptr, elem type) for array iteration
-		let (counter, limit, arr_src): (_, _, Option<(Value, Typ)>) = match typ {
+		let (counter, limit, arr_src): (_, _, Option<TypedVal>) = match typ {
 			Typ::Range => {
 				let cl = cl_int_for_width(32);
 				let start = self.b.ins().load(cl, MemFlags::new(), val, 0);
@@ -578,7 +578,7 @@ impl<'a> Translator<'a> {
 		self.b.seal_block(header);
 
 		self.b.switch_to_block(exit);
-		Ok((self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![])))
+		Ok(self.unit_value())
 	}
 
 	pub(super) fn bind_pattern(&mut self, pat: &Pattern, val: Value, typ: &Typ, span: Span) -> Result<(), Diagnostic> {

@@ -46,7 +46,7 @@ pub(super) fn unify(
 
 // A monomorph cache key.
 fn mangle(name: &str, subst: &HashMap<String, Typ>, order: &[TypeParam]) -> String {
-	let mut sym = format!("oi_{}", name.replace('.', "__"));
+	let mut sym = oi_symbol(name);
 	for p in order {
 		sym.push('$');
 		sym.push_str(&subst[&p.name].to_string());
@@ -62,9 +62,9 @@ impl<'a> Translator<'a> {
 		def: &GenericFnDef,
 		type_args: &[Spanned<TypeExpr>],
 		args: &[Spanned<Expr>],
-		recv: Option<(Value, Typ)>,
+		recv: Option<TypedVal>,
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let self_n = recv.is_some() as usize;
 		if args.len() + self_n != def.params.len() {
 			return Err(Diagnostic::new(
@@ -147,7 +147,7 @@ impl<'a> Translator<'a> {
 		if !def.captures.is_empty() {
 			sig.params.push(AbiParam::new(self.int));
 		}
-		if !matches!(ret, Typ::Tuple(ref f) if f.is_empty()) {
+		if !ret.is_unit() {
 			sig.returns.push(AbiParam::new(cl_type(&ret, self.int)));
 		}
 		let id = self

@@ -61,6 +61,16 @@ pub(crate) struct FieldDef {
 	pub default: Option<Spanned<Expr>>,
 }
 
+impl Typ {
+	pub fn unit() -> Typ {
+		Typ::Tuple(vec![])
+	}
+
+	pub fn is_unit(&self) -> bool {
+		matches!(self, Typ::Tuple(f) if f.is_empty())
+	}
+}
+
 impl fmt::Display for Typ {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -110,6 +120,10 @@ impl PartialEq for FieldDef {
 	fn eq(&self, other: &Self) -> bool {
 		self.name == other.name && self.typ == other.typ
 	}
+}
+
+pub(crate) fn oi_symbol(name: &str) -> String {
+	format!("oi_{}", name.replace('.', "__"))
 }
 
 pub(crate) fn cl_int_for_width(w: u16) -> types::Type {
@@ -439,7 +453,7 @@ impl TypeCtx<'_> {
 			"bool" => return Ok(Typ::Bool),
 			"string" | "str" => return Ok(Typ::Str),
 			"range" => return Ok(Typ::Range),
-			"()" => return Ok(Typ::Tuple(vec![])),
+			"()" => return Ok(Typ::unit()),
 			_ => {}
 		}
 		if let Some(result) = int_width(name, 'i', Typ::Int, "integer", span) {
@@ -835,10 +849,10 @@ impl Compiler {
 			let ret = types.resolve(ret_te, *ret_span)?;
 			let mut sig = self.module.make_signature();
 			sig.params.extend(param_typs.iter().map(|t| AbiParam::new(cl_type(t, int))));
-			if !matches!(ret, Typ::Tuple(ref f) if f.is_empty()) {
+			if !ret.is_unit() {
 				sig.returns.push(AbiParam::new(cl_type(&ret, int)));
 			}
-			let sym = format!("oi_{}", item.key.replace('.', "__"));
+			let sym = oi_symbol(&item.key);
 			let id = self
 				.module
 				.declare_function(&sym, Linkage::Local, &sig)
@@ -861,7 +875,7 @@ impl Compiler {
 			}
 			let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics);
 			let (params, ret) = types.resolve_params_ret(item.params, item.ret)?;
-			let sym = format!("oi_{}", item.key.replace('.', "__"));
+			let sym = oi_symbol(&item.key);
 			let ret = self.translate(
 				&params,
 				item.params_tuple,
@@ -1074,6 +1088,6 @@ impl Compiler {
 		}
 		trans.b.finalize();
 
-		Ok(trans.ret.map(|(t, _)| t).unwrap_or(Typ::Tuple(vec![])))
+		Ok(trans.ret.map(|(t, _)| t).unwrap_or(Typ::unit()))
 	}
 }

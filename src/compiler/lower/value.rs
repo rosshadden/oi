@@ -56,7 +56,7 @@ impl<'a> Translator<'a> {
 					v.map(|v| v.payload.iter().map(|t| self.zero(t)).collect()).unwrap_or_default();
 				self.make_enum(&variants, disc, &fields)
 			}
-			Typ::Tuple(fields) if fields.is_empty() => self.b.ins().iconst(self.int, 0),
+			_ if typ.is_unit() => self.b.ins().iconst(self.int, 0),
 			Typ::Struct(_, fields) => {
 				let fields = fields.clone();
 				let size = (fields.len() * 8) as u32;
@@ -255,7 +255,7 @@ impl<'a> Translator<'a> {
 		variant: &str,
 		args: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let variants = self.enum_variants(name);
 		let v = variants.iter().find(|v| v.name == variant).ok_or_else(|| {
 			Diagnostic::new(format!("enum `{name}` has no variant `{variant}`"), span.into_range())
@@ -285,7 +285,7 @@ impl<'a> Translator<'a> {
 
 	// Evaluate `value` against an expected type.
 	// Resolves variant shorthands, atoms, and `none` via coercion.
-	pub(super) fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<(Value, Typ), Diagnostic> {
+	pub(super) fn check_expr(&mut self, value: &Spanned<Expr>, target: &Typ) -> Result<TypedVal, Diagnostic> {
 		if matches!(value.0, Expr::EnumShorthand { .. } | Expr::Atom(_) | Expr::None)
 			&& let Some(v) = self.coerce_lit(value, target)?
 		{
@@ -335,7 +335,7 @@ impl<'a> Translator<'a> {
 		name: &str,
 		fields: &[(Option<String>, Spanned<Expr>)],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		// `Self {}` inside a method resolves to the impl's type
 		let name = match name {
 			"Self" => self.self_type.clone().ok_or_else(|| {
@@ -450,7 +450,7 @@ impl<'a> Translator<'a> {
 		def: GenericStructDef,
 		fields: &[(Option<String>, Spanned<Expr>)],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let positional = fields.first().is_some_and(|(n, _)| n.is_none());
 		if positional && fields.len() != def.fields.len() {
 			return Err(Diagnostic::new(

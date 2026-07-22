@@ -59,7 +59,7 @@ impl<'a> Translator<'a> {
 		name: &str,
 		args: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	) -> Result<Option<TypedVal>, Diagnostic> {
 		match name {
 			"print" | "write" | "eprint" | "ewrite" => {
 				if args.is_empty() {
@@ -80,7 +80,7 @@ impl<'a> Translator<'a> {
 				if newline {
 					self.write_lit("\n", stderr);
 				}
-				Ok(Some((self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))))
+				Ok(Some(self.unit_value()))
 			}
 
 			// TODO: migrate to `assert!` macro once we have macros
@@ -154,7 +154,7 @@ impl<'a> Translator<'a> {
 				let dead = self.b.create_block();
 				self.b.seal_block(dead);
 				self.b.switch_to_block(dead);
-				Ok(Some((self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))))
+				Ok(Some(self.unit_value()))
 			}
 
 			"error" => {
@@ -186,7 +186,7 @@ impl<'a> Translator<'a> {
 		name: &str,
 		args: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<Option<(Value, Typ)>, Diagnostic> {
+	) -> Result<Option<TypedVal>, Diagnostic> {
 		// `int` and `float` are aliases for the default-width casts
 		let name = match name {
 			"int" => "i32",
@@ -369,7 +369,7 @@ impl<'a> Translator<'a> {
 		name: &str,
 		args: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		if args.len() != 1 {
 			return Err(
 				Diagnostic::new(format!("`{name}` cast takes exactly 1 argument"), span.into_range())

@@ -93,9 +93,13 @@ impl<'a> Translator<'a> {
 		}
 	}
 
+	pub(super) fn unit_value(&mut self) -> TypedVal {
+		(self.b.ins().iconst(self.int, 0), Typ::unit())
+	}
+
 	// `$` implicit input
 	// TODO: migrate to its own submodule. idk what to call it yet so putting it here. `sigils`?
-	pub(super) fn dollar(&mut self) -> (Value, Typ) {
+	pub(super) fn dollar(&mut self) -> TypedVal {
 		self.dollar.clone().expect("`bind_dollar` runs before the body is lowered")
 	}
 
@@ -106,7 +110,7 @@ impl<'a> Translator<'a> {
 			let local = &locals[0];
 			(self.b.use_var(local.var), local.typ.clone())
 		} else if locals.is_empty() {
-			(self.b.ins().iconst(self.int, 0), Typ::Tuple(vec![]))
+			self.unit_value()
 		} else {
 			let ptr = self.call_alloc(locals.len());
 			let fields = locals

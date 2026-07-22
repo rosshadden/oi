@@ -12,7 +12,7 @@ impl<'a> Translator<'a> {
 		ret: &Spanned<TypeExpr>,
 		body: &[Spanned<Expr>],
 		span: Span,
-	) -> Result<(Value, Typ), Diagnostic> {
+	) -> Result<TypedVal, Diagnostic> {
 		let inferred;
 		let captures: &[Capture] = match captures {
 			Some(list) => list,

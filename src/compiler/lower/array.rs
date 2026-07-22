@@ -23,7 +23,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Evaluate an array-typed operand, returning its value and type.
-	pub(super) fn array_operand(&mut self, collection: &Spanned<Expr>, what: &str) -> Result<(Value, Typ), Diagnostic> {
+	pub(super) fn array_operand(&mut self, collection: &Spanned<Expr>, what: &str) -> Result<TypedVal, Diagnostic> {
 		let (ptr, typ) = self.expr(collection)?;
 		match typ {
 			Typ::Array(_) | Typ::FixedArray(..) => Ok((ptr, typ)),
