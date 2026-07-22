@@ -136,6 +136,7 @@ tags: []
 	- just making structs more lightweight to use might be better, idk
 - reconciling `type` for type aliases with var declarations (can maybe share syntax)
 - CLI help docs, like Nushell and Cargo
+- treat all args as optional since they have zero values?
 # stdlib
 - `os`
 - `fs`

@@ -25,7 +25,6 @@ Pipelines, expressions, blocks, traits, generics.
 Rather than introducing a one-off syntax for every feature, Oi tries to make small concepts combine nicely together.
 
 ```oi
-
 # type composability
 type Absurd = (Map[int, ?[]string], []?string, i69)
 
