@@ -896,8 +896,6 @@ fn main() {
 
 	# atoms work in type position
 	fn status() :ok { :ok }
-	
-	# TODO: add example with union types
 
 	## types
 	
@@ -1244,6 +1242,32 @@ fn main() {
 	
 	# the newlines are optional
 	enum Fruit { apple orange grape }
+
+	## sum types
+	
+	type Id = int | string
+	type Json = :null | bool | f64 | string | []Json | Map[string, Json]
+	
+	# member values coerce when the type is known from context
+	mut id Id := 7
+	id = "abc123"
+	
+	# matching is exhaustive
+	fn describe(id Id) string {
+		match id {
+			n @ int => "numeric: {n}",
+			s @ string => "named: {s}",
+		}
+	}
+	
+	# members must be distinct after alias resolution
+	# type Bad = int | int # error: duplicate member
+	
+	# the zero value is the first member's zero
+	mut blank Id # 0
+	
+	# atoms make creat sum types
+	type Status = :ok | :err
 
 	## errors
 	
