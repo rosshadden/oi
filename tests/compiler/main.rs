@@ -11,6 +11,7 @@ mod comparisons;
 mod control;
 mod diagnostics;
 mod dollar;
+mod examples;
 mod functions;
 mod io;
 mod methods;
