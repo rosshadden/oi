@@ -30,6 +30,11 @@ fn stdin_arithmetic() {
 }
 
 #[test]
+fn stdin_and_arg_concatenate() {
+	assert_eq!(stdout_ok(oi(&["exec", "x + 1"], Some("x := 41"))), "42");
+}
+
+#[test]
 fn error_names_exec_source() {
 	let out = oi(&["exec", "2 +"], None);
 	assert!(!out.status.success());

@@ -19,9 +19,7 @@ fn run(dir: Option<&Path>, args: &[&str], stdin: Option<&str>) -> Output {
 	if let Some(dir) = dir {
 		cmd.current_dir(dir);
 	}
-	if stdin.is_some() {
-		cmd.stdin(Stdio::piped());
-	}
+	cmd.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() });
 	let mut child = cmd.spawn().unwrap();
 	if let Some(input) = stdin {
 		child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();

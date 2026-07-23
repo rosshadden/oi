@@ -25,7 +25,7 @@ pub enum Command {
 
 	/// Compile and run an Oi script.
 	Exec {
-		/// Source to run. If omitted, read from stdin.
+		/// Source to run, appended to piped stdin if any. If omitted, read from stdin.
 		#[arg(allow_hyphen_values = true)]
 		source: Option<String>,
 	},
