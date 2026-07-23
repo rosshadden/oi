@@ -3,7 +3,7 @@ use oi::driver::run_source;
 use reedline::{DefaultPrompt, DefaultPromptSegment, Reedline, Signal};
 
 pub fn run() -> Result<(), Reported> {
-	let mut rl = Reedline::create();
+	let mut rl = Reedline::create().use_bracketed_paste(true);
 	let mut session = String::new();
 	let prompt = DefaultPrompt::new(
 		DefaultPromptSegment::Basic("oi".to_string()),
