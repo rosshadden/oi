@@ -33,6 +33,7 @@ icons = [ "home", "chat", "search", "light", "asleep", "rss" ]
 menu_links = [
 	{ name = "/", url = "$BASE_URL/" },
 	{ name = "/features", url = "$BASE_URL/features" },
+	{ name = "/examples", url = "$BASE_URL/examples" },
 	{ name = "/docs", url = "$BASE_URL/docs/oi" },
 	{ name = "/about", url = "$BASE_URL/about" },
 	{ name = "source", url = "https://github.com/rawsp33d/oi" },

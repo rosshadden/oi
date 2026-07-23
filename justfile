@@ -1,3 +1,5 @@
+mod make
+
 set positional-arguments
 
 # various useful checks
@@ -32,7 +34,7 @@ check: build && fmt test lint
 
 # generate and serve static website
 [group("docs")]
-@serve:
+@serve: make::examples
 	zola --root www serve --interface 0.0.0.0
 
 # fix fixable things
