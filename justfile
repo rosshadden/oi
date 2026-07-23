@@ -1,3 +1,5 @@
+set positional-arguments
+
 # various useful checks
 [parallel]
 check: build && fmt test lint
@@ -42,7 +44,7 @@ check: build && fmt test lint
 # compile and run an Oi script
 [group("oi")]
 @exec *args:
-	cargo run --quiet -- exec "{{args}}"
+	cargo run --quiet -- exec "$@"
 
 # compile and run an Oi file
 [group("oi")]
