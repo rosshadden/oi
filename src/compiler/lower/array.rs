@@ -22,7 +22,7 @@ impl<'a> Translator<'a> {
 		header
 	}
 
-	// Evaluate an array-typed operand, returning its value and type.
+	// Evaluate an array-typed operand.
 	pub(super) fn array_operand(&mut self, collection: &Spanned<Expr>, what: &str) -> Result<TypedVal, Diagnostic> {
 		let (ptr, typ) = self.expr(collection)?;
 		match typ {

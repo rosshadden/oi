@@ -253,8 +253,8 @@ impl fmt::Display for Token {
 }
 
 // Lex `src`.
-// Convert errors into tokens so parsing stays recoverable.
-// Insert `DocBreak` between consecutive `Doc` tokens separated by at least one newline.
+// Converts errors into tokens so parsing stays recoverable.
+// Inserts `DocBreak` between consecutive `Doc` tokens separated by at least one newline.
 pub fn lex(src: &str) -> Vec<(Token, SimpleSpan)> {
 	let raw: Vec<(Token, SimpleSpan)> = Token::lexer(src)
 		.spanned()

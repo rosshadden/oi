@@ -1,7 +1,7 @@
 use super::*;
 
 impl<'a> Translator<'a> {
-	// The named types in scope, bundled for resolving type annotations.
+	// The named types in scope.
 	pub(super) fn types(&self) -> TypeCtx<'a> {
 		TypeCtx::new(self.structs, self.enums, self.aliases, self.type_params, self.generics)
 	}
@@ -35,7 +35,7 @@ impl<'a> Translator<'a> {
 		Ok(local)
 	}
 
-	// Look up a variable, or error if undefined.
+	// Look up a variable.
 	pub(super) fn local(&self, name: &str, span: Range<usize>) -> Result<Local, Diagnostic> {
 		self.vars.get(name).cloned().ok_or_else(|| {
 			Diagnostic::new(format!("undefined variable `{name}`"), span).with_label("not found in scope")
@@ -43,7 +43,6 @@ impl<'a> Translator<'a> {
 	}
 
 	// Promote a local to a heap-boxed cell.
-	// Returns the cell's address.
 	pub(super) fn box_local(&mut self, name: &str, local: &Local, span: Range<usize>) -> Result<Value, Diagnostic> {
 		if local.boxed {
 			return Ok(self.b.use_var(local.var));
@@ -71,7 +70,6 @@ impl<'a> Translator<'a> {
 	}
 
 	// Read a local's value.
-	// indirects through its box if it's a mutable capture.
 	pub(super) fn read_local(&mut self, local: &Local) -> Value {
 		let raw = self.b.use_var(local.var);
 		if local.boxed {
@@ -83,7 +81,6 @@ impl<'a> Translator<'a> {
 	}
 
 	// Write a local's value.
-	// Indirects through its box if it's a mutable capture.
 	pub(super) fn write_local(&mut self, local: &Local, val: Value) {
 		if local.boxed {
 			let ptr = self.b.use_var(local.var);

@@ -362,8 +362,7 @@ impl<'a> Translator<'a> {
 		Ok(None)
 	}
 
-	// Evaluate the sole operand of a single-argument cast.
-	// Errors on wrong arity.
+	// Evaluate the operand of a single-argument cast.
 	pub(super) fn cast_operand(
 		&mut self,
 		name: &str,

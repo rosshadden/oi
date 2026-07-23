@@ -347,7 +347,7 @@ impl TypeCtx<'_> {
 		}
 	}
 
-	// Resolve `args` against `params`, yielding a substitution map.
+	// Resolve `args` against `params`.
 	fn generic_subst(
 		&self,
 		name: &str,
@@ -502,7 +502,7 @@ impl TypeCtx<'_> {
 			.collect()
 	}
 
-	// Resolve a param list plus an optional return type annotation.
+	// Resolve a param list and optional return type annotation.
 	pub fn resolve_params_ret(
 		&self,
 		params: &[Param],

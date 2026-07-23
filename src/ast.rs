@@ -2,7 +2,6 @@ use std::fmt;
 
 use chumsky::span::SimpleSpan;
 
-// A value paired with the span it came from.
 pub type Span = SimpleSpan;
 pub type Spanned<T> = (T, Span);
 

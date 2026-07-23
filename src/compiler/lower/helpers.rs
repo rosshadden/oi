@@ -1,7 +1,6 @@
 use super::*;
 
-// Create `Bind`s from idents.
-// `base` is the first offset, `stride` the step between fields.
+// Create field Binds from idents.
 pub(super) fn field_binds<'a>(
 	elems: impl Iterator<Item = (&'a Spanned<Expr>, &'a Typ)>,
 	base: i32,
@@ -66,7 +65,7 @@ pub(super) fn map_key_tag(typ: &Typ) -> Option<runtime::Tag> {
 	}
 }
 
-// The width of `i{N}` and `i{N}` casts.
+// The width of integer casts.
 pub(super) fn int_cast_width(prefix: char, name: &str) -> Option<u16> {
 	name.strip_prefix(prefix)
 		.and_then(|w| w.parse::<u16>().ok())
