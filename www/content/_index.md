@@ -26,61 +26,45 @@ Its features [try to] encourage uninterrupted thought:
 
 ```oi
 enum Shape {
+	point
 	circle(f64)
 	rect(f64, f64)
+	triangle(f64, f64, f64)
 }
 
 fn area(s Shape) f64 {
 	match s {
 		.circle(r) => 3.14159 * r * r,
 		.rect(w, h) => w * h,
+		else => 0.0,
 	}
 }
 
-Shape.rect(3.0, 4.0) |> area
+Shape.rect(3.0, 4.0)
+	|> area
+	|> print
 # => 12.0
-```
 
-```oi
-fn find(id int) ?int {
-	if id == 7 { return 42 }
-	return none
-}
+shape := Shape.triangle(3.0, 4.0, 5.0)
 
-mut total := 0
-loop id in [1, 7, 3, 7] {
-	total = total + (find(id) or { 0 })
-}
-
-total
-# => 84
-```
-
-```oi
-enum Status {
-	offline
-	online
-	away
-}
-
-struct User {
-	name string
-	status Status
-}
-
-fn badge(u User) {
-	match u.status {
-		.online => "🟢 {u.name}",
-		.away => "🟡 {u.name}",
-		.offline => "⚫ {u.name}",
+# TODO: this is goofy for now because string interpolation isn't implemented yet
+match shape {
+	.point => {
+		write("origin: ")
+		print(())
+	}
+	.circle(r) => {
+		write("circle: ")
+		print((r,))
+	}
+	.rect(w, h) => {
+		write("rect: ")
+		print((w h))
+	}
+	.triangle(a, b, c) => {
+		write("triangle: ")
+		print((a b c))
 	}
 }
-
-user := User{
-	name: "ur_mom_lolol"
-	status: .online
-}
-
-badge(user) |> print
-# => "🟢 {u.name}"
+# => triangle: (3.0, 4.0, 5.0)
 ```
