@@ -324,12 +324,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Short-circuits. `&&` only evaluates the right side when the left is true, and `||` does the inverse.
-	pub(super) fn logical(
-		&mut self,
-		and: bool,
-		l: &Spanned<Expr>,
-		r: &Spanned<Expr>,
-	) -> Result<TypedVal, Diagnostic> {
+	pub(super) fn logical(&mut self, and: bool, l: &Spanned<Expr>, r: &Spanned<Expr>) -> Result<TypedVal, Diagnostic> {
 		let (lv, lt) = self.expr(l)?;
 		if lt != Typ::Bool {
 			return Err(Diagnostic::new(format!("expected Bool, got {lt}"), l.1.into_range())

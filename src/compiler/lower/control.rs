@@ -36,29 +36,21 @@ impl<'a> Translator<'a> {
 		}
 
 		self.b.switch_to_block(else_block);
-		let else_flow = self.scoped(|s| match els {
-			Some(els) => s.block_tail(els, target),
-			None => {
-				let t = result
-					.as_ref()
-					.map(|(_, t)| t.clone())
-					.or_else(|| target.cloned())
-					.unwrap_or(Typ::unit());
-				let z = s.zero(&t);
-				Ok(Some((z, t)))
-			}
-		})?;
+		let else_flow = if let Some(els) = els {
+			self.scoped(|s| s.block_tail(els, target))?
+		} else {
+			let t = result
+				.as_ref()
+				.map(|(_, t)| t.clone())
+				.or_else(|| target.cloned())
+				.unwrap_or(Typ::unit());
+			Some((self.zero(&t), t))
+		};
 		if let Some(vt) = else_flow {
 			self.contribute("if", vt, &mut result, merge, span)?;
 		}
 
-		Ok(if let Some((var, typ)) = result {
-			self.b.switch_to_block(merge);
-			self.b.seal_block(merge);
-			Some((self.b.use_var(var), typ))
-		} else {
-			None
-		})
+		Ok(self.finish_merge(merge, result))
 	}
 
 	// Evaluate `f` in a child scope.
@@ -67,6 +59,14 @@ impl<'a> Translator<'a> {
 		let r = f(self);
 		self.vars = saved;
 		r
+	}
+
+	fn finish_merge(&mut self, merge: Block, result: Option<(Variable, Typ)>) -> Option<TypedVal> {
+		result.map(|(var, typ)| {
+			self.b.switch_to_block(merge);
+			self.b.seal_block(merge);
+			(self.b.use_var(var), typ)
+		})
 	}
 
 	// `match`
@@ -230,13 +230,7 @@ impl<'a> Translator<'a> {
 			self.contribute("match", vt, &mut result, merge, span)?;
 		}
 
-		Ok(if let Some((var, typ)) = result {
-			self.b.switch_to_block(merge);
-			self.b.seal_block(merge);
-			Some((self.b.use_var(var), typ))
-		} else {
-			None
-		})
+		Ok(self.finish_merge(merge, result))
 	}
 
 	// Write (v, t) into the shared result variable and jump to `merge`.
@@ -395,12 +389,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// `Enum.from(v)`.
-	pub(super) fn enum_from(
-		&mut self,
-		name: &str,
-		args: &[Spanned<Expr>],
-		span: Span,
-	) -> Result<TypedVal, Diagnostic> {
+	pub(super) fn enum_from(&mut self, name: &str, args: &[Spanned<Expr>], span: Span) -> Result<TypedVal, Diagnostic> {
 		if args.len() != 1 {
 			let msg = format!("`{name}.from` takes 1 argument, got {}", args.len());
 			return Err(Diagnostic::new(msg, span.into_range()).with_label("wrong number of arguments"));

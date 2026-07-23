@@ -3,7 +3,6 @@ use crate::ast::{Capture, Param};
 
 impl<'a> Translator<'a> {
 	// Declare an anon fn literal.
-	#[allow(clippy::too_many_arguments)]
 	pub(super) fn declare_anon_fn(
 		&mut self,
 		captures: &Option<Vec<Capture>>,

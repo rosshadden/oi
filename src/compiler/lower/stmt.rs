@@ -8,11 +8,7 @@ impl<'a> Translator<'a> {
 	}
 
 	// Coerces a bare trailing expression against `tail`.
-	pub fn block_tail(
-		&mut self,
-		stmts: &[Spanned<Expr>],
-		tail: Option<&Typ>,
-	) -> Result<Option<TypedVal>, Diagnostic> {
+	pub fn block_tail(&mut self, stmts: &[Spanned<Expr>], tail: Option<&Typ>) -> Result<Option<TypedVal>, Diagnostic> {
 		let mut last = self.unit_value();
 		for (i, stmt) in stmts.iter().enumerate() {
 			let stmt_target = if i + 1 == stmts.len() { tail } else { None };

@@ -538,6 +538,18 @@ pub(crate) struct GenericFnDef {
 // A monomorphized instance whose sig is declared but body not yet compiled.
 pub(crate) type Pending = (String, GenericFnDef, HashMap<String, Typ>);
 
+// A resolved fn.
+#[derive(Default)]
+struct FnDef<'a> {
+	params: &'a [(String, Typ, bool)],
+	params_tuple: bool,
+	ret: Option<(Typ, Span)>,
+	body: &'a [Spanned<Expr>],
+	self_type: Option<&'a str>,
+	is_main: bool,
+	captures: &'a [(String, Typ, bool)],
+}
+
 // A generic struct definition.
 #[derive(Clone)]
 pub(crate) struct GenericStructDef {
@@ -877,15 +889,16 @@ impl Compiler {
 			let (params, ret) = types.resolve_params_ret(item.params, item.ret)?;
 			let sym = oi_symbol(&item.key);
 			let ret = self.translate(
-				&params,
-				item.params_tuple,
-				ret,
-				item.body,
+				FnDef {
+					params: &params,
+					params_tuple: item.params_tuple,
+					ret,
+					body: item.body,
+					self_type,
+					..FnDef::default()
+				},
 				&funcs,
 				types,
-				self_type,
-				false,
-				&[],
 			)?;
 			let id = self.finish_fn(&sym);
 			let param_typs = params.iter().map(|(_, t, _)| t.clone()).collect();
@@ -920,7 +933,16 @@ impl Compiler {
 		};
 
 		let types = TypeCtx::new(&structs, &enums, &aliases, &no_type_params, &generics);
-		let typ = self.translate(&[], true, None, entry, &funcs, types, None, true, &[])?;
+		let typ = self.translate(
+			FnDef {
+				params_tuple: true,
+				body: entry,
+				is_main: true,
+				..FnDef::default()
+			},
+			&funcs,
+			types,
+		)?;
 		let entry_id = self.finish_fn("oi_main");
 
 		// drain generic instances queued by calls we've seen
@@ -928,15 +950,16 @@ impl Compiler {
 			let types = TypeCtx::new(&structs, &enums, &aliases, &subst, &generics);
 			let (params, ret) = types.resolve_params_ret(&def.params, &def.ret)?;
 			self.translate(
-				&params,
-				def.params_tuple,
-				ret,
-				&def.body,
+				FnDef {
+					params: &params,
+					params_tuple: def.params_tuple,
+					ret,
+					body: &def.body,
+					captures: &def.captures,
+					..FnDef::default()
+				},
 				&funcs,
 				types,
-				None,
-				false,
-				&def.captures,
 			)?;
 			self.finish_fn(&sym);
 		}
@@ -948,35 +971,7 @@ impl Compiler {
 	}
 
 	fn compile_entry(&mut self, entry: FuncId, typ: Typ, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> FuncId {
-		let int = self.module.target_config().pointer_type();
-		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
-		let block = b.create_block();
-		b.switch_to_block(block);
-		b.seal_block(block);
-
-		let mut trans = Translator {
-			int,
-			b,
-			vars: HashMap::new(),
-			params: vec![],
-			dollar: None,
-			module: &mut self.module,
-			funcs,
-			structs: types.structs,
-			enums: types.enums,
-			aliases: types.aliases,
-			type_params: types.type_params,
-			generics: types.generics,
-			generic_fns: &self.generics,
-			mono: &mut self.mono,
-			pending: &mut self.pending,
-			string_idx: &mut self.string_idx,
-			atoms: &mut self.atoms,
-			ret: None,
-			loops: vec![],
-			self_type: None,
-			is_main: false,
-		};
+		let (mut trans, _) = self.translator(&FnDef::default(), funcs, types);
 
 		let callee = trans.module.declare_func_in_func(entry, trans.b.func);
 		let call = trans.b.ins().call(callee, &[]);
@@ -1000,26 +995,18 @@ impl Compiler {
 		id
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	fn translate(
-		&mut self,
-		params: &[(String, Typ, bool)],
-		params_tuple: bool,
-		ret: Option<(Typ, Span)>,
-		stmts: &[Spanned<Expr>],
-		funcs: &HashMap<String, FnSig>,
-		types: TypeCtx,
-		self_type: Option<&str>,
-		is_main: bool,
-		captures: &[(String, Typ, bool)],
-	) -> Result<Typ, Diagnostic> {
+	fn translator<'a>(
+		&'a mut self,
+		def: &FnDef,
+		funcs: &'a HashMap<String, FnSig>,
+		types: TypeCtx<'a>,
+	) -> (Translator<'a>, Block) {
 		let int = self.module.target_config().pointer_type();
 		let mut b = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_ctx);
-		// declare param types before the entry block claims them
-		for (_, typ, _) in params {
+		for (_, typ, _) in def.params {
 			b.func.signature.params.push(AbiParam::new(cl_type(typ, int)));
 		}
-		if !captures.is_empty() {
+		if !def.captures.is_empty() {
 			b.func.signature.params.push(AbiParam::new(int));
 		}
 		let block = b.create_block();
@@ -1027,9 +1014,7 @@ impl Compiler {
 		b.switch_to_block(block);
 		b.seal_block(block);
 
-		let decl_span = ret.as_ref().map(|(_, s)| *s);
-
-		let mut trans = Translator {
+		let trans = Translator {
 			int,
 			b,
 			vars: HashMap::new(),
@@ -1047,14 +1032,21 @@ impl Compiler {
 			pending: &mut self.pending,
 			string_idx: &mut self.string_idx,
 			atoms: &mut self.atoms,
-			ret,
+			ret: def.ret.clone(),
 			loops: vec![],
-			self_type: self_type.map(str::to_owned),
-			is_main,
+			self_type: def.self_type.map(str::to_owned),
+			is_main: def.is_main,
 		};
 
+		(trans, block)
+	}
+
+	fn translate(&mut self, def: FnDef, funcs: &HashMap<String, FnSig>, types: TypeCtx) -> Result<Typ, Diagnostic> {
+		let decl_span = def.ret.as_ref().map(|(_, s)| *s);
+		let (mut trans, block) = self.translator(&def, funcs, types);
+
 		let param_vals: Vec<Value> = trans.b.block_params(block).to_vec();
-		for ((name, typ, mutable), &val) in params.iter().zip(param_vals.iter()) {
+		for ((name, typ, mutable), &val) in def.params.iter().zip(param_vals.iter()) {
 			let cl = trans.b.func.dfg.value_type(val);
 			let var = trans.b.declare_var(cl);
 			trans.b.def_var(var, val);
@@ -1062,11 +1054,11 @@ impl Compiler {
 			trans.vars.insert(name.clone(), local.clone());
 			trans.params.push(local);
 		}
-		trans.bind_dollar(params_tuple);
+		trans.bind_dollar(def.params_tuple);
 
-		if !captures.is_empty() {
-			let env = param_vals[params.len()];
-			for (i, (name, typ, boxed)) in captures.iter().enumerate() {
+		if !def.captures.is_empty() {
+			let env = param_vals[def.params.len()];
+			for (i, (name, typ, boxed)) in def.captures.iter().enumerate() {
 				let cl = if *boxed { trans.int } else { cl_type(typ, trans.int) };
 				let val = trans.b.ins().load(cl, MemFlags::new(), env, ((i + 1) * 8) as i32);
 				let var = trans.b.declare_var(cl);
@@ -1082,8 +1074,8 @@ impl Compiler {
 		}
 
 		let tail_target = trans.ret.as_ref().map(|(t, _)| t.clone());
-		if let Some((val, typ)) = trans.block_tail(stmts, tail_target.as_ref())? {
-			let span = stmts.last().map(|s| s.1).or(decl_span).unwrap_or((0..0).into());
+		if let Some((val, typ)) = trans.block_tail(def.body, tail_target.as_ref())? {
+			let span = def.body.last().map(|s| s.1).or(decl_span).unwrap_or((0..0).into());
 			trans.emit_return(val, typ, span)?;
 		}
 		trans.b.finalize();

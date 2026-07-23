@@ -115,17 +115,7 @@ impl<'a> Translator<'a> {
 				}
 				if let Some(local) = self.vars.get(name).cloned() {
 					let callee = self.read_local(&local);
-					return match local.typ.clone() {
-						Typ::Fn(params, ret) => self.call_value(name, callee, None, &params, &ret, args, expr.1),
-						Typ::Closure(params, ret) => {
-							let addr = self.b.ins().load(self.int, MemFlags::new(), callee, 0);
-							self.call_value(name, addr, Some(callee), &params, &ret, args, expr.1)
-						}
-						typ => Err(
-							Diagnostic::new(format!("`{name}` is not callable"), expr.1.into_range())
-								.with_label(format!("this is {typ}, not a function")),
-						),
-					};
+					return self.call_value(name, callee, &local.typ, args, expr.1);
 				}
 				match self.builtin_call(name, args, expr.1)? {
 					Some(result) => Ok(result),

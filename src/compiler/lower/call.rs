@@ -72,17 +72,25 @@ impl<'a> Translator<'a> {
 	}
 
 	// Call through a value as a function.
-	#[allow(clippy::too_many_arguments)]
 	pub(super) fn call_value(
 		&mut self,
 		name: &str,
 		callee: Value,
-		env: Option<Value>,
-		params: &[Typ],
-		ret: &Typ,
+		typ: &Typ,
 		args: &[Spanned<Expr>],
 		span: Span,
 	) -> Result<TypedVal, Diagnostic> {
+		let (addr, env, params, ret) = match typ {
+			Typ::Fn(params, ret) => (callee, None, params, &**ret),
+			Typ::Closure(params, ret) => {
+				let addr = self.b.ins().load(self.int, MemFlags::new(), callee, 0);
+				(addr, Some(callee), params, &**ret)
+			}
+			typ => {
+				return Err(Diagnostic::new(format!("`{name}` is not callable"), span.into_range())
+					.with_label(format!("this is {typ}, not a function")));
+			}
+		};
 		if args.len() != params.len() {
 			return Err(Diagnostic::new(
 				format!("`{name}` expects {} argument(s), got {}", params.len(), args.len()),
@@ -112,7 +120,7 @@ impl<'a> Translator<'a> {
 			sig.returns.push(AbiParam::new(cl_type(ret, self.int)));
 		}
 		let sig_ref = self.b.import_signature(sig);
-		let call = self.b.ins().call_indirect(sig_ref, callee, &vals);
+		let call = self.b.ins().call_indirect(sig_ref, addr, &vals);
 		let ret_val = if is_unit {
 			self.b.ins().iconst(self.int, 0)
 		} else {
