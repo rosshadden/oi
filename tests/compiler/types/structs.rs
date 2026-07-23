@@ -276,3 +276,47 @@ fn default_field_value() {
 		"0",
 	);
 }
+
+#[test]
+fn named_call_args() {
+	check(
+		"struct Options { foo int, bar bool }
+		fn f(o Options) { print(o.foo) }
+		f(bar: true, foo: 4)",
+		"4",
+	);
+}
+
+#[test]
+fn named_method_args() {
+	check(
+		"struct Options { foo int, bar bool }
+		struct User {}
+		impl User {
+			fn with_options(self, opt Options) { print(opt.bar) }
+		}
+		user := User{}
+		user.with_options(bar: true, foo: 4)",
+		"true",
+	);
+}
+
+#[test]
+fn mixed_positional_and_named_args() {
+	check(
+		"struct Options { foo int }
+		fn g(x int, o Options) { print(x + o.foo) }
+		g(1, foo: 2)",
+		"3",
+	);
+}
+
+#[test]
+fn named_before_positional_error() {
+	let err = fail(
+		"struct Options { foo int }
+		fn g(x int, o Options) {}
+		g(foo: 1, 2)",
+	);
+	assert!(err.contains("positional args go before named args"), "{err}");
+}

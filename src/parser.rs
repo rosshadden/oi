@@ -314,13 +314,35 @@ where
 			Token::None => Expr::None,
 		};
 
+		// named args collect into one trailing record arg
+		let named_arg = ident()
+			.map_with(|n, ex| (Expr::Ident(n), ex.span()))
+			.then_ignore(just(Token::Colon))
+			.then(expr.clone())
+			.map(|(key, value)| (Some(key), value));
 		// variable vs. call vs. struct literal
 		let args = paren(
-			expr.clone()
+			named_arg
+				.or(expr.clone().map(|e| (None, e)))
 				.separated_by(just(Token::Comma))
 				.allow_trailing()
 				.collect::<Vec<_>>(),
-		);
+		)
+		.validate(|elems, ex, emitter| {
+			let mut args = Vec::new();
+			let mut named = Vec::new();
+			for (key, value) in elems {
+				match key {
+					Some(key) => named.push((key, value)),
+					None if named.is_empty() => args.push(value),
+					None => emitter.emit(Rich::custom(ex.span(), "positional args go before named args")),
+				}
+			}
+			if !named.is_empty() {
+				args.push((Expr::Record(named), ex.span()));
+			}
+			args
+		});
 
 		// named or positional field entry
 		let struct_field_entry = ident().then_ignore(just(Token::Colon)).or_not().then(expr.clone());
