@@ -48,7 +48,7 @@ impl<'a> Translator<'a> {
 			Typ::Bool | Typ::ISize | Typ::USize => self.b.ins().iconst(self.int, 0),
 			Typ::Fn(..) | Typ::Closure(..) => self.b.ins().iconst(self.int, 0),
 			// default to first variant, with zero'd payload fields
-			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) => {
+			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) | Typ::Sum(..) => {
 				let variants = self.variants_of(typ);
 				let v = variants.first().cloned();
 				let disc = v.as_ref().map_or(0, |v| v.disc);
@@ -149,14 +149,15 @@ impl<'a> Translator<'a> {
 				self.construct_variant(typ, variant, args, value.1)?.0
 			}
 			(Expr::None, Typ::Option(inner)) => self.make_enum(&option_variants(inner), 0, &[]),
-			(Expr::Atom(name), Typ::AtomSum(names)) => {
-				let Some(disc) = names.iter().position(|n| n == name) else {
+			(Expr::Atom(name), Typ::AtomSum(_) | Typ::Sum(..)) => {
+				let variants = self.variants_of(target);
+				let Some(v) = variants.iter().find(|v| &v.name == name && v.payload.is_empty()) else {
 					return Err(
 						Diagnostic::new(format!("`{target}` has no atom `:{name}`"), value.1.into_range())
 							.with_label("not a member of this sum type"),
 					);
 				};
-				self.make_enum(&atom_sum_variants(names), disc as i64, &[])
+				self.make_enum(&variants, v.disc, &[])
 			}
 			_ => return Ok(None),
 		};
@@ -179,6 +180,7 @@ impl<'a> Translator<'a> {
 			Typ::Option(inner) => option_variants(inner),
 			Typ::Result(inner) => result_variants(inner),
 			Typ::AtomSum(names) => atom_sum_variants(names),
+			Typ::Sum(_, variants) => variants.clone(),
 			_ => Vec::new(),
 		}
 	}
@@ -211,6 +213,13 @@ impl<'a> Translator<'a> {
 	// A match pattern's discriminant and payload binds.
 	pub(super) fn enum_pattern(&self, pat: &Spanned<Expr>, typ: &Typ) -> Result<(i64, Vec<Bind>), Diagnostic> {
 		let bad = |msg| Err(Diagnostic::new(msg, pat.1.into_range()).with_label("bad pattern"));
+		if let (Typ::Sum(_, variants), Expr::Ident(v)) = (typ, &pat.0) {
+			let disp = self.sum_display(v, pat.1);
+			return match variants.iter().find(|x| x.name == disp) {
+				Some(x) => Ok((x.disc, vec![])),
+				None => bad(format!("`{typ}` has no variant `{v}`")),
+			};
+		}
 		let (variant, args): (&str, &[Spanned<Expr>]) = match &pat.0 {
 			Expr::EnumShorthand { variant, args } => (variant, args),
 			Expr::Atom(v) => (v, &[]),
@@ -223,6 +232,26 @@ impl<'a> Translator<'a> {
 		};
 		let binds = field_binds(args.iter().zip(&v.payload), 8, 8)?;
 		Ok((v.disc, binds))
+	}
+
+	// The display name a bare type-name pattern refers to.
+	// ex: `string` -> `str`.
+	fn sum_display(&self, name: &str, span: Span) -> String {
+		self.types()
+			.resolve(&TypeExpr::Name(name.to_string()), span)
+			.map(|t| t.to_string())
+			.unwrap_or_else(|_| name.to_string())
+	}
+
+	// An `n @ int` arm on a sum captures the unwrapped payload at offset 8.
+	pub(super) fn sum_capture(&self, arm: &MatchArm, st: &Typ) -> Option<Bind> {
+		let name = arm.binding.as_ref()?;
+		let Typ::Sum(_, variants) = st else { return None };
+		let [pat] = arm.patterns.as_slice() else { return None };
+		let Expr::Ident(v) = &pat.0 else { return None };
+		let disp = self.sum_display(v, pat.1);
+		let vi = variants.iter().find(|x| x.name == disp && x.payload.len() == 1)?;
+		Some((name.clone(), vi.payload[0].clone(), 8))
 	}
 
 	pub(super) fn range_pattern(
@@ -335,7 +364,15 @@ impl<'a> Translator<'a> {
 				}
 				_ => self.expr(value),
 			},
-			_ => self.expr(value),
+			_ => {
+				let (val, vt) = self.expr(value)?;
+				if let Typ::Sum(_, variants) = target
+					&& let Some(v) = variants.iter().find(|v| v.payload == [vt.clone()])
+				{
+					return Ok((self.make_enum(variants, v.disc, &[val]), target.clone()));
+				}
+				Ok((val, vt))
+			}
 		}
 	}
 

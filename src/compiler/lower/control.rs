@@ -84,7 +84,7 @@ impl<'a> Translator<'a> {
 		self.b.def_var(sv_var, sv);
 
 		// ensure match covers every variant when applicable
-		if matches!(&st, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_)) {
+		if st.is_enumish() {
 			let pats = || arms.iter().flat_map(|a| &a.patterns);
 			let catch_all = else_body.is_some() || pats().any(|p| matches!(&p.0, Expr::Ident(w) if w == "_"));
 			if !catch_all {
@@ -130,7 +130,7 @@ impl<'a> Translator<'a> {
 				} else if let Expr::Range { start, end } = &pat.0 {
 					let sv = self.b.use_var(sv_var);
 					self.range_pattern(sv, &st, start.as_deref(), end.as_deref(), pat.1)?
-				} else if matches!(&st, Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_)) {
+				} else if st.is_enumish() {
 					let (disc, b) = self.enum_pattern(pat, &st)?;
 					if arm.patterns.len() == 1 {
 						binds = b;
@@ -193,7 +193,10 @@ impl<'a> Translator<'a> {
 			self.b.seal_block(arm_body);
 			self.b.switch_to_block(arm_body);
 			let flow = self.scoped(|s| {
-				if let Some(name) = &arm.binding {
+				let cap = s.sum_capture(arm, &st);
+				if let Some(name) = &arm.binding
+					&& cap.is_none()
+				{
 					s.vars.insert(name.clone(), Local::plain(sv_var, st.clone(), false));
 				}
 				let sv = s.b.use_var(sv_var);
@@ -201,7 +204,7 @@ impl<'a> Translator<'a> {
 					Typ::Array(_) | Typ::FixedArray(..) => s.array_parts(sv, &st).0,
 					_ => sv,
 				};
-				for (name, typ, off) in &binds {
+				for (name, typ, off) in cap.iter().chain(&binds) {
 					let cl = cl_type(typ, s.int);
 					let fv = s.b.ins().load(cl, MemFlags::new(), base, *off);
 					let var = s.b.declare_var(cl);

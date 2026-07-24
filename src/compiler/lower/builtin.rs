@@ -277,7 +277,7 @@ impl<'a> Translator<'a> {
 					Sign::Signed,
 					target_cl,
 				),
-				Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) => {
+				_ if typ.is_enumish() => {
 					let variants = self.variants_of(&typ);
 					let tag = self.enum_tag(&variants, val);
 					if target_cl == types::I64 {

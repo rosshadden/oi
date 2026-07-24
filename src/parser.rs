@@ -833,15 +833,27 @@ where
 		});
 
 	// type aliases
-	let atom_sum = select! { Token::Atom(a) => a }
+	let sum = type_expr
 		.separated_by(just(Token::Pipe))
 		.at_least(1)
 		.collect::<Vec<_>>()
-		.map(TypeExpr::AtomSum);
+		.map(|mut ms| {
+			if ms.len() == 1 {
+				return ms.pop().unwrap();
+			}
+			let atom = |m: &TypeExpr| match m {
+				TypeExpr::AtomSum(a) if a.len() == 1 => Some(a[0].clone()),
+				_ => None,
+			};
+			match ms.iter().map(atom).collect::<Option<Vec<_>>>() {
+				Some(names) => TypeExpr::AtomSum(names),
+				None => TypeExpr::Sum(ms),
+			}
+		});
 	let type_alias = just(Token::Type)
 		.ignore_then(ident())
 		.then_ignore(just(Token::Assign))
-		.then(atom_sum.or(type_expr))
+		.then(sum)
 		.map_with(|(name, typ), ex| (Expr::TypeAlias { name, typ }, ex.span()));
 
 	let impl_block = just(Token::Impl)

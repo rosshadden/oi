@@ -32,6 +32,33 @@ impl<'a> Translator<'a> {
 		ptr
 	}
 
+	// Sum `Display`.
+	fn emit_sum(&mut self, variants: &[VariantInfo], val: Value, quote: bool, stderr: bool) {
+		let done = self.b.create_block();
+		let tag = self.enum_tag(variants, val);
+		for v in variants {
+			if v.payload.is_empty() {
+				continue;
+			}
+			let (hit, next) = (self.b.create_block(), self.b.create_block());
+			let disc = self.b.ins().iconst(self.int, v.disc);
+			let is = self.b.ins().icmp(IntCC::Equal, tag, disc);
+			self.b.ins().brif(is, hit, &[], next, &[]);
+			self.b.seal_block(hit);
+			self.b.switch_to_block(hit);
+			let pv = self.b.ins().load(cl_type(&v.payload[0], self.int), MemFlags::new(), val, 8);
+			self.emit_print(pv, &v.payload[0], quote, stderr);
+			self.b.ins().jump(done, &[]);
+			self.b.seal_block(next);
+			self.b.switch_to_block(next);
+		}
+		let ptr = self.enum_name_str(variants, val);
+		self.emit_frag(runtime::Tag::Raw, ptr, 0, false, stderr);
+		self.b.ins().jump(done, &[]);
+		self.b.seal_block(done);
+		self.b.switch_to_block(done);
+	}
+
 	pub fn emit_print(&mut self, val: Value, typ: &Typ, quote: bool, stderr: bool) {
 		match typ {
 			Typ::Tuple(fields) => {
@@ -114,6 +141,11 @@ impl<'a> Translator<'a> {
 				self.emit_frag(runtime::Tag::Raw, ptr, 0, false, stderr);
 			}
 
+			Typ::Sum(_, variants) => {
+				let variants = variants.clone();
+				self.emit_sum(&variants, val, quote, stderr);
+			}
+
 			Typ::Range => {
 				let cl = cl_int_for_width(32);
 				let start = self.b.ins().load(cl, MemFlags::new(), val, 0);
@@ -142,6 +174,7 @@ impl<'a> Translator<'a> {
 					| Typ::Option(_)
 					| Typ::Result(_)
 					| Typ::AtomSum(_)
+					| Typ::Sum(..)
 					| Typ::Range
 					| Typ::Fn(..)
 					| Typ::Closure(..)

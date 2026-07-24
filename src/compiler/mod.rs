@@ -46,6 +46,7 @@ pub(crate) enum Typ {
 	Option(Box<Typ>),
 	Result(Box<Typ>),
 	AtomSum(Vec<String>),
+	Sum(String, Vec<VariantInfo>),
 	Error,
 	Range,
 	Fn(Vec<Typ>, Box<Typ>),
@@ -68,6 +69,13 @@ impl Typ {
 
 	pub fn is_unit(&self) -> bool {
 		matches!(self, Typ::Tuple(f) if f.is_empty())
+	}
+
+	pub fn is_enumish(&self) -> bool {
+		matches!(
+			self,
+			Typ::Enum(_) | Typ::Option(_) | Typ::Result(_) | Typ::AtomSum(_) | Typ::Sum(..)
+		)
 	}
 }
 
@@ -99,6 +107,7 @@ impl fmt::Display for Typ {
 					names.iter().map(|n| format!(":{n}")).collect::<Vec<_>>().join(" | ")
 				)
 			}
+			Typ::Sum(name, _) => write!(f, "{name}"),
 			Typ::Error => write!(f, "Error"),
 			Typ::Range => write!(f, "range"),
 			Typ::Fn(params, ret) | Typ::Closure(params, ret) => {
@@ -158,7 +167,7 @@ pub(crate) fn elem_size(typ: &Typ) -> i64 {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub(crate) struct VariantInfo {
 	pub name: String,
 	pub disc: i64,
@@ -321,6 +330,10 @@ impl TypeCtx<'_> {
 				}
 				Ok(Typ::AtomSum(names.clone()))
 			}
+			TypeExpr::Sum(_) => Err(
+				Diagnostic::new("sum types must be declared with `type`", span.into_range())
+					.with_label("anonymous sum types aren't allowed"),
+			),
 			TypeExpr::Fn(params, ret) => {
 				let params = params.iter().map(|p| self.resolve(p, span)).collect::<Result<_, _>>()?;
 				Ok(Typ::Fn(params, Box::new(self.resolve(ret, span)?)))
@@ -477,6 +490,9 @@ impl TypeCtx<'_> {
 			};
 		}
 		if let Some(te) = self.aliases.get(name) {
+			if let TypeExpr::Sum(ms) = te {
+				return self.resolve_sum(name, ms, span);
+			}
 			return self.resolve(te, span);
 		}
 		if let Some(fields) = self.structs.get(name) {
@@ -492,6 +508,26 @@ impl TypeCtx<'_> {
 			);
 		}
 		Err(Diagnostic::new(format!("unknown type `{name}`"), span.into_range()).with_label("not a known type"))
+	}
+
+	// Resolve a sum type.
+	fn resolve_sum(&self, name: &str, members: &[TypeExpr], span: Span) -> Result<Typ, Diagnostic> {
+		let mut variants: Vec<VariantInfo> = Vec::with_capacity(members.len());
+		for (disc, m) in members.iter().enumerate() {
+			let v = match m {
+				TypeExpr::AtomSum(a) if a.len() == 1 => VariantInfo::new(a[0].clone(), disc as i64, vec![]),
+				_ => {
+					let t = self.resolve(m, span)?;
+					VariantInfo::new(t.to_string(), disc as i64, vec![t])
+				}
+			};
+			if variants.iter().any(|x| x.name == v.name) {
+				let msg = format!("duplicate member `{}` in sum type", v.name);
+				return Err(Diagnostic::new(msg, span.into_range()).with_label("repeated member"));
+			}
+			variants.push(v);
+		}
+		Ok(Typ::Sum(name.to_string(), variants))
 	}
 
 	// Resolve a param list to `(name, type, mutable)` triples.

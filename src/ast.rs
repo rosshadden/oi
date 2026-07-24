@@ -277,6 +277,7 @@ pub enum TypeExpr {
 	Option(Box<TypeExpr>),
 	Result(Box<TypeExpr>, Option<Box<TypeExpr>>),
 	AtomSum(Vec<String>),
+	Sum(Vec<TypeExpr>),
 	Map(Box<TypeExpr>, Box<TypeExpr>),
 	Generic(String, Vec<TypeExpr>),
 }
